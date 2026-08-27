@@ -14,8 +14,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders(); builder.Logging.AddJsonConsole();
 builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>(); builder.Services.AddOpenApi(); builder.Services.AddHttpContextAccessor();
 builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("PbmDatabase")));
-builder.Services.AddScoped<IUserContext, HttpUserContext>(); builder.Services.AddScoped<ICompanyService, CompanyService>(); builder.Services.AddScoped<IBudgetService, BudgetService>(); builder.Services.AddScoped<IDashboardService, DashboardService>();
-builder.Services.AddScoped<IWorkbookImportService, OpenXmlWorkbookImportService>(); builder.Services.AddSingleton<IFormulaEngine, FormulaEngine>(); builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
+builder.Services.AddScoped<IUserContext, HttpUserContext>();
+builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<IBudgetService, BudgetService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IReferenceDataService, ReferenceDataService>();
+builder.Services.AddScoped<IKpiService, KpiService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IWorkbookImportService, OpenXmlWorkbookImportService>();
+builder.Services.AddSingleton<IFormulaEngine, FormulaEngine>();
+builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().SetIsOriginAllowed(_ => true).AllowCredentials()));
 
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required.");
@@ -35,7 +43,10 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok", service = "PBM.Api"
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<PbmDbContext>(); await db.Database.EnsureCreatedAsync(); await SeedData.InitializeAsync(db);
+    var db = scope.ServiceProvider.GetRequiredService<PbmDbContext>();
+    await db.Database.EnsureCreatedAsync();
+    await SeedData.InitializeAsync(db);
+    await EnterpriseSeedData.InitializeAsync(db);
     if (app.Environment.IsDevelopment() && !await db.Users.AnyAsync())
     {
         var tenantId = await db.Tenants.Select(x => x.Id).FirstAsync(); var companyId = await db.Companies.Select(x => x.Id).FirstAsync();
@@ -77,6 +88,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
     if (!Path.GetExtension(file.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { message = "Only .xlsx files are supported." });
     await using var stream = file.OpenReadStream(); return Results.Ok(await service.InspectAsync(stream, file.FileName, file.Length, cancellationToken: ct));
 }).DisableAntiforgery();
+api.MapEnterpriseEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);

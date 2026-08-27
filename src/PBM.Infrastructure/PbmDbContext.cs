@@ -29,11 +29,15 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<KpiValue> KpiValues => Set<KpiValue>();
     public DbSet<BudgetComment> BudgetComments => Set<BudgetComment>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<CurrencyDefinition> Currencies => Set<CurrencyDefinition>();
+    public DbSet<FxRateSource> FxRateSources => Set<FxRateSource>();
+    public DbSet<FxRate> FxRates => Set<FxRate>();
+    public DbSet<StrategicObjective> StrategicObjectives => Set<StrategicObjective>();
+    public DbSet<KpiObjectiveLink> KpiObjectiveLinks => Set<KpiObjectiveLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("pbm");
-
         modelBuilder.Entity<Tenant>().HasIndex(x => x.Code).IsUnique();
         modelBuilder.Entity<Company>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<OrganizationUnit>().HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
@@ -46,15 +50,20 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetScenario>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<CurrencyDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<FxRateSource>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<FxRate>().HasIndex(x => new { x.SourceId, x.FromCurrencyId, x.ToCurrencyId, x.RateDate }).IsUnique();
+        modelBuilder.Entity<StrategicObjective>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<KpiDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<KpiValue>().HasIndex(x => new { x.KpiId, x.CompanyId, x.PeriodId }).IsUnique();
 
         modelBuilder.Entity<UserRole>().HasKey(x => new { x.UserId, x.RoleId });
         modelBuilder.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         modelBuilder.Entity<BudgetModelDimension>().HasKey(x => new { x.BudgetModelId, x.DimensionId });
         modelBuilder.Entity<BudgetFactDimension>().HasKey(x => new { x.BudgetFactId, x.DimensionId });
+        modelBuilder.Entity<KpiObjectiveLink>().HasKey(x => new { x.KpiId, x.ObjectiveId });
 
-        modelBuilder.Entity<BudgetFact>()
-            .HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.ValueKind, x.CoordinateHash })
-            .IsUnique();
+        modelBuilder.Entity<BudgetFact>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.ValueKind, x.CoordinateHash }).IsUnique();
         modelBuilder.Entity<BudgetFact>().Property(x => x.Value).HasPrecision(28, 8);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Weight).HasPrecision(9, 4);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Minimum).HasPrecision(28, 8);
@@ -62,6 +71,9 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<KpiValue>().Property(x => x.Target).HasPrecision(28, 8);
         modelBuilder.Entity<KpiValue>().Property(x => x.Actual).HasPrecision(28, 8);
         modelBuilder.Entity<KpiValue>().Property(x => x.Score).HasPrecision(28, 8);
+        modelBuilder.Entity<FxRate>().Property(x => x.Rate).HasPrecision(28, 10);
+        modelBuilder.Entity<StrategicObjective>().Property(x => x.Weight).HasPrecision(9, 4);
+        modelBuilder.Entity<KpiObjectiveLink>().Property(x => x.Weight).HasPrecision(9, 4);
 
         modelBuilder.Entity<OrganizationUnit>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
@@ -72,7 +84,12 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.Member).WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
-
+        modelBuilder.Entity<StrategicObjective>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Kpi).WithMany().HasForeignKey(x => x.KpiId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Objective).WithMany().HasForeignKey(x => x.ObjectiveId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<FxRate>().HasOne(x => x.Source).WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<FxRate>().HasOne(x => x.FromCurrency).WithMany().HasForeignKey(x => x.FromCurrencyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<FxRate>().HasOne(x => x.ToCurrency).WithMany().HasForeignKey(x => x.ToCurrencyId).OnDelete(DeleteBehavior.Restrict);
         base.OnModelCreating(modelBuilder);
     }
 }
