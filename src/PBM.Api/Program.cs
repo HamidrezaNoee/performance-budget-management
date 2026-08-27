@@ -21,6 +21,7 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IReferenceDataService, ReferenceDataService>();
 builder.Services.AddScoped<IKpiService, KpiService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IForecastService, ForecastService>();
 builder.Services.AddScoped<IWorkbookImportService, OpenXmlWorkbookImportService>();
 builder.Services.AddSingleton<IFormulaEngine, FormulaEngine>();
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
@@ -89,6 +90,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
     await using var stream = file.OpenReadStream(); return Results.Ok(await service.InspectAsync(stream, file.FileName, file.Length, cancellationToken: ct));
 }).DisableAntiforgery();
 api.MapEnterpriseEndpoints();
+api.MapForecastEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
