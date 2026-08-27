@@ -18,6 +18,7 @@ import BudgetPlanning from './BudgetPlanning'
 import WorkbookImport from './WorkbookImport'
 import KpiPerformance from './KpiPerformance'
 import Forecasting from './Forecasting'
+import FinancialReports from './FinancialReports'
 import ReferenceAdmin from './ReferenceAdmin'
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
@@ -121,7 +122,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
     ['پیش‌بینی', <AutoGraphRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
     ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
-  const titles = ['داشبورد مدیریت بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'پیش‌بینی', 'گزارش‌ها', 'تنظیمات و داده‌های پایه']
+  const titles = ['داشبورد مدیریت بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
 
   return <Box sx={{ display: 'flex', minHeight: '100vh' }}>
     <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
@@ -148,7 +149,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
       {activeView === 2 && <WorkbookImport />}
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 5 && <ComingSoon title="گزارش‌های مالی و مدیریتی" description="صورت سود و زیان، ترازنامه، جریان نقد و Drill-down از مدل نرمال‌شده ساخته می‌شود." />}
+      {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 6 && <ReferenceAdmin />}
     </Container></Box>
   </Box>
@@ -170,8 +171,4 @@ function DashboardContent({ loading, summary }: { loading: boolean; summary: Das
 
 function Kpi({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return <Card elevation={0} className="kpi-card"><CardContent><Typography color="text.secondary" fontWeight={700}>{title}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{value}</Typography><Typography variant="caption" color="text.secondary">{subtitle}</Typography></CardContent></Card>
-}
-
-function ComingSoon({ title, description }: { title: string; description: string }) {
-  return <Card elevation={0}><CardContent sx={{ py: 8, textAlign: 'center' }}><Typography variant="h6" fontWeight={900}>{title}</Typography><Typography color="text.secondary" mt={1}>{description}</Typography></CardContent></Card>
 }
