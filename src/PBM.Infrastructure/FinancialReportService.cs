@@ -6,6 +6,8 @@ namespace PBM.Infrastructure;
 
 public sealed class FinancialReportService(PbmDbContext db, IUserContext user) : IFinancialReportService
 {
+    private sealed record PeriodRef(Guid Id, string Name, int Sequence);
+
     private static readonly IReadOnlyList<(string Code, string Name)> ProfitLossRows = new[]
     {
         ("GROSS_SALES", "فروش ناخالص کالای تجاری"),
@@ -55,7 +57,7 @@ public sealed class FinancialReportService(PbmDbContext db, IUserContext user) :
                 .OrderByDescending(x => x.VersionNumber).ThenByDescending(x => x.CreatedAtUtc).Select(x => new { x.Id, x.Name, x.VersionNumber }).FirstOrDefaultAsync(cancellationToken);
 
         var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYearId).OrderBy(x => x.Sequence)
-            .Select(x => new { x.Id, x.Name, x.Sequence }).ToListAsync(cancellationToken);
+            .Select(x => new PeriodRef(x.Id, x.Name, x.Sequence)).ToListAsync(cancellationToken);
 
         var template = type switch
         {
@@ -71,7 +73,8 @@ public sealed class FinancialReportService(PbmDbContext db, IUserContext user) :
         var statementMeasureId = await db.Measures.Where(x => x.BudgetModel!.TenantId == user.TenantId && x.BudgetModel.Code == "FINSTAT" && x.Code == "STATEMENT_AMOUNT")
             .Select(x => x.Id).SingleAsync(cancellationToken);
 
-        var accountMembers = await db.DimensionMembers.AsNoTracking().Where(x => x.DimensionId == accountDimensionId && template.Select(t => t.Code).Contains(x.Code))
+        var codes = template.Select(t => t.Code).ToArray();
+        var accountMembers = await db.DimensionMembers.AsNoTracking().Where(x => x.DimensionId == accountDimensionId && codes.Contains(x.Code))
             .Select(x => new { x.Id, x.Code, x.Name }).ToListAsync(cancellationToken);
         var byMember = accountMembers.ToDictionary(x => x.Id);
 
@@ -105,10 +108,10 @@ public sealed class FinancialReportService(PbmDbContext db, IUserContext user) :
         return new FinancialReportDto(type, companyId, fiscalYearId, version.Id, $"{version.Name} (V{version.VersionNumber})", valueKind, rows);
     }
 
-    private static FinancialReportDto Empty(FinancialReportType type, Guid companyId, Guid fiscalYearId, ValueKind valueKind, IReadOnlyList<dynamic> periods, IReadOnlyList<(string Code, string Name)> template)
+    private static FinancialReportDto Empty(FinancialReportType type, Guid companyId, Guid fiscalYearId, ValueKind valueKind, IReadOnlyList<PeriodRef> periods, IReadOnlyList<(string Code, string Name)> template)
     {
         var rows = template.Select((item, index) => new FinancialReportRowDto(item.Code, item.Name, index + 1,
-            periods.Select(p => new FinancialReportCellDto((Guid)p.Id, (string)p.Name, (int)p.Sequence, 0m)).ToList(), 0m)).ToList();
+            periods.Select(p => new FinancialReportCellDto(p.Id, p.Name, p.Sequence, 0m)).ToList(), 0m)).ToList();
         return new FinancialReportDto(type, companyId, fiscalYearId, null, null, valueKind, rows);
     }
 
