@@ -146,7 +146,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
       {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 2 && <WorkbookImport />}
+      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
