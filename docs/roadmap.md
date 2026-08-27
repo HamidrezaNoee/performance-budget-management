@@ -1,6 +1,6 @@
 # PBM delivery roadmap
 
-## Slice 1 — platform foundation (current)
+## Slice 1 — platform foundation (implemented)
 - Multi-tenant / multi-company model and license limits
 - Fiscal years and Jalali periods with Gregorian storage
 - Dynamic dimensions and hierarchical members
@@ -10,14 +10,15 @@
 - Dashboard API and RTL React dashboard
 - SQL Server + Docker + CI + unit tests
 
-## Slice 2 — budget grid and workbook import
-- Excel import wizard with sheet/column mapping
-- Editable pivot-style planning grid
-- Copy prior-year actual to budget baseline
-- Bulk paste, fill, spread and percentage increase/decrease
-- Formula dependency graph and recalculation
-- Currency source/rate management
-- Version comparison and revision history
+## Slice 2 — planning grid and workbook intake (in progress)
+- Editable multidimensional planning grid with month columns
+- Dynamic row dimension and fixed dimension filters
+- Direct fact upsert from grid cells
+- XLSX workbook inspection, sheet discovery and preview
+- Next: mapping profiles from legacy workbook columns/rows to PBM dimensions/measures
+- Next: copy prior-year actual to budget baseline, bulk paste/fill/spread and version comparison
+- Next: formula dependency graph and recalculation
+- Next: currency source/rate management
 
 ## Slice 3 — financial and performance modules
 - Personnel-cost model
