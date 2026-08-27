@@ -1,3 +1,5 @@
+using PBM.Domain;
+
 namespace PBM.Application;
 
 public enum WorkbookTemplateProfile
@@ -32,7 +34,31 @@ public sealed record WorkbookSheetPreviewDto(
 
 public sealed record WorkbookInspectionDto(string FileName, long FileSize, IReadOnlyList<WorkbookSheetPreviewDto> Sheets);
 
+public sealed record NormalizedWorkbookFactDto(
+    int SourceRow,
+    string MeasureCode,
+    ValueKind ValueKind,
+    string? PeriodName,
+    decimal Value,
+    string Unit,
+    decimal ScaleApplied,
+    IReadOnlyDictionary<string, string> DimensionMembers,
+    string? SourceLabel);
+
+public sealed record WorkbookNormalizationDto(
+    string SheetName,
+    WorkbookTemplateProfile Profile,
+    string? ModelCode,
+    int SourceRows,
+    IReadOnlyList<NormalizedWorkbookFactDto> Facts,
+    IReadOnlyList<string> Warnings);
+
 public interface IWorkbookImportService
 {
     Task<WorkbookInspectionDto> InspectAsync(Stream stream, string fileName, long fileSize, int previewRows = 8, int previewColumns = 20, CancellationToken cancellationToken = default);
+}
+
+public interface IWorkbookNormalizationService
+{
+    Task<WorkbookNormalizationDto> NormalizeAsync(Stream stream, string sheetName, WorkbookTemplateProfile profile, CancellationToken cancellationToken = default);
 }
