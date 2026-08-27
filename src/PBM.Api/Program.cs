@@ -17,6 +17,7 @@ builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(buil
 builder.Services.AddScoped<IUserContext, HttpUserContext>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
+builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IReferenceDataService, ReferenceDataService>();
 builder.Services.AddScoped<IKpiService, KpiService>();
@@ -91,6 +92,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 }).DisableAntiforgery();
 api.MapEnterpriseEndpoints();
 api.MapForecastEndpoints();
+api.MapBudgetWorkflowEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
