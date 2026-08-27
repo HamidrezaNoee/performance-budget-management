@@ -53,6 +53,24 @@ public sealed record WorkbookNormalizationDto(
     IReadOnlyList<NormalizedWorkbookFactDto> Facts,
     IReadOnlyList<string> Warnings);
 
+public sealed record WorkbookImportExecutionRequest(
+    Guid CompanyId,
+    Guid FiscalYearId,
+    string SheetName,
+    WorkbookTemplateProfile Profile,
+    ValueKind? OverrideValueKind);
+
+public sealed record WorkbookImportExecutionDto(
+    string SheetName,
+    string ModelCode,
+    Guid BudgetPlanId,
+    Guid VersionId,
+    int ImportedFacts,
+    int UpdatedFacts,
+    int CreatedDimensionMembers,
+    int SkippedFacts,
+    IReadOnlyList<string> Warnings);
+
 public interface IWorkbookImportService
 {
     Task<WorkbookInspectionDto> InspectAsync(Stream stream, string fileName, long fileSize, int previewRows = 8, int previewColumns = 20, CancellationToken cancellationToken = default);
@@ -61,4 +79,9 @@ public interface IWorkbookImportService
 public interface IWorkbookNormalizationService
 {
     Task<WorkbookNormalizationDto> NormalizeAsync(Stream stream, string sheetName, WorkbookTemplateProfile profile, CancellationToken cancellationToken = default);
+}
+
+public interface IWorkbookImportExecutionService
+{
+    Task<WorkbookImportExecutionDto> ImportAsync(Stream stream, string fileName, WorkbookImportExecutionRequest request, CancellationToken cancellationToken = default);
 }
