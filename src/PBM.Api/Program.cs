@@ -28,14 +28,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = signingKey,
-        ClockSkew = TimeSpan.FromMinutes(1)
+        ValidateIssuer = true, ValidateAudience = true, ValidateLifetime = true, ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"], ValidAudience = builder.Configuration["Jwt:Audience"], IssuerSigningKey = signingKey, ClockSkew = TimeSpan.FromMinutes(1)
     };
 });
 builder.Services.AddAuthorization();
@@ -71,17 +65,11 @@ using (var scope = app.Services.CreateScope())
 app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, IPasswordHasher<AppUser> hasher, IConfiguration config) =>
 {
     var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == request.UserName && x.IsActive);
-    if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
-        return Results.Unauthorized();
-
+    if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
     var roles = await db.UserRoles.Where(x => x.UserId == user.Id).Select(x => x.Role!.Code).ToListAsync();
     var companyIds = await db.UserCompanyAccess.Where(x => x.UserId == user.Id && x.CanRead).Select(x => x.CompanyId).ToListAsync();
-    var claims = new List<Claim>
-    {
-        new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new("tenant_id", user.TenantId.ToString()), new(ClaimTypes.Name, user.DisplayName), new("username", user.UserName)
-    };
-    claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));
-    claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
+    var claims = new List<Claim> { new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new("tenant_id", user.TenantId.ToString()), new(ClaimTypes.Name, user.DisplayName), new("username", user.UserName) };
+    claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x))); claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
     var token = new JwtSecurityToken(config["Jwt:Issuer"], config["Jwt:Audience"], claims, expires: DateTime.UtcNow.AddHours(8), signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
     return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds));
 });
@@ -97,6 +85,7 @@ api.MapGet("/reference/measures", (Guid modelId, IBudgetService service, Cancell
 api.MapGet("/budget/plans", (Guid companyId, Guid fiscalYearId, IBudgetService service, CancellationToken ct) => service.GetPlansAsync(companyId, fiscalYearId, ct));
 api.MapPost("/budget/plans", (CreateBudgetPlanRequest request, IBudgetService service, CancellationToken ct) => service.CreatePlanAsync(request, ct));
 api.MapPost("/budget/facts", async (UpsertBudgetFactRequest request, IBudgetService service, CancellationToken ct) => Results.Ok(new { id = await service.UpsertFactAsync(request, ct) }));
+api.MapPost("/budget/grid/query", (BudgetGridQuery request, IBudgetService service, CancellationToken ct) => service.GetGridAsync(request, ct));
 api.MapGet("/dashboard/summary", (Guid companyId, Guid fiscalYearId, IDashboardService service, CancellationToken ct) => service.GetSummaryAsync(companyId, fiscalYearId, ct));
 api.MapPost("/formulas/evaluate", (FormulaRequest request, IFormulaEngine engine) => Results.Ok(new { value = engine.Evaluate(request.Expression, request.Variables) }));
 

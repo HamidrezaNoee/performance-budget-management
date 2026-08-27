@@ -16,6 +16,10 @@ public sealed record CreateBudgetPlanRequest(Guid CompanyId, Guid FiscalYearId, 
 public sealed record UpsertBudgetFactRequest(Guid VersionId, Guid PeriodId, Guid MeasureId, ValueKind ValueKind, decimal Value, string? CurrencyCode, IReadOnlyList<DimensionSelection> Dimensions, string? Source, string? Note);
 public sealed record MonthlySeriesPointDto(Guid PeriodId, string PeriodName, int Sequence, decimal Budget, decimal Actual, decimal Commitment, decimal Forecast);
 public sealed record DashboardSummaryDto(decimal Budget, decimal Actual, decimal Commitment, decimal Forecast, decimal Remaining, decimal Variance, decimal BudgetUtilizationPercent, IReadOnlyList<MonthlySeriesPointDto> Monthly);
+public sealed record BudgetGridQuery(Guid VersionId, Guid RowDimensionId, Guid MeasureId, ValueKind ValueKind, IReadOnlyList<DimensionSelection> Filters);
+public sealed record BudgetGridCellDto(Guid PeriodId, Guid? FactId, decimal Value);
+public sealed record BudgetGridRowDto(Guid MemberId, string Code, string Name, IReadOnlyList<BudgetGridCellDto> Cells);
+public sealed record BudgetGridDto(IReadOnlyList<FiscalPeriodDto> Periods, MeasureDto Measure, DimensionDto RowDimension, IReadOnlyList<BudgetGridRowDto> Rows);
 
 public interface IFormulaEngine
 {
@@ -38,6 +42,7 @@ public interface IBudgetService
     Task<IReadOnlyList<BudgetPlanDto>> GetPlansAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default);
     Task<BudgetPlanDto> CreatePlanAsync(CreateBudgetPlanRequest request, CancellationToken cancellationToken = default);
     Task<Guid> UpsertFactAsync(UpsertBudgetFactRequest request, CancellationToken cancellationToken = default);
+    Task<BudgetGridDto> GetGridAsync(BudgetGridQuery query, CancellationToken cancellationToken = default);
 }
 
 public interface IDashboardService

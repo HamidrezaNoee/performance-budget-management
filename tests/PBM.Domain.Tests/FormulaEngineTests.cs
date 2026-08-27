@@ -1,4 +1,5 @@
 using PBM.Application;
+using Xunit;
 
 namespace PBM.Domain.Tests;
 
@@ -16,11 +17,7 @@ public sealed class FormulaEngineTests
     [Fact]
     public void Calculates_closing_inventory_from_multiple_measures()
     {
-        var variables = new Dictionary<string, decimal>
-        {
-            ["OPENING_QTY"] = 100, ["IMPORT_QTY"] = 50, ["SALES_QTY"] = 80,
-            ["FREE_SALES_QTY"] = 5, ["SAMPLE_QTY"] = 2, ["WASTE_QTY"] = 3
-        };
+        var variables = new Dictionary<string, decimal> { ["OPENING_QTY"] = 100, ["IMPORT_QTY"] = 50, ["SALES_QTY"] = 80, ["FREE_SALES_QTY"] = 5, ["SAMPLE_QTY"] = 2, ["WASTE_QTY"] = 3 };
         var result = _engine.Evaluate("[OPENING_QTY] + [IMPORT_QTY] - [SALES_QTY] - [FREE_SALES_QTY] - [SAMPLE_QTY] - [WASTE_QTY]", variables);
         Assert.Equal(60m, result);
     }

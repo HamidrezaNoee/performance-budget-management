@@ -5,5 +5,7 @@ body { margin: 0; min-width: 320px; background: #f4f7fb; }
 .brand-mark { width: 62px; height: 62px; border-radius: 18px; display: grid; place-items: center; color: white; background: linear-gradient(135deg, #0b5cad, #00a6a6); font-weight: 900; letter-spacing: 1px; }
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .kpi-card { border: 1px solid #e5edf6; background: linear-gradient(180deg, #fff, #fbfdff); }
+.planning-table .MuiTableCell-root { border-color: #e8eef5; }
+.planning-table input { font-variant-numeric: tabular-nums; }
 @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) { .kpi-grid { grid-template-columns: 1fr; } }
