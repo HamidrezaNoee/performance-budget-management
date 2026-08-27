@@ -19,6 +19,7 @@ builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<IReferenceDataService, ReferenceDataService>();
 builder.Services.AddScoped<IKpiService, KpiService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
@@ -93,6 +94,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 api.MapEnterpriseEndpoints();
 api.MapForecastEndpoints();
 api.MapBudgetWorkflowEndpoints();
+api.MapFinancialReportEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
