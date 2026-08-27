@@ -17,6 +17,7 @@ import { api, setAccessToken } from './api'
 import BudgetPlanning from './BudgetPlanning'
 import WorkbookImport from './WorkbookImport'
 import KpiPerformance from './KpiPerformance'
+import Forecasting from './Forecasting'
 import ReferenceAdmin from './ReferenceAdmin'
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
@@ -146,7 +147,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
       {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 2 && <WorkbookImport />}
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 4 && <ComingSoon title="موتور Forecast" description="Forecast روندی، آماری و سناریویی در مرحله بعد روی Factهای همین مدل افزوده می‌شود." />}
+      {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && <ComingSoon title="گزارش‌های مالی و مدیریتی" description="صورت سود و زیان، ترازنامه، جریان نقد و Drill-down از مدل نرمال‌شده ساخته می‌شود." />}
       {activeView === 6 && <ReferenceAdmin />}
     </Container></Box>
