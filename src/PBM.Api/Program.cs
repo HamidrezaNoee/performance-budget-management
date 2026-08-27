@@ -5,15 +5,16 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using PBM.Api;
 using PBM.Application;
 using PBM.Domain;
 using PBM.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders(); builder.Logging.AddJsonConsole();
-builder.Services.AddProblemDetails(); builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>(); builder.Services.AddOpenApi(); builder.Services.AddHttpContextAccessor();
 builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("PbmDatabase")));
-builder.Services.AddScoped<ICompanyService, CompanyService>(); builder.Services.AddScoped<IBudgetService, BudgetService>(); builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IUserContext, HttpUserContext>(); builder.Services.AddScoped<ICompanyService, CompanyService>(); builder.Services.AddScoped<IBudgetService, BudgetService>(); builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IWorkbookImportService, OpenXmlWorkbookImportService>(); builder.Services.AddSingleton<IFormulaEngine, FormulaEngine>(); builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().SetIsOriginAllowed(_ => true).AllowCredentials()));
 
@@ -22,7 +23,8 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
 {
     ValidateIssuer = true, ValidateAudience = true, ValidateLifetime = true, ValidateIssuerSigningKey = true,
-    ValidIssuer = builder.Configuration["Jwt:Issuer"], ValidAudience = builder.Configuration["Jwt:Audience"], IssuerSigningKey = signingKey, ClockSkew = TimeSpan.FromMinutes(1)
+    ValidIssuer = builder.Configuration["Jwt:Issuer"], ValidAudience = builder.Configuration["Jwt:Audience"], IssuerSigningKey = signingKey, ClockSkew = TimeSpan.FromMinutes(1),
+    NameClaimType = ClaimTypes.Name, RoleClaimType = ClaimTypes.Role
 });
 builder.Services.AddAuthorization();
 
@@ -48,7 +50,7 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
     var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == request.UserName && x.IsActive);
     if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
     var roles = await db.UserRoles.Where(x => x.UserId == user.Id).Select(x => x.Role!.Code).ToListAsync(); var companyIds = await db.UserCompanyAccess.Where(x => x.UserId == user.Id && x.CanRead).Select(x => x.CompanyId).ToListAsync();
-    var claims = new List<Claim> { new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new("tenant_id", user.TenantId.ToString()), new(ClaimTypes.Name, user.DisplayName), new("username", user.UserName) };
+    var claims = new List<Claim> { new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new(ClaimTypes.NameIdentifier, user.Id.ToString()), new("tenant_id", user.TenantId.ToString()), new(ClaimTypes.Name, user.DisplayName), new("username", user.UserName) };
     claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x))); claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
     var token = new JwtSecurityToken(config["Jwt:Issuer"], config["Jwt:Audience"], claims, expires: DateTime.UtcNow.AddHours(8), signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
     return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds));
@@ -70,16 +72,13 @@ api.MapGet("/dashboard/summary", (Guid companyId, Guid fiscalYearId, IDashboardS
 api.MapPost("/formulas/evaluate", (FormulaRequest request, IFormulaEngine engine) => Results.Ok(new { value = engine.Evaluate(request.Expression, request.Variables) }));
 api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookImportService service, CancellationToken ct) =>
 {
-    if (!request.HasFormContentType) return Results.BadRequest(new { message = "multipart/form-data is required." });
-    var form = await request.ReadFormAsync(ct); var file = form.Files.GetFile("file");
-    if (file is null || file.Length == 0) return Results.BadRequest(new { message = "An XLSX file is required." });
-    if (file.Length > 50 * 1024 * 1024) return Results.BadRequest(new { message = "Workbook is larger than the 50 MB inspection limit." });
+    if (!request.HasFormContentType) return Results.BadRequest(new { message = "multipart/form-data is required." }); var form = await request.ReadFormAsync(ct); var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0) return Results.BadRequest(new { message = "An XLSX file is required." }); if (file.Length > 50 * 1024 * 1024) return Results.BadRequest(new { message = "Workbook is larger than the 50 MB inspection limit." });
     if (!Path.GetExtension(file.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { message = "Only .xlsx files are supported." });
     await using var stream = file.OpenReadStream(); return Results.Ok(await service.InspectAsync(stream, file.FileName, file.Length, cancellationToken: ct));
 }).DisableAntiforgery();
 
 app.Run();
-
 public sealed record LoginRequest(string UserName, string Password);
 public sealed record LoginResponse(string AccessToken, string DisplayName, IReadOnlyList<string> Roles, IReadOnlyList<Guid> CompanyIds);
 public sealed record FormulaRequest(string Expression, IReadOnlyDictionary<string, decimal> Variables);
