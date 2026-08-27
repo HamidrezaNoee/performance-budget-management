@@ -25,6 +25,8 @@ builder.Services.AddScoped<IKpiService, KpiService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IForecastService, ForecastService>();
 builder.Services.AddScoped<IWorkbookImportService, OpenXmlWorkbookImportService>();
+builder.Services.AddScoped<IWorkbookNormalizationService, WorkbookNormalizationService>();
+builder.Services.AddScoped<IWorkbookImportExecutionService, WorkbookImportExecutionService>();
 builder.Services.AddSingleton<IFormulaEngine, FormulaEngine>();
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().SetIsOriginAllowed(_ => true).AllowCredentials()));
@@ -95,6 +97,7 @@ api.MapEnterpriseEndpoints();
 api.MapForecastEndpoints();
 api.MapBudgetWorkflowEndpoints();
 api.MapFinancialReportEndpoints();
+api.MapWorkbookImportPipelineEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
