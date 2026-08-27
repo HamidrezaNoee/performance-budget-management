@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${PBM_SA_PASSWORD:-Your_password123!}"
+    ports:
+      - "1433:1433"
+    volumes:
+      - pbm_sql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '$${MSSQL_SA_PASSWORD}' -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: src/PBM.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__PbmDatabase: "Server=db,1433;Database=PerformanceBudgetManagement;User Id=sa;Password=${PBM_SA_PASSWORD:-Your_password123!};TrustServerCertificate=True;Encrypt=False"
+      Jwt__Key: "${PBM_JWT_KEY:-DEV-ONLY-CHANGE-ME-THIS-KEY-MUST-BE-AT-LEAST-32-CHARS}"
+      Jwt__Issuer: PBM
+      Jwt__Audience: PBM.Web
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: src/PBM.Web/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+volumes:
+  pbm_sql_data:
