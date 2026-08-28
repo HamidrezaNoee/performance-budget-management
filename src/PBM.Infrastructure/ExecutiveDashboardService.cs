@@ -4,7 +4,7 @@ using PBM.Domain;
 
 namespace PBM.Infrastructure;
 
-public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user) : IDashboardService
+public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user, IDashboardMetricPolicy metricPolicy) : IDashboardService
 {
     public async Task<DashboardSummaryDto> GetSummaryAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default)
     {
@@ -12,13 +12,47 @@ public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user
         if (!await db.FiscalYears.AnyAsync(x => x.Id == fiscalYearId && x.CompanyId == companyId, cancellationToken))
             throw new ArgumentException("Fiscal year does not belong to the selected company.");
 
+        var periods = await db.FiscalPeriods.AsNoTracking()
+            .Where(x => x.FiscalYearId == fiscalYearId)
+            .OrderBy(x => x.Sequence)
+            .ToListAsync(cancellationToken);
+
+        var modelIds = await db.BudgetPlans.AsNoTracking()
+            .Where(x => x.CompanyId == companyId && x.FiscalYearId == fiscalYearId)
+            .Select(x => x.BudgetModelId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (modelIds.Count == 0)
+            return EmptySummary(periods);
+
+        var availableMeasures = await db.Measures.AsNoTracking()
+            .Where(x => modelIds.Contains(x.BudgetModelId) && x.ValueType == MeasureValueType.Amount)
+            .Select(x => new { x.Code, x.DisplayOrder })
+            .ToListAsync(cancellationToken);
+
+        var availableCodes = availableMeasures.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selectedCode = metricPolicy.PreferredAmountMeasureCodes.FirstOrDefault(availableCodes.Contains)
+            ?? availableMeasures.OrderBy(x => x.DisplayOrder).Select(x => x.Code).FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(selectedCode))
+            return EmptySummary(periods);
+
+        var selectedModelIds = await db.Measures.AsNoTracking()
+            .Where(x => modelIds.Contains(x.BudgetModelId) && x.ValueType == MeasureValueType.Amount && x.Code == selectedCode)
+            .Select(x => x.BudgetModelId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
         var baseCurrency = await db.Currencies.AsNoTracking()
             .Where(x => x.TenantId == user.TenantId && x.IsBaseCurrency && x.IsActive)
             .Select(x => x.Code)
             .FirstOrDefaultAsync(cancellationToken) ?? "IRR";
 
         var versionRefs = await db.BudgetVersions.AsNoTracking()
-            .Where(x => x.BudgetPlan!.CompanyId == companyId && x.BudgetPlan.FiscalYearId == fiscalYearId)
+            .Where(x => x.BudgetPlan!.CompanyId == companyId
+                && x.BudgetPlan.FiscalYearId == fiscalYearId
+                && selectedModelIds.Contains(x.BudgetPlan.BudgetModelId))
             .Select(x => new { x.Id, x.BudgetPlanId, x.VersionNumber, x.Status })
             .ToListAsync(cancellationToken);
         var latestVersionIds = versionRefs
@@ -27,9 +61,13 @@ public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user
             .Select(g => g.OrderByDescending(x => x.VersionNumber).First().Id)
             .ToArray();
 
+        if (latestVersionIds.Length == 0)
+            return EmptySummary(periods);
+
         var query = db.BudgetFacts.AsNoTracking().Where(x =>
             latestVersionIds.Contains(x.VersionId)
             && x.Measure!.ValueType == MeasureValueType.Amount
+            && x.Measure.Code == selectedCode
             && x.CurrencyCode == baseCurrency);
 
         var totals = await query.GroupBy(_ => 1).Select(g => new
@@ -49,7 +87,6 @@ public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user
             Forecast = g.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value)
         }).ToDictionaryAsync(x => x.PeriodId, cancellationToken);
 
-        var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYearId).OrderBy(x => x.Sequence).ToListAsync(cancellationToken);
         var monthly = periods.Select(period => grouped.TryGetValue(period.Id, out var value)
             ? new MonthlySeriesPointDto(period.Id, period.Name, period.Sequence, value.Budget, value.Actual, value.Commitment, value.Forecast)
             : new MonthlySeriesPointDto(period.Id, period.Name, period.Sequence, 0, 0, 0, 0)).ToList();
@@ -68,6 +105,10 @@ public sealed class ExecutiveDashboardService(PbmDbContext db, IUserContext user
             budget == 0 ? 0 : Math.Round(actual / budget * 100m, 2),
             monthly);
     }
+
+    private static DashboardSummaryDto EmptySummary(IReadOnlyList<FiscalPeriod> periods) =>
+        new(0, 0, 0, 0, 0, 0, 0,
+            periods.Select(x => new MonthlySeriesPointDto(x.Id, x.Name, x.Sequence, 0, 0, 0, 0)).ToList());
 
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
