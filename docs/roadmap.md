@@ -43,8 +43,13 @@
 - Governed budget transfer/reallocation lifecycle across open periods and multidimensional coordinates
 - Transfer approval preserves total Budget, rechecks source availability under a serializable transaction and recalculates dependent formulas
 - Dedicated RTL transfer workspace with fiscal-year filtering, approval actions and notification deep links
+- Governed assumption/driver catalog with company + fiscal-year scope and optional scenario/period overrides
+- Formula variables support explicit `[ASSUMP:CODE]` references with deterministic scope resolution
+- Assumption changes automatically recalculate affected unlocked Draft versions only
+- Standard enterprise driver definitions are seeded without fake financial values
+- Dedicated RTL assumptions workspace for annual/periodic and global/scenario-specific values
+- Next: reusable driver-based budgeting templates for sales, payroll, import landed cost and financing
 - Next: dedicated CAPEX project lifecycle and cash planning
-- Next: richer driver-based budgeting templates and assumptions workspace
 - Next: selectable executive dashboard metric and dimensional drill-down
 
 ## Slice 4 — governance and enterprise integration
@@ -78,7 +83,7 @@
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
 - Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
-- Add SQL Server integration tests for transactions, authorization, reservation/transfer concurrency and workbook imports
+- Add SQL Server integration tests for transactions, authorization, assumption scope resolution, reservation/transfer concurrency and workbook imports
 - Add API idempotency keys for externally retried write requests and bulk operations
 - Add reservation/ERP reconciliation monitoring for consumed reservations that have not yet produced Actual
 - Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
