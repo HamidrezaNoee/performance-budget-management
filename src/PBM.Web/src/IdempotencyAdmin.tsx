@@ -128,7 +128,7 @@ export default function IdempotencyAdmin({ roles }: { roles: string[] }) {
         })}
         {!records.length && !busy && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6 }}>رکوردی با فیلتر انتخاب‌شده وجود ندارد.</TableCell></TableRow>}
       </TableBody></Table></TableContainer>
-    </Card>
+    </CardContent></Card>
 
     <Dialog open={!!selected} onClose={() => !busy && setSelected(null)} fullWidth maxWidth="sm">
       <DialogTitle>{action === 0 ? 'تأیید انجام‌شدن Business Command' : 'آزادسازی برای Retry کنترل‌شده'}</DialogTitle>
