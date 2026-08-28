@@ -133,7 +133,6 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<OrganizationUnit>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.BudgetModel).WithMany(x => x.Dimensions).HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.BudgetModel).WithMany(x => x.Dimensions).HasForeignKey(x => x.BudgetModelId);
         modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.BudgetFact).WithMany(x => x.Dimensions).HasForeignKey(x => x.BudgetFactId);
