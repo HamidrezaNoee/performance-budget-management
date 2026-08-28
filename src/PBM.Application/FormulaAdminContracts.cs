@@ -45,4 +45,5 @@ public interface IFormulaAdminService
     Task<IReadOnlyList<FormulaMeasureDto>> GetMeasuresAsync(Guid budgetModelId, CancellationToken cancellationToken = default);
     Task<FormulaValidationDto> ValidateAsync(ValidateFormulaRequest request, CancellationToken cancellationToken = default);
     Task<FormulaUpdateResultDto> UpdateFormulaAsync(Guid measureId, UpdateMeasureFormulaRequest request, CancellationToken cancellationToken = default);
+    Task<FormulaMeasureDto> ClearFormulaAsync(Guid measureId, CancellationToken cancellationToken = default);
 }
