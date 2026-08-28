@@ -82,7 +82,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
         return ToDto(fiscalYear);
     }
 
-    public async Task<FiscalPeriodDto> AddPeriodAsync(Guid fiscalYearId, CreateFiscalPeriodRequest request, CancellationToken cancellationToken = default)
+    public async Task<FiscalPeriodDetailsDto> AddPeriodAsync(Guid fiscalYearId, CreateFiscalPeriodRequest request, CancellationToken cancellationToken = default)
     {
         var fiscalYear = await db.FiscalYears.Include(x => x.Periods).SingleAsync(x => x.Id == fiscalYearId, cancellationToken);
         await EnsureCompanyAsync(fiscalYear.CompanyId, true, cancellationToken);
@@ -114,7 +114,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
         return ToDto(period);
     }
 
-    public async Task<FiscalPeriodDto> SetPeriodClosedAsync(Guid periodId, bool isClosed, CancellationToken cancellationToken = default)
+    public async Task<FiscalPeriodDetailsDto> SetPeriodClosedAsync(Guid periodId, bool isClosed, CancellationToken cancellationToken = default)
     {
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleAsync(x => x.Id == periodId, cancellationToken);
         await EnsureCompanyAsync(period.FiscalYear!.CompanyId, true, cancellationToken);
@@ -185,7 +185,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
         year.Id, year.CompanyId, year.Code, year.Name, year.JalaliYear, year.StartDate, year.EndDate, year.IsClosed,
         year.Periods.OrderBy(x => x.Sequence).Select(ToDto).ToList());
 
-    private static FiscalPeriodDto ToDto(FiscalPeriod period) => new(
+    private static FiscalPeriodDetailsDto ToDto(FiscalPeriod period) => new(
         period.Id, period.FiscalYearId, period.Sequence, period.Code, period.Name, period.JalaliMonth,
         period.StartDate, period.EndDate, period.IsClosed);
 }
