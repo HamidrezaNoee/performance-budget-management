@@ -153,25 +153,15 @@ public sealed class OutboxQueueService(
 
         var maxAttempts = Math.Clamp(configuration.GetValue<int?>("Outbox:MaxAttempts") ?? 8, 1, 50);
         var baseDelaySeconds = Math.Clamp(configuration.GetValue<int?>("Outbox:BaseDelaySeconds") ?? 15, 1, 3600);
-        var maxDelaySeconds = Math.Clamp(configuration.GetValue<int?>("Outbox:MaxDelaySeconds") ?? 3600, 30, 86400);
+        var maxDelaySeconds = Math.Clamp(configuration.GetValue<int?>("Outbox:MaxDelaySeconds") ?? 3600, baseDelaySeconds, 86400);
         var now = DateTime.UtcNow;
+        var retry = OutboxRetryPolicy.Evaluate(entity.Attempts, maxAttempts, baseDelaySeconds, maxDelaySeconds, now);
         entity.LastError = Truncate($"{exception.GetType().Name}: {exception.Message}", 2000);
         entity.LockedUntilUtc = null;
         entity.LockToken = null;
         entity.UpdatedAtUtc = now;
-
-        if (entity.Attempts >= maxAttempts)
-        {
-            entity.Status = OutboxStatus.DeadLetter;
-            entity.NextAttemptAtUtc = now;
-        }
-        else
-        {
-            var multiplier = Math.Pow(2, Math.Min(entity.Attempts - 1, 16));
-            var delaySeconds = Math.Min(maxDelaySeconds, baseDelaySeconds * multiplier);
-            entity.Status = OutboxStatus.Pending;
-            entity.NextAttemptAtUtc = now.AddSeconds(delaySeconds);
-        }
+        entity.Status = retry.Status;
+        entity.NextAttemptAtUtc = retry.NextAttemptAtUtc;
         await db.SaveChangesAsync(cancellationToken);
     }
 
