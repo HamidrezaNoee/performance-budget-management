@@ -31,6 +31,7 @@ public static class EndpointRegistration
         api.MapWorkbookImportPipelineEndpoints();
         api.MapFiscalCalendarEndpoints();
         api.MapSecurityAdminEndpoints();
+        api.MapIdempotencyAdminEndpoints();
         api.MapOrganizationAdminEndpoints();
         api.MapScenarioEndpoints();
         return api;
