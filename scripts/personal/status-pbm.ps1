@@ -4,7 +4,11 @@ $root = Get-PbmRepoRoot
 $migrationDir = Join-Path $root 'src/PBM.Infrastructure/Migrations'
 $snapshot = Get-ChildItem -Path $migrationDir -Filter '*ModelSnapshot.cs' -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $backupDir = Get-PbmBackupDir
-$backups = if (Test-Path $backupDir) { @(Get-ChildItem $backupDir -Filter '*.bak' -File | Sort-Object LastWriteTimeUtc -Descending) } else { @() }
+$backups = @(
+    if (Test-Path $backupDir) {
+        Get-ChildItem $backupDir -Filter '*.bak' -File | Sort-Object LastWriteTimeUtc -Descending
+    }
+)
 
 $ready = $false
 $readyDetail = 'not checked'
