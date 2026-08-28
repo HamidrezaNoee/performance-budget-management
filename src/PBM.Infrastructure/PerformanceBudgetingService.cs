@@ -125,7 +125,6 @@ public sealed class PerformanceBudgetingService(
 
             var scored = observations.Select(x => new
             {
-                Value = x,
                 Result = KpiScorePolicy.Evaluate(x.Target, x.Actual, definition.Minimum, definition.Maximum)
             }).ToList();
             var latest = scored[^1];
@@ -143,7 +142,7 @@ public sealed class PerformanceBudgetingService(
 
         var totalDefinedWeight = definitions.Where(x => x.Weight > 0m).Sum(x => x.Weight);
         var observedWeight = components.Where(x => x.Weight > 0m).Sum(x => x.Weight);
-        var dataCoverage = totalDefinedWeight > 0m
+        var kpiCoverage = totalDefinedWeight > 0m
             ? PercentOrZero(observedWeight, totalDefinedWeight)
             : definitions.Count == 0
                 ? 0m
@@ -157,8 +156,81 @@ public sealed class PerformanceBudgetingService(
                 : Round(components.Average(x => x.AverageScore));
         }
 
-        var decision = PerformanceFundingPolicy.Evaluate(dataCoverage, weightedKpiScore, currencySignals);
+        var objectives = await db.StrategicObjectives.AsNoTracking()
+            .Where(x => x.TenantId == user.TenantId && x.IsActive)
+            .OrderBy(x => x.Code)
+            .ToListAsync(cancellationToken);
+        var objectiveIds = objectives.Select(x => x.Id).ToArray();
+        List<KpiObjectiveLink> links;
+        if (objectiveIds.Length == 0 || definitionIds.Length == 0)
+        {
+            links = [];
+        }
+        else
+        {
+            links = await db.KpiObjectiveLinks.AsNoTracking()
+                .Where(x => objectiveIds.Contains(x.ObjectiveId) && definitionIds.Contains(x.KpiId))
+                .ToListAsync(cancellationToken);
+        }
+
+        var componentByKpiId = components.ToDictionary(x => x.KpiId);
+        var objectiveComponents = new List<PerformanceObjectiveComponentDto>();
+        foreach (var objective in objectives)
+        {
+            var objectiveLinks = links.Where(x => x.ObjectiveId == objective.Id && x.Weight > 0m).ToList();
+            var totalLinkWeight = objectiveLinks.Sum(x => x.Weight);
+            var observedLinks = objectiveLinks.Where(x => componentByKpiId.ContainsKey(x.KpiId)).ToList();
+            var observedLinkWeight = observedLinks.Sum(x => x.Weight);
+            decimal? objectiveScore = observedLinkWeight > 0m
+                ? Round(observedLinks.Sum(x => componentByKpiId[x.KpiId].AverageScore * x.Weight) / observedLinkWeight)
+                : null;
+            var objectiveCoverage = totalLinkWeight > 0m
+                ? PercentOrZero(observedLinkWeight, totalLinkWeight)
+                : 0m;
+
+            objectiveComponents.Add(new PerformanceObjectiveComponentDto(
+                objective.Id,
+                objective.Code,
+                objective.Name,
+                Math.Max(0m, objective.Weight),
+                objectiveLinks.Select(x => x.KpiId).Distinct().Count(),
+                observedLinks.Select(x => x.KpiId).Distinct().Count(),
+                objectiveCoverage,
+                objectiveScore));
+        }
+
+        var totalStrategicWeight = objectiveComponents.Where(x => x.StrategicWeight > 0m).Sum(x => x.StrategicWeight);
+        var observedStrategicWeight = objectiveComponents.Where(x => x.StrategicWeight > 0m && x.Score.HasValue).Sum(x => x.StrategicWeight);
+        var strategyCoverage = totalStrategicWeight > 0m
+            ? PercentOrZero(observedStrategicWeight, totalStrategicWeight)
+            : objectiveComponents.Count == 0
+                ? 0m
+                : PercentOrZero(objectiveComponents.Count(x => x.Score.HasValue), objectiveComponents.Count);
+
+        decimal? strategyWeightedScore = null;
+        var scoredObjectives = objectiveComponents.Where(x => x.Score.HasValue).ToList();
+        if (scoredObjectives.Count > 0)
+        {
+            strategyWeightedScore = observedStrategicWeight > 0m
+                ? Round(scoredObjectives.Where(x => x.StrategicWeight > 0m).Sum(x => x.Score!.Value * x.StrategicWeight) / observedStrategicWeight)
+                : Round(scoredObjectives.Average(x => x.Score!.Value));
+        }
+
+        var strategyConfigured = objectives.Count > 0;
+        var recommendationScore = strategyConfigured ? strategyWeightedScore : weightedKpiScore;
+        var effectiveCoverage = strategyConfigured ? Math.Min(kpiCoverage, strategyCoverage) : kpiCoverage;
+        var decision = PerformanceFundingPolicy.Evaluate(effectiveCoverage, recommendationScore, currencySignals);
         var reasons = decision.Reasons.ToList();
+        if (strategyConfigured)
+        {
+            reasons.Add(strategyWeightedScore.HasValue
+                ? $"Funding recommendation uses the strategic-objective weighted score ({strategyWeightedScore.Value:0.##}%)."
+                : "Strategic objectives are configured, but no objective has enough linked KPI observations to produce a strategic score.");
+        }
+        else
+        {
+            reasons.Add("No strategic objectives are configured; the funding recommendation currently uses the weighted KPI score directly.");
+        }
         if (facts.Count == 0)
             reasons.Add($"No budget facts are recorded for measure {selectedMeasure.Code} in this version.");
         if (currencySignals.Count > 1)
@@ -177,12 +249,16 @@ public sealed class PerformanceBudgetingService(
             selectedMeasure.Name,
             elapsedPeriods.Count,
             periods.Count,
-            dataCoverage,
+            effectiveCoverage,
             weightedKpiScore,
+            strategyCoverage,
+            strategyWeightedScore,
+            recommendationScore,
             decision.Recommendation,
             reasons,
             currencyDtos,
-            components.OrderByDescending(x => x.Weight).ThenBy(x => x.Code).ToList());
+            components.OrderByDescending(x => x.Weight).ThenBy(x => x.Code).ToList(),
+            objectiveComponents.OrderByDescending(x => x.StrategicWeight).ThenBy(x => x.Code).ToList());
     }
 
     private static decimal Sum(IEnumerable<BudgetFact> facts, ValueKind kind) =>
