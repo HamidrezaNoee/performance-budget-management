@@ -48,7 +48,7 @@ public sealed class ScoredKpiService(PbmDbContext db, IUserContext user) : IKpiS
             FormulaExpression = NormalizeOptional(request.FormulaExpression, 2000)
         };
         db.Kpis.Add(kpi);
-        AddAudit(kpi.Id, "CREATE", null, new
+        AddAudit("KpiDefinition", kpi.Id, "CREATE", null, new
         {
             kpi.Code,
             kpi.Name,
@@ -130,7 +130,7 @@ public sealed class ScoredKpiService(PbmDbContext db, IUserContext user) : IKpiS
         value.Score = score.Score;
         value.UpdatedAtUtc = DateTime.UtcNow;
 
-        AddAudit(value.Id, old is null ? "CREATE" : "UPDATE", old, new
+        AddAudit("KpiValue", value.Id, old is null ? "CREATE" : "UPDATE", old, new
         {
             value.Target,
             value.Actual,
@@ -200,12 +200,12 @@ public sealed class ScoredKpiService(PbmDbContext db, IUserContext user) : IKpiS
         throw new UnauthorizedAccessException("Budget manager or administrator role is required to create KPI definitions.");
     }
 
-    private void AddAudit(Guid entityId, string action, object? oldValue, object? newValue) =>
+    private void AddAudit(string entityType, Guid entityId, string action, object? oldValue, object? newValue) =>
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = user.TenantId,
             UserId = user.UserId == Guid.Empty ? null : user.UserId,
-            EntityType = "KpiValue",
+            EntityType = entityType,
             EntityId = entityId.ToString(),
             Action = action,
             OldValueJson = oldValue is null ? null : JsonSerializer.Serialize(oldValue),
