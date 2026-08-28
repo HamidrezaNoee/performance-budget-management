@@ -213,22 +213,22 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {writeSensitiveView && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
         {!loading && activeView === 0 && <DashboardView summary={summary} />}
-        {!loading && activeView === 1 && <BudgetInbox companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 3 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 4 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 5 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 6 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 1 && <BudgetInbox companyId={companyId} />}
+        {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 3 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 4 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 5 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 6 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
         {!loading && activeView === 7 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 8 && <Forecasting companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 9 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 10 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 8 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 9 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 10 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {!loading && activeView === 11 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 12 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 13 && <ReferenceAdmin companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 12 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 13 && <ReferenceAdmin companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
-    <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} onPasswordChanged={logout} />
+    <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
   </>
 }
 
