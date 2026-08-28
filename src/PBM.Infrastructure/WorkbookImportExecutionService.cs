@@ -12,7 +12,7 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
     public async Task<WorkbookImportExecutionDto> ImportAsync(Stream stream, string fileName, WorkbookImportExecutionRequest request, CancellationToken ct = default)
     {
         if (!stream.CanSeek) throw new ArgumentException("Workbook stream must be seekable.", nameof(stream));
-        EnsureCompany(request.CompanyId);
+        EnsureCompanyWrite(request.CompanyId);
         stream.Position = 0;
         var normalized = await normalizer.NormalizeAsync(stream, request.SheetName, request.Profile, ct);
         if (string.IsNullOrWhiteSpace(normalized.ModelCode)) throw new InvalidOperationException("The selected worksheet profile has no automatic target model.");
@@ -20,6 +20,7 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
 
         var company = await db.Companies.SingleAsync(x => x.Id == request.CompanyId && x.TenantId == user.TenantId, ct);
         var fiscalYear = await db.FiscalYears.Include(x => x.Periods).SingleAsync(x => x.Id == request.FiscalYearId && x.CompanyId == company.Id, ct);
+        if (fiscalYear.IsClosed) throw new InvalidOperationException("سال مالی بسته است و امکان ورود اطلاعات وجود ندارد.");
         var model = await db.BudgetModels.Include(x => x.Dimensions).ThenInclude(x => x.Dimension).Include(x => x.Measures)
             .SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == normalized.ModelCode && x.IsActive, ct)
             ?? throw new InvalidOperationException($"Budget model '{normalized.ModelCode}' is not configured.");
@@ -41,6 +42,8 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
             ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(source.PeriodName) || !periods.TryGetValue(PeriodKey(source.PeriodName), out var period))
             { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: دوره '{source.PeriodName ?? "-"}' در سال مالی پیدا نشد."); continue; }
+            if (period.IsClosed)
+            { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: دوره '{period.Name}' بسته است و داده آن وارد نشد."); continue; }
             if (!measures.TryGetValue(source.MeasureCode, out var measure))
             { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: مژر '{source.MeasureCode}' در مدل {model.Code} تعریف نشده است."); continue; }
 
@@ -122,5 +125,5 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
     private static string Normalize(string? value) => (value ?? "").Replace('ي', 'ی').Replace('ك', 'ک').Replace('\u200c', ' ').Replace(" ", "").Trim().ToUpperInvariant();
     private static string PeriodKey(string? value) => Normalize(value).Replace("ماه", "");
     private static void Warn(ICollection<string> list, string text) { if (list.Count < 100 && !list.Contains(text)) list.Add(text); }
-    private void EnsureCompany(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
+    private void EnsureCompanyWrite(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
 }
