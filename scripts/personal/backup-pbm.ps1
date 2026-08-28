@@ -13,7 +13,8 @@ $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $backupName = "PBM_$timestamp.bak"
 $containerPath = "/var/opt/mssql/backup/$backupName"
 $sql = "BACKUP DATABASE [PerformanceBudgetManagement] TO DISK = N'$containerPath' WITH COPY_ONLY, COMPRESSION, CHECKSUM, INIT, STATS = 10; RESTORE VERIFYONLY FROM DISK = N'$containerPath' WITH CHECKSUM;"
-$command = "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"`$MSSQL_SA_PASSWORD\" -C -b -Q \"$sql\""
+$escapedSql = $sql.Replace('"', '\"')
+$command = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "' + $escapedSql + '"'
 
 Write-Host "Creating verified backup: $backupName" -ForegroundColor Cyan
 Invoke-PbmDockerCompose -Arguments @('exec', '-T', 'db', 'bash', '-lc', $command)
