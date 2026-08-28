@@ -14,6 +14,7 @@ public static class EndpointRegistration
         api.MapBudgetReservationEndpoints();
         api.MapBudgetTransferEndpoints();
         api.MapBudgetOperationsEndpoints();
+        api.MapAssumptionEndpoints();
         api.MapCalculationEndpoints();
         api.MapVarianceAnalysisEndpoints();
         api.MapFinancialReportEndpoints();
