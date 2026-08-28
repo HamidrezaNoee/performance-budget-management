@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -46,16 +47,37 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
             .AllowCredentials();
     }
 }));
+
+var loginPermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:Login:PermitLimit") ?? 10;
+var loginWindowSeconds = builder.Configuration.GetValue<int?>("RateLimiting:Login:WindowSeconds") ?? 60;
+if (loginPermitLimit is < 1 or > 1000) throw new InvalidOperationException("RateLimiting:Login:PermitLimit must be between 1 and 1000.");
+if (loginWindowSeconds is < 1 or > 3600) throw new InvalidOperationException("RateLimiting:Login:WindowSeconds must be between 1 and 3600.");
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("login", limiter =>
+    options.OnRejected = async (context, cancellationToken) =>
     {
-        limiter.PermitLimit = 10;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-        limiter.AutoReplenishment = true;
-    });
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            status = StatusCodes.Status429TooManyRequests,
+            title = "Too many login attempts",
+            detail = "Too many authentication attempts were received from this client. Try again later."
+        }, cancellationToken);
+    };
+    options.AddPolicy<string>("login", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = loginPermitLimit,
+                Window = TimeSpan.FromSeconds(loginWindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 });
 
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -84,7 +106,28 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
+
+app.MapGet("/livez", () => Results.Ok(new { status = "live", service = "PBM.Api", utc = DateTime.UtcNow }));
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok", service = "PBM.Api", utc = DateTime.UtcNow }));
+app.MapGet("/readyz", async (PbmDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        if (!await db.Database.CanConnectAsync(ct))
+            return Results.Json(new { status = "not-ready", database = "unreachable", utc = DateTime.UtcNow }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var tenantCount = await db.Tenants.AsNoTracking().CountAsync(ct);
+        var activeCompanyCount = await db.Companies.AsNoTracking().CountAsync(x => x.IsActive, ct);
+        if (tenantCount == 0 || activeCompanyCount == 0)
+            return Results.Json(new { status = "not-ready", database = "connected", tenantCount, activeCompanyCount, utc = DateTime.UtcNow }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        return Results.Ok(new { status = "ready", database = "connected", tenantCount, activeCompanyCount, utc = DateTime.UtcNow });
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Json(new { status = "not-ready", database = "error", error = ex.GetType().Name, utc = DateTime.UtcNow }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
 using (var scope = app.Services.CreateScope())
 {
@@ -160,7 +203,10 @@ using (var scope = app.Services.CreateScope())
 
 app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, IPasswordHasher<AppUser> hasher, IConfiguration config) =>
 {
-    var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == request.UserName && x.IsActive);
+    var normalizedUserName = request.UserName?.Trim();
+    if (string.IsNullOrWhiteSpace(normalizedUserName) || string.IsNullOrEmpty(request.Password)) return Results.Unauthorized();
+
+    var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == normalizedUserName && x.IsActive);
     if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
 
     var roles = await db.UserRoles.Where(x => x.UserId == user.Id).Select(x => x.Role!.Code).ToListAsync();
@@ -216,6 +262,9 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 api.MapPbmModuleEndpoints();
 
 app.Run();
+
+static string GetClientPartitionKey(HttpContext context) =>
+    context.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown-client";
 
 static string RequiredSetting(IConfiguration configuration, string key)
 {
