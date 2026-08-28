@@ -39,8 +39,11 @@ public sealed class PbmSqlFixture : IAsyncLifetime
     public PbmDbContext CreateContext()
     {
         if (!IsEnabled) throw new InvalidOperationException("PBM_INTEGRATION_SQL is not configured.");
+        // Keep integration-test transaction semantics aligned with the production API.
+        // Production currently uses UseSqlServer(connectionString) without EnableRetryOnFailure;
+        // enabling retries here makes EF reject the service's explicit Serializable transactions.
         var options = new DbContextOptionsBuilder<PbmDbContext>()
-            .UseSqlServer(connectionString!, sql => sql.EnableRetryOnFailure())
+            .UseSqlServer(connectionString!)
             .Options;
         return new PbmDbContext(options);
     }
