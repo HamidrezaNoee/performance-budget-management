@@ -31,6 +31,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<BudgetReservationDimension> BudgetReservationDimensions => Set<BudgetReservationDimension>();
     public DbSet<BudgetTransfer> BudgetTransfers => Set<BudgetTransfer>();
     public DbSet<BudgetTransferDimension> BudgetTransferDimensions => Set<BudgetTransferDimension>();
+    public DbSet<AssumptionDefinition> AssumptionDefinitions => Set<AssumptionDefinition>();
+    public DbSet<AssumptionValue> AssumptionValues => Set<AssumptionValue>();
     public DbSet<KpiDefinition> Kpis => Set<KpiDefinition>();
     public DbSet<KpiValue> KpiValues => Set<KpiValue>();
     public DbSet<BudgetComment> BudgetComments => Set<BudgetComment>();
@@ -63,6 +65,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetReservation>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.CoordinateHash, x.Status });
         modelBuilder.Entity<BudgetTransfer>().HasIndex(x => new { x.CompanyId, x.TransferNo }).IsUnique();
         modelBuilder.Entity<BudgetTransfer>().HasIndex(x => new { x.VersionId, x.Status, x.CreatedAtUtc });
+        modelBuilder.Entity<AssumptionDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<AssumptionValue>().HasIndex(x => new { x.DefinitionId, x.CompanyId, x.FiscalYearId, x.ScenarioId, x.PeriodId }).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAtUtc });
@@ -103,6 +107,13 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetTransfer>().Property(x => x.DestinationCoordinateHash).HasMaxLength(128);
         modelBuilder.Entity<BudgetTransfer>().Property(x => x.DecisionComment).HasMaxLength(1200);
         modelBuilder.Entity<BudgetTransfer>().Property(x => x.ExternalReference).HasMaxLength(200);
+        modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Code).HasMaxLength(64);
+        modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Name).HasMaxLength(200);
+        modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Unit).HasMaxLength(50);
+        modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Description).HasMaxLength(1000);
+        modelBuilder.Entity<AssumptionValue>().Property(x => x.Value).HasPrecision(28, 8);
+        modelBuilder.Entity<AssumptionValue>().Property(x => x.Source).HasMaxLength(200);
+        modelBuilder.Entity<AssumptionValue>().Property(x => x.Note).HasMaxLength(1000);
         modelBuilder.Entity<Notification>().Property(x => x.Category).HasMaxLength(80);
         modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
         modelBuilder.Entity<Notification>().Property(x => x.Message).HasMaxLength(1200);
@@ -122,6 +133,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<OrganizationUnit>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.BudgetModel).WithMany(x => x.Dimensions).HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.BudgetModel).WithMany(x => x.Dimensions).HasForeignKey(x => x.BudgetModelId);
         modelBuilder.Entity<BudgetModelDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.BudgetFact).WithMany(x => x.Dimensions).HasForeignKey(x => x.BudgetFactId);
@@ -150,6 +162,11 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetTransferDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetTransferDimension>().HasOne(x => x.SourceMember).WithMany().HasForeignKey(x => x.SourceMemberId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetTransferDimension>().HasOne(x => x.DestinationMember).WithMany().HasForeignKey(x => x.DestinationMemberId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AssumptionValue>().HasOne(x => x.Definition).WithMany(x => x.Values).HasForeignKey(x => x.DefinitionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<AssumptionValue>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AssumptionValue>().HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AssumptionValue>().HasOne(x => x.Scenario).WithMany().HasForeignKey(x => x.ScenarioId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AssumptionValue>().HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Notification>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Notification>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
