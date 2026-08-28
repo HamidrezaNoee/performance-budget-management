@@ -23,7 +23,7 @@ function Invoke-DotnetSdkContainer {
     param([Parameter(Mandatory = $true)][string]$Command)
 
     $mount = "$repoRoot`:/workspace"
-    Write-Host "Running .NET 10 SDK in Docker..." -ForegroundColor Cyan
+    Write-Host 'Running .NET 10 SDK in Docker...' -ForegroundColor Cyan
     & docker run --rm `
         -e "PBM_DESIGNTIME_CONNECTION=$designTimeConnection" `
         -v $mount `
@@ -34,6 +34,20 @@ function Invoke-DotnetSdkContainer {
     if ($LASTEXITCODE -ne 0) {
         throw "Dockerized .NET SDK command failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-ContainerBuildPreflight {
+    Push-Location $repoRoot
+    try {
+        Write-Host 'Building PBM API production container...' -ForegroundColor Cyan
+        & docker build -f src/PBM.Api/Dockerfile -t pbm-api-preflight:local .
+        if ($LASTEXITCODE -ne 0) { throw 'PBM API Docker build failed.' }
+
+        Write-Host 'Building PBM Web production container...' -ForegroundColor Cyan
+        & docker build -f src/PBM.Web/Dockerfile -t pbm-web-preflight:local .
+        if ($LASTEXITCODE -ne 0) { throw 'PBM Web Docker build failed.' }
+    }
+    finally { Pop-Location }
 }
 
 function Get-InitialMigrationFiles {
@@ -64,7 +78,8 @@ dotnet ef migrations has-pending-model-changes --project src/PBM.Infrastructure/
 dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj --output artifacts/pbm-schema-idempotent.sql
 '@
     Invoke-DotnetSdkContainer -Command $command
-    Write-Host 'PBM backend build/tests passed and the EF model matches committed migrations.' -ForegroundColor Green
+    Invoke-ContainerBuildPreflight
+    Write-Host 'PBM backend/frontend builds passed and the EF model matches committed migrations.' -ForegroundColor Green
     Write-Host 'Generated deployment SQL: artifacts/pbm-schema-idempotent.sql'
     exit 0
 }
@@ -82,6 +97,7 @@ dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.In
 "@
 
 Invoke-DotnetSdkContainer -Command $command
+Invoke-ContainerBuildPreflight
 
 $snapshot = Get-ChildItem -Path $migrationsDirectory -Filter '*ModelSnapshot.cs' -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $migration = Get-ChildItem -Path $migrationsDirectory -Filter '*.cs' -File -ErrorAction SilentlyContinue |
@@ -95,7 +111,8 @@ Write-Host ''
 Write-Host 'PRIMARY PRODUCTION BLOCKER RESOLVED LOCALLY.' -ForegroundColor Green
 Write-Host "Migration: $($migration.Name)"
 Write-Host "Snapshot: $($snapshot.Name)"
-Write-Host 'Build: Release passed'
+Write-Host 'Backend Release build: passed'
+Write-Host 'Frontend production build: passed'
 Write-Host 'Unit tests: passed'
 Write-Host 'Migration drift check: passed'
 Write-Host 'Idempotent SQL script: artifacts/pbm-schema-idempotent.sql'
