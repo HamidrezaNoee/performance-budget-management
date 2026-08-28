@@ -4,6 +4,10 @@ public static class EndpointRegistration
 {
     public static RouteGroupBuilder MapPbmModuleEndpoints(this RouteGroupBuilder api)
     {
+        // Route-group conventions are applied when endpoint metadata is built, so the filter also
+        // covers endpoints already mapped directly on the /api/v1 group in Program.cs.
+        api.AddEndpointFilter<CorrelationIdEndpointFilter>();
+
         api.MapAccountEndpoints();
         api.MapNotificationEndpoints();
         api.MapEnterpriseEndpoints();
