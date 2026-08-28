@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using PBM.Infrastructure;
 
@@ -43,7 +44,37 @@ public static class DatabaseSchemaInitializer
                 "Generate and commit an initial migration, or use Database:AllowEnsureCreated=true only in Development.");
         }
 
-        logger.LogWarning("No EF Core migrations are present. Creating the schema with EnsureCreated because this is Development and Database:AllowEnsureCreated=true.");
+        if (await db.Database.CanConnectAsync(cancellationToken))
+        {
+            var existingPbmTableCount = await CountPbmTablesAsync(db, cancellationToken);
+            if (existingPbmTableCount > 0)
+            {
+                throw new InvalidOperationException(
+                    $"The Development database already contains {existingPbmTableCount} table(s) in schema 'pbm', but this build has no EF Core migrations. " +
+                    "EnsureCreated cannot upgrade an existing schema after the model changes. Reset the disposable Development database (for Docker: 'docker compose down -v') " +
+                    "or generate/apply EF Core migrations. The database was left unchanged.");
+            }
+        }
+
+        logger.LogWarning("No EF Core migrations are present. Creating a new Development schema with EnsureCreated because Database:AllowEnsureCreated=true.");
         await db.Database.EnsureCreatedAsync(cancellationToken);
+    }
+
+    private static async Task<int> CountPbmTablesAsync(PbmDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync(cancellationToken);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sys.tables t INNER JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = N'pbm';";
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
     }
 }
