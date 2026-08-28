@@ -25,6 +25,7 @@ public static class ServiceRegistration
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<BudgetReservationService>();
         services.AddScoped<IBudgetReservationService, NotifyingBudgetReservationService>();
+        services.AddScoped<IReservationReconciliationService, ReservationReconciliationService>();
         services.AddScoped<BudgetTransferService>();
         services.AddScoped<IBudgetTransferService, NotifyingBudgetTransferService>();
         services.AddScoped<BudgetWorkflowService>();
