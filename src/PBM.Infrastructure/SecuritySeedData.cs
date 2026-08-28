@@ -14,6 +14,7 @@ public static class SecuritySeedData
         ("BUDGET_MANAGER", "مدیر بودجه"),
         ("DEPARTMENT_MANAGER", "مدیر واحد"),
         ("BUDGET_EXPERT", "کارشناس بودجه"),
+        ("INTEGRATION", "حساب سرویس یکپارچه‌سازی"),
         ("AUDITOR", "حسابرس"),
         ("VIEWER", "مشاهده‌گر")
     ];
