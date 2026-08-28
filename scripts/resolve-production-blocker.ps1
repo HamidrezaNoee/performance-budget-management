@@ -143,7 +143,10 @@ function Invoke-MigrationSqlServerSmokeTest {
             throw 'Temporary SQL Server did not become ready for migration smoke test.'
         }
 
-        $smokeConnection = "Server=$dbContainer,1433;Database=PBM_MigrationSmoke;User Id=sa;Password=$password;Encrypt=False;TrustServerCertificate=True;Connection Timeout=30"
+        # The integration fixture deliberately refuses databases whose names do not start with
+        # PBM_Integration. Reuse the same disposable database after the migration application test;
+        # the fixture recreates it before executing the SQL-backed application/seed tests.
+        $smokeConnection = "Server=$dbContainer,1433;Database=PBM_IntegrationSmoke_$suffix;User Id=sa;Password=$password;Encrypt=False;TrustServerCertificate=True;Connection Timeout=30"
         $smokeCommand = @'
 set -euo pipefail
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
@@ -154,9 +157,14 @@ dotnet ef database update --project src/PBM.Infrastructure/PBM.Infrastructure.cs
   dotnet build src/PBM.Api/PBM.Api.csproj -c Debug --no-restore
   dotnet ef database update --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj --no-build
 }
+
+echo 'Running SQL-backed PBM integration tests, including seed/bootstrap paths...'
+export PBM_INTEGRATION_SQL="$PBM_DESIGNTIME_CONNECTION"
+dotnet restore tests/PBM.Integration.Tests/PBM.Integration.Tests.csproj
+dotnet test tests/PBM.Integration.Tests/PBM.Integration.Tests.csproj -c Release --no-restore
 '@
         Invoke-DotnetSdkContainer -Command $smokeCommand -ConnectionString $smokeConnection -Network $network
-        Write-Host 'SQL Server migration smoke test: PASSED' -ForegroundColor Green
+        Write-Host 'SQL Server migration and integration smoke tests: PASSED' -ForegroundColor Green
     }
     finally {
         if ($containerCreated) { & docker rm -f $dbContainer *> $null }
@@ -190,7 +198,7 @@ dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.In
     Invoke-DotnetSdkContainer -Command $command
     Invoke-MigrationSqlServerSmokeTest
     Invoke-ContainerBuildPreflight
-    Write-Host 'PBM backend/frontend builds passed, EF model matches committed migrations, and migrations apply to clean SQL Server.' -ForegroundColor Green
+    Write-Host 'PBM backend/frontend builds passed, EF model matches committed migrations, migrations apply to clean SQL Server, and SQL integration tests pass.' -ForegroundColor Green
     Write-Host 'Generated deployment SQL: artifacts/pbm-schema-idempotent.sql'
     exit 0
 }
@@ -248,6 +256,7 @@ Write-Host 'Frontend production build: passed'
 Write-Host 'Unit tests: passed'
 Write-Host 'Migration drift check: passed'
 Write-Host 'SQL Server migration smoke test: passed'
+Write-Host 'SQL Server integration tests: passed'
 Write-Host 'Idempotent SQL script: artifacts/pbm-schema-idempotent.sql'
 Write-Host ''
 Write-Host 'Review the generated migration, then commit src/PBM.Infrastructure/Migrations before entering real data.' -ForegroundColor Yellow
