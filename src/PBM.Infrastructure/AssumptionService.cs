@@ -76,24 +76,16 @@ public sealed class AssumptionService(
         var query = db.AssumptionValues.AsNoTracking()
             .Where(x => x.CompanyId == companyId && x.FiscalYearId == fiscalYearId && x.Definition!.TenantId == user.TenantId);
         if (scenarioId.HasValue) query = query.Where(x => x.ScenarioId == scenarioId.Value || x.ScenarioId == null);
+
         return await query
-            .OrderBy(x => x.Definition!.Name).ThenBy(x => x.ScenarioId).ThenBy(x => x.Period!.Sequence)
+            .OrderBy(x => x.Definition!.Name)
+            .ThenBy(x => x.ScenarioId)
+            .ThenBy(x => x.PeriodId == null ? 0 : 1)
+            .ThenBy(x => x.Period != null ? x.Period.Sequence : 0)
             .Select(x => new AssumptionValueDto(
-                x.Id,
-                x.DefinitionId,
-                x.Definition!.Code,
-                x.Definition.Name,
-                x.Definition.Unit,
-                x.CompanyId,
-                x.FiscalYearId,
-                x.ScenarioId,
-                x.Scenario != null ? x.Scenario.Name : null,
-                x.PeriodId,
-                x.Period != null ? x.Period.Name : null,
-                x.Value,
-                x.Source,
-                x.Note,
-                x.UpdatedAtUtc))
+                x.Id, x.DefinitionId, x.Definition!.Code, x.Definition.Name, x.Definition.Unit,
+                x.CompanyId, x.FiscalYearId, x.ScenarioId, x.Scenario != null ? x.Scenario.Name : null,
+                x.PeriodId, x.Period != null ? x.Period.Name : null, x.Value, x.Source, x.Note, x.UpdatedAtUtc))
             .ToListAsync(cancellationToken);
     }
 
@@ -131,24 +123,14 @@ public sealed class AssumptionService(
                 && (x.PeriodId == null || x.PeriodId == periodId))
             .ToListAsync(cancellationToken);
 
-        var result = new List<ResolvedAssumptionDto>();
-        foreach (var definition in definitions)
+        return definitions.Select(definition =>
         {
             var selected = SelectBest(values.Where(x => x.DefinitionId == definition.Id), context.ScenarioId, periodId);
-            if (selected is null) continue;
-            result.Add(new ResolvedAssumptionDto(
-                definition.Id,
-                definition.Code,
-                $"ASSUMP:{definition.Code}",
-                definition.Name,
-                definition.Unit,
-                selected.Value,
-                selected.Id,
-                selected.ScenarioId,
-                selected.PeriodId,
-                DescribeScope(selected, context.ScenarioId, periodId)));
-        }
-        return result;
+            return selected is null ? null : new ResolvedAssumptionDto(
+                definition.Id, definition.Code, $"ASSUMP:{definition.Code}", definition.Name, definition.Unit,
+                selected.Value, selected.Id, selected.ScenarioId, selected.PeriodId,
+                DescribeScope(selected, context.ScenarioId, periodId));
+        }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
     public async Task<AssumptionSaveResultDto> UpsertValueAsync(
@@ -157,39 +139,57 @@ public sealed class AssumptionService(
     {
         EnsureCompanyWrite(request.CompanyId);
         await EnsureFiscalYearAsync(request.CompanyId, request.FiscalYearId, requireOpen: true, cancellationToken);
-        var definition = await db.AssumptionDefinitions.SingleOrDefaultAsync(x => x.Id == request.DefinitionId && x.TenantId == user.TenantId && x.IsActive, cancellationToken)
-            ?? throw new ArgumentException("Assumption definition is invalid or inactive.");
+        var definition = await db.AssumptionDefinitions.SingleOrDefaultAsync(
+            x => x.Id == request.DefinitionId && x.TenantId == user.TenantId && x.IsActive,
+            cancellationToken) ?? throw new ArgumentException("Assumption definition is invalid or inactive.");
         await ValidateScopeAsync(request.CompanyId, request.FiscalYearId, request.ScenarioId, request.PeriodId, cancellationToken);
 
-        AssumptionValue? entity = null;
+        var scopeKey = AssumptionScopeKey.Create(request.ScenarioId, request.PeriodId);
+        AssumptionValue? entity;
         if (request.Id.HasValue)
-            entity = await db.AssumptionValues.SingleOrDefaultAsync(x => x.Id == request.Id.Value && x.CompanyId == request.CompanyId, cancellationToken)
-                ?? throw new KeyNotFoundException("Assumption value was not found.");
+        {
+            entity = await db.AssumptionValues.SingleOrDefaultAsync(
+                x => x.Id == request.Id.Value && x.CompanyId == request.CompanyId && x.Definition!.TenantId == user.TenantId,
+                cancellationToken) ?? throw new KeyNotFoundException("Assumption value was not found.");
+
+            var collision = await db.AssumptionValues.AnyAsync(x =>
+                x.Id != entity.Id
+                && x.DefinitionId == request.DefinitionId
+                && x.CompanyId == request.CompanyId
+                && x.FiscalYearId == request.FiscalYearId
+                && x.ScopeKey == scopeKey,
+                cancellationToken);
+            if (collision) throw new InvalidOperationException("Another assumption value already exists for this definition and scope.");
+        }
         else
+        {
             entity = await db.AssumptionValues.SingleOrDefaultAsync(x =>
                 x.DefinitionId == request.DefinitionId
                 && x.CompanyId == request.CompanyId
                 && x.FiscalYearId == request.FiscalYearId
-                && x.ScenarioId == request.ScenarioId
-                && x.PeriodId == request.PeriodId, cancellationToken);
+                && x.ScopeKey == scopeKey,
+                cancellationToken);
+        }
 
         var isNew = entity is null;
         var old = entity is null ? null : new
         {
-            entity.DefinitionId,
-            entity.FiscalYearId,
-            entity.ScenarioId,
-            entity.PeriodId,
-            entity.Value,
-            entity.Source,
-            entity.Note
+            entity.DefinitionId, entity.FiscalYearId, entity.ScenarioId, entity.PeriodId,
+            entity.ScopeKey, entity.Value, entity.Source, entity.Note
         };
-        entity ??= new AssumptionValue { CompanyId = request.CompanyId, DefinitionId = request.DefinitionId, FiscalYearId = request.FiscalYearId };
+        entity ??= new AssumptionValue
+        {
+            CompanyId = request.CompanyId,
+            DefinitionId = request.DefinitionId,
+            FiscalYearId = request.FiscalYearId,
+            ScopeKey = scopeKey
+        };
         entity.DefinitionId = request.DefinitionId;
         entity.CompanyId = request.CompanyId;
         entity.FiscalYearId = request.FiscalYearId;
         entity.ScenarioId = request.ScenarioId;
         entity.PeriodId = request.PeriodId;
+        entity.ScopeKey = scopeKey;
         entity.Value = request.Value;
         entity.Source = NormalizeOptional(request.Source, 200);
         entity.Note = NormalizeOptional(request.Note, 1000);
@@ -198,21 +198,14 @@ public sealed class AssumptionService(
 
         AddAudit("AssumptionValue", entity.Id, isNew ? "CREATE" : "UPDATE", new
         {
-            Definition = definition.Code,
-            entity.CompanyId,
-            entity.FiscalYearId,
-            entity.ScenarioId,
-            entity.PeriodId,
-            entity.Value,
-            entity.Source,
-            entity.Note
+            Definition = definition.Code, entity.CompanyId, entity.FiscalYearId, entity.ScenarioId,
+            entity.PeriodId, entity.ScopeKey, entity.Value, entity.Source, entity.Note
         }, old);
         await db.SaveChangesAsync(cancellationToken);
 
         var recalculation = request.RecalculateDraftVersions
             ? await RecalculateAffectedDraftVersionsAsync(request.CompanyId, request.FiscalYearId, request.ScenarioId, cancellationToken)
             : RecalculationSummary.Empty;
-
         var dto = await GetValueDtoAsync(entity.Id, cancellationToken);
         return new AssumptionSaveResultDto(dto, recalculation.Versions, recalculation.Created, recalculation.Updated, recalculation.Skipped, recalculation.Errors);
     }
@@ -227,7 +220,7 @@ public sealed class AssumptionService(
         if (entity.Definition?.TenantId != user.TenantId) throw new UnauthorizedAccessException("Assumption value is outside the current tenant.");
         EnsureCompanyWrite(entity.CompanyId);
         await EnsureFiscalYearAsync(entity.CompanyId, entity.FiscalYearId, requireOpen: true, cancellationToken);
-        var scope = new { entity.CompanyId, entity.FiscalYearId, entity.ScenarioId, entity.PeriodId, entity.DefinitionId, entity.Value };
+        var scope = new { entity.CompanyId, entity.FiscalYearId, entity.ScenarioId, entity.PeriodId, entity.ScopeKey, entity.DefinitionId, entity.Value };
         db.AssumptionValues.Remove(entity);
         AddAudit("AssumptionValue", entity.Id, "DELETE", new { Deleted = true }, scope);
         await db.SaveChangesAsync(cancellationToken);
@@ -238,21 +231,9 @@ public sealed class AssumptionService(
     private async Task<AssumptionValueDto> GetValueDtoAsync(Guid valueId, CancellationToken ct) =>
         await db.AssumptionValues.AsNoTracking().Where(x => x.Id == valueId)
             .Select(x => new AssumptionValueDto(
-                x.Id,
-                x.DefinitionId,
-                x.Definition!.Code,
-                x.Definition.Name,
-                x.Definition.Unit,
-                x.CompanyId,
-                x.FiscalYearId,
-                x.ScenarioId,
-                x.Scenario != null ? x.Scenario.Name : null,
-                x.PeriodId,
-                x.Period != null ? x.Period.Name : null,
-                x.Value,
-                x.Source,
-                x.Note,
-                x.UpdatedAtUtc))
+                x.Id, x.DefinitionId, x.Definition!.Code, x.Definition.Name, x.Definition.Unit,
+                x.CompanyId, x.FiscalYearId, x.ScenarioId, x.Scenario != null ? x.Scenario.Name : null,
+                x.PeriodId, x.Period != null ? x.Period.Name : null, x.Value, x.Source, x.Note, x.UpdatedAtUtc))
             .SingleAsync(ct);
 
     private async Task<RecalculationSummary> RecalculateAffectedDraftVersionsAsync(
@@ -354,8 +335,8 @@ public sealed class AssumptionService(
     private static string NormalizeCode(string? value)
     {
         var code = (value ?? string.Empty).Trim().ToUpperInvariant();
-        if (code.Length is < 2 or > 64 || code.Any(ch => !(char.IsLetterOrDigit(ch) || ch == '_')))
-            throw new ArgumentException("Assumption code must contain 2-64 letters, numbers or underscore characters.");
+        if (code.Length is < 2 or > 64 || code.Any(ch => !(ch is >= 'A' and <= 'Z' || ch is >= '0' and <= '9' || ch == '_')))
+            throw new ArgumentException("Assumption code must contain 2-64 ASCII uppercase letters, numbers or underscore characters.");
         return code;
     }
 
