@@ -17,6 +17,7 @@ public static class EndpointRegistration
         api.MapBudgetInboxEndpoints();
         api.MapBudgetAttachmentEndpoints();
         api.MapBudgetReservationEndpoints();
+        api.MapReservationReconciliationEndpoints();
         api.MapBudgetTransferEndpoints();
         api.MapBudgetOperationsEndpoints();
         api.MapAssumptionEndpoints();
