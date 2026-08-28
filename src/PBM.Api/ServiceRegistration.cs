@@ -14,6 +14,7 @@ public static class ServiceRegistration
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IBudgetService, BudgetService>();
         services.AddScoped<IBudgetOperationsService, BudgetOperationsService>();
+        services.AddScoped<IBudgetReservationService, BudgetReservationService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<BudgetWorkflowService>();
         services.AddScoped<IBudgetWorkflowService, NotifyingBudgetWorkflowService>();
