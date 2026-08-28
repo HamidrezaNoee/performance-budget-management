@@ -36,10 +36,13 @@ if (-not (Test-Path $hostPath)) {
     throw "SQL Server reported success but the backup is not visible on the host: $hostPath"
 }
 $file = Get-Item $hostPath
-if ($file.Length -lt 1MB) {
-    throw "Backup file is unexpectedly small ($($file.Length) bytes): $hostPath"
+if ($file.Length -le 0) {
+    throw "Backup file is empty: $hostPath"
 }
 
+# RESTORE VERIFYONLY WITH CHECKSUM above is the authoritative integrity check.
+# A newly provisioned and compressed SQL Server database can legitimately produce
+# a backup smaller than 1 MB, so do not reject a valid backup by arbitrary size.
 $hash = (Get-FileHash -Path $hostPath -Algorithm SHA256).Hash
 $metadata = [ordered]@{
     createdAtUtc = [DateTime]::UtcNow.ToString('o')
@@ -48,9 +51,12 @@ $metadata = [ordered]@{
     sizeBytes = $file.Length
     sha256 = $hash
     gitCommit = Get-PbmCurrentGitRef
+    sqlVerifyOnly = $true
+    checksumVerified = $true
 }
 $metadata | ConvertTo-Json | Set-Content -Path "$hostPath.json" -Encoding UTF8
 
 Write-Host "Backup verified: $hostPath" -ForegroundColor Green
+Write-Host "Size bytes: $($file.Length)"
 Write-Host "SHA256: $hash"
 Write-Output $hostPath
