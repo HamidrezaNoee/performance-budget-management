@@ -17,11 +17,37 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("PbmDatabase")));
-builder.Services.AddPbmServices();
-builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().SetIsOriginAllowed(_ => true).AllowCredentials()));
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required.");
+var connectionString = builder.Configuration.GetConnectionString("PbmDatabase");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException("ConnectionStrings:PbmDatabase is required. Configure it through environment variables, user secrets or a deployment secret store.");
+builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(connectionString));
+builder.Services.AddPbmServices();
+
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").GetChildren()
+    .Select(x => x.Value?.Trim())
+    .Where(x => !string.IsNullOrWhiteSpace(x))
+    .Cast<string>()
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+{
+    policy.AllowAnyHeader().AllowAnyMethod();
+    if (allowedOrigins.Length > 0)
+    {
+        policy.WithOrigins(allowedOrigins).AllowCredentials();
+    }
+    else if (builder.Environment.IsDevelopment())
+    {
+        policy.SetIsOriginAllowed(origin => Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+            && (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host == "127.0.0.1"))
+            .AllowCredentials();
+    }
+}));
+
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+    throw new InvalidOperationException("Jwt:Key is required and must contain at least 32 UTF-8 bytes.");
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
 {
@@ -61,7 +87,9 @@ using (var scope = app.Services.CreateScope())
         var role = await db.Roles.SingleAsync(x => x.TenantId == tenantId && x.Code == "SUPERADMIN");
         var user = new AppUser { TenantId = tenantId, UserName = "admin", DisplayName = "مدیر سیستم", PasswordHash = "pending" };
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-        var bootstrapPassword = builder.Configuration["BootstrapAdmin:Password"] ?? "ChangeMe123!";
+        var bootstrapPassword = builder.Configuration["BootstrapAdmin:Password"];
+        if (string.IsNullOrWhiteSpace(bootstrapPassword))
+            throw new InvalidOperationException("BootstrapAdmin:Password is required when creating the development administrator.");
         user.PasswordHash = hasher.HashPassword(user, bootstrapPassword);
         db.Users.Add(user);
         db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
