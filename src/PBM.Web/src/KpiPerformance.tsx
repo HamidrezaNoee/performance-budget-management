@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Box, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import { api } from './api'
+import PerformanceBudgetScorecard from './PerformanceBudgetScorecard'
 
 type Period = { id: string; sequence: number; name: string }
 type Kpi = { id: string; code: string; name: string; description?: string; unit?: string; weight: number; minimum?: number | null; maximum?: number | null; frequency: string; formulaExpression?: string }
@@ -96,6 +97,9 @@ export default function KpiPerformance({ companyId, fiscalYearId }: { companyId:
       </Stack>
     </CardContent></Card>
     {error && <Alert severity="error">{error}</Alert>}
+
+    <PerformanceBudgetScorecard companyId={companyId} fiscalYearId={fiscalYearId} />
+
     <Card elevation={0}><CardContent sx={{ p: 0 }}>
       <TableContainer sx={{ maxHeight: '68vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell sx={{ minWidth: 245, right: 0, zIndex: 4 }}>شاخص</TableCell>{periods.map(p => <TableCell key={p.id} align="center" sx={{ minWidth: 205 }}>{p.name}<Typography variant="caption" display="block" color="text.secondary">هدف / واقعی / امتیاز</Typography></TableCell>)}</TableRow></TableHead><TableBody>{kpis.map(kpi => <TableRow key={kpi.id} hover><TableCell sx={{ position: 'sticky', right: 0, bgcolor: '#fff', zIndex: 2 }}><Typography fontWeight={900} variant="body2">{kpi.name}</Typography><Typography variant="caption" color="text.secondary">{kpi.code} | وزن {kpi.weight}٪ | {kpi.unit ?? '-'} | {scoreMode(kpi)}</Typography>{kpi.minimum != null && <Typography variant="caption" display="block" color="text.secondary">حداقل: {kpi.minimum.toLocaleString('fa-IR')}</Typography>}{kpi.maximum != null && <Typography variant="caption" display="block" color="text.secondary">حداکثر: {kpi.maximum.toLocaleString('fa-IR')}</Typography>}</TableCell>{periods.map(period => <KpiCell key={period.id} kpi={kpi} value={valueMap.get(`${kpi.id}|${period.id}`)} onSave={(target, actual) => save(kpi.id, period.id, target, actual)} />)}</TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>
