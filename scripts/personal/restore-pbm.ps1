@@ -36,9 +36,28 @@ try { Invoke-PbmDockerCompose -Arguments @('stop', 'api', 'web') } catch { }
 Invoke-PbmDockerCompose -Arguments @('up', '-d', 'db')
 
 $containerPath = "/var/opt/mssql/backup/$([System.IO.Path]::GetFileName($targetBackup))"
-$sql = "IF DB_ID(N'PerformanceBudgetManagement') IS NOT NULL BEGIN ALTER DATABASE [PerformanceBudgetManagement] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; END; RESTORE DATABASE [PerformanceBudgetManagement] FROM DISK = N'$containerPath' WITH REPLACE, CHECKSUM, STATS = 10; ALTER DATABASE [PerformanceBudgetManagement] SET MULTI_USER;"
-$escapedSql = $sql.Replace('"', '\"')
-$command = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "' + $escapedSql + '"'
+$sql = @"
+RESTORE VERIFYONLY
+FROM DISK = N'$containerPath'
+WITH CHECKSUM;
+GO
+IF DB_ID(N'PerformanceBudgetManagement') IS NOT NULL
+BEGIN
+    ALTER DATABASE [PerformanceBudgetManagement] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+END;
+GO
+RESTORE DATABASE [PerformanceBudgetManagement]
+FROM DISK = N'$containerPath'
+WITH REPLACE, CHECKSUM, STATS = 10;
+GO
+ALTER DATABASE [PerformanceBudgetManagement] SET MULTI_USER;
+GO
+"@
+
+# Avoid nested PowerShell -> Docker -> bash -> sqlcmd quoting issues by transporting
+# the T-SQL as Base64 and piping the decoded script to sqlcmd on stdin.
+$sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
+$command = "printf '%s' '$sqlBase64' | base64 -d | /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P `"`$MSSQL_SA_PASSWORD`" -C -b"
 
 Write-Host "Restoring database from $targetBackup ..." -ForegroundColor Cyan
 Invoke-PbmDockerCompose -Arguments @('exec', '-T', 'db', 'bash', '-lc', $command)
