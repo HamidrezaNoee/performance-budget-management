@@ -21,6 +21,15 @@ export function clearClientSession() {
   setAccessToken(null)
 }
 
+// Read the current token immediately before every request. This avoids a React
+// effect ordering race where Workspace can issue its first protected request
+// before App's token effect has updated Axios defaults (including after refresh).
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('pbm_token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
 api.interceptors.response.use(
   response => response,
   error => {
