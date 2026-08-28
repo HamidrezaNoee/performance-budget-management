@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using PBM.Application;
 using PBM.Domain;
@@ -8,7 +9,8 @@ namespace PBM.Infrastructure;
 
 public sealed class IntegrationCredentialService(
     PbmDbContext db,
-    IUserContext currentUser) : IIntegrationCredentialService
+    IUserContext currentUser,
+    IPasswordHasher<AppUser> passwordHasher) : IIntegrationCredentialService
 {
     private const int SecretIterations = 210_000;
     private static readonly TimeSpan DefaultLifetime = TimeSpan.FromDays(180);
@@ -37,6 +39,74 @@ public sealed class IntegrationCredentialService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IntegrationCredentialSecretDto> CreateServiceAccountAsync(
+        CreateIntegrationServiceAccountRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureAdmin();
+        var userName = NormalizeUserName(request.UserName);
+        var displayName = NormalizeDisplayName(request.DisplayName);
+        var credentialName = NormalizeName(request.CredentialName);
+        var expiresAtUtc = NormalizeExpiry(request.ExpiresAtUtc);
+        await EnsureLicenseAllowsAnotherUserAsync(cancellationToken);
+
+        if (await db.Users.AnyAsync(x => x.TenantId == currentUser.TenantId && x.UserName == userName, cancellationToken))
+            throw new InvalidOperationException("A user with this username already exists.");
+
+        var integrationRole = await db.Roles.SingleOrDefaultAsync(x =>
+            x.TenantId == currentUser.TenantId && x.Code == "INTEGRATION",
+            cancellationToken)
+            ?? throw new InvalidOperationException("The standard INTEGRATION role is not provisioned for this tenant.");
+        var companyAccess = await ResolveCompanyAccessAsync(request.CompanyAccess, cancellationToken);
+        if (!companyAccess.Any(x => x.Input.CanWrite))
+            throw new ArgumentException("An integration service account must have write access to at least one company.");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var user = new AppUser
+        {
+            TenantId = currentUser.TenantId,
+            UserName = userName,
+            DisplayName = displayName,
+            PasswordHash = "pending",
+            IsActive = true
+        };
+        var hiddenPassword = GenerateSecret() + GenerateSecret();
+        user.PasswordHash = passwordHasher.HashPassword(user, hiddenPassword);
+        user.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = integrationRole.Id });
+        foreach (var item in companyAccess)
+        {
+            user.CompanyAccess.Add(new UserCompanyAccess
+            {
+                UserId = user.Id,
+                CompanyId = item.Company.Id,
+                CanRead = item.Input.CanRead || item.Input.CanWrite,
+                CanWrite = item.Input.CanWrite
+            });
+        }
+        db.Users.Add(user);
+
+        var (credential, secret) = BuildCredential(user.Id, credentialName, expiresAtUtc);
+        db.Set<IntegrationCredential>().Add(credential);
+        AddAudit(user.Id, "INTEGRATION_SERVICE_ACCOUNT_CREATE", new
+        {
+            user.UserName,
+            user.DisplayName,
+            Role = "INTEGRATION",
+            Companies = companyAccess.Select(x => new { x.Company.Code, x.Input.CanRead, x.Input.CanWrite })
+        }, "AppUser");
+        AddAudit(credential.Id, "INTEGRATION_CREDENTIAL_CREATE", new
+        {
+            credential.UserId,
+            credential.Name,
+            credential.ClientId,
+            credential.ExpiresAtUtc
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new IntegrationCredentialSecretDto(ToDto(credential, user.UserName, DateTime.UtcNow), secret);
+    }
+
     public async Task<IntegrationCredentialSecretDto> CreateAsync(
         CreateIntegrationCredentialRequest request,
         CancellationToken cancellationToken = default)
@@ -45,19 +115,7 @@ public sealed class IntegrationCredentialService(
         var name = NormalizeName(request.Name);
         var user = await LoadIntegrationUserAsync(request.UserId, cancellationToken);
         var expiresAtUtc = NormalizeExpiry(request.ExpiresAtUtc);
-        var secret = GenerateSecret();
-        var (salt, hash) = HashSecret(secret, SecretIterations);
-        var credential = new IntegrationCredential
-        {
-            TenantId = currentUser.TenantId,
-            UserId = user.Id,
-            Name = name,
-            ClientId = $"pbm_{Guid.NewGuid():N}",
-            SecretSalt = Convert.ToBase64String(salt),
-            SecretHash = Convert.ToBase64String(hash),
-            SecretIterations = SecretIterations,
-            ExpiresAtUtc = expiresAtUtc
-        };
+        var (credential, secret) = BuildCredential(user.Id, name, expiresAtUtc);
 
         db.Set<IntegrationCredential>().Add(credential);
         AddAudit(credential.Id, "INTEGRATION_CREDENTIAL_CREATE", new
@@ -83,6 +141,8 @@ public sealed class IntegrationCredentialService(
             ?? throw new KeyNotFoundException("Integration credential was not found.");
         if (credential.RevokedAtUtc.HasValue)
             throw new InvalidOperationException("A revoked integration credential cannot be rotated. Create a new credential instead.");
+        if (credential.User is null || !credential.User.IsActive)
+            throw new InvalidOperationException("The integration service account is inactive or missing.");
 
         var secret = GenerateSecret();
         var (salt, hash) = HashSecret(secret, SecretIterations);
@@ -91,16 +151,19 @@ public sealed class IntegrationCredentialService(
         credential.SecretIterations = SecretIterations;
         credential.ExpiresAtUtc = NormalizeExpiry(request.ExpiresAtUtc);
         credential.UpdatedAtUtc = DateTime.UtcNow;
+        credential.User.TokenVersion++;
+        credential.User.UpdatedAtUtc = DateTime.UtcNow;
         AddAudit(credential.Id, "INTEGRATION_CREDENTIAL_ROTATE", new
         {
             credential.ClientId,
             credential.ExpiresAtUtc,
+            credential.User.TokenVersion,
             RotatedBy = currentUser.UserId
         });
         await db.SaveChangesAsync(cancellationToken);
 
         return new IntegrationCredentialSecretDto(
-            ToDto(credential, credential.User?.UserName ?? "-", DateTime.UtcNow),
+            ToDto(credential, credential.User.UserName, DateTime.UtcNow),
             secret);
     }
 
@@ -115,6 +178,7 @@ public sealed class IntegrationCredentialService(
             throw new ArgumentException("Revocation reason must contain 5-500 characters.");
 
         var credential = await db.Set<IntegrationCredential>()
+            .Include(x => x.User)
             .SingleOrDefaultAsync(x => x.Id == credentialId && x.TenantId == currentUser.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("Integration credential was not found.");
         if (credential.RevokedAtUtc.HasValue) return;
@@ -123,12 +187,18 @@ public sealed class IntegrationCredentialService(
         credential.RevokedByUserId = currentUser.UserId == Guid.Empty ? null : currentUser.UserId;
         credential.RevocationReason = reason;
         credential.UpdatedAtUtc = DateTime.UtcNow;
+        if (credential.User is not null)
+        {
+            credential.User.TokenVersion++;
+            credential.User.UpdatedAtUtc = DateTime.UtcNow;
+        }
         AddAudit(credential.Id, "INTEGRATION_CREDENTIAL_REVOKE", new
         {
             credential.ClientId,
             credential.RevokedAtUtc,
             credential.RevokedByUserId,
-            credential.RevocationReason
+            credential.RevocationReason,
+            TokenVersion = credential.User?.TokenVersion
         });
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -151,9 +221,12 @@ public sealed class IntegrationCredentialService(
         if (!credential.IsActive(utcNow) || !credential.User.IsActive) return null;
         if (!VerifySecret(clientSecret, credential)) return null;
 
-        var hasIntegrationRole = credential.User.UserRoles.Any(x =>
-            string.Equals(x.Role?.Code, "INTEGRATION", StringComparison.OrdinalIgnoreCase));
-        if (!hasIntegrationRole) return null;
+        var roleCodes = credential.User.UserRoles
+            .Where(x => x.Role is not null)
+            .Select(x => x.Role!.Code)
+            .ToArray();
+        if (roleCodes.Length != 1 || !string.Equals(roleCodes[0], "INTEGRATION", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var readableCompanies = credential.User.CompanyAccess
             .Where(x => x.CanRead || x.CanWrite)
@@ -183,6 +256,24 @@ public sealed class IntegrationCredentialService(
             writableCompanies);
     }
 
+    private (IntegrationCredential Credential, string Secret) BuildCredential(Guid userId, string name, DateTime expiresAtUtc)
+    {
+        var secret = GenerateSecret();
+        var (salt, hash) = HashSecret(secret, SecretIterations);
+        var credential = new IntegrationCredential
+        {
+            TenantId = currentUser.TenantId,
+            UserId = userId,
+            Name = name,
+            ClientId = $"pbm_{Guid.NewGuid():N}",
+            SecretSalt = Convert.ToBase64String(salt),
+            SecretHash = Convert.ToBase64String(hash),
+            SecretIterations = SecretIterations,
+            ExpiresAtUtc = expiresAtUtc
+        };
+        return (credential, secret);
+    }
+
     private async Task<AppUser> LoadIntegrationUserAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = await db.Users
@@ -191,11 +282,50 @@ public sealed class IntegrationCredentialService(
             .SingleOrDefaultAsync(x => x.Id == userId && x.TenantId == currentUser.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("User was not found.");
         if (!user.IsActive) throw new InvalidOperationException("Integration credentials can only be issued to active accounts.");
-        if (!user.UserRoles.Any(x => string.Equals(x.Role?.Code, "INTEGRATION", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("The selected account must have the INTEGRATION role.");
+        var roleCodes = user.UserRoles.Where(x => x.Role is not null).Select(x => x.Role!.Code).ToArray();
+        if (roleCodes.Length != 1 || !string.Equals(roleCodes[0], "INTEGRATION", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Integration credentials can only be issued to dedicated accounts whose only role is INTEGRATION.");
         if (!user.CompanyAccess.Any(x => x.CanWrite))
             throw new InvalidOperationException("The selected integration account must have write access to at least one company.");
         return user;
+    }
+
+    private async Task<IReadOnlyList<(Company Company, UserCompanyAccessInput Input)>> ResolveCompanyAccessAsync(
+        IReadOnlyList<UserCompanyAccessInput> inputs,
+        CancellationToken cancellationToken)
+    {
+        var normalized = (inputs ?? [])
+            .GroupBy(x => x.CompanyId)
+            .Select(group => group.Last())
+            .ToArray();
+        if (normalized.Length == 0)
+            throw new ArgumentException("At least one company access entry is required for an integration service account.");
+
+        var ids = normalized.Select(x => x.CompanyId).ToArray();
+        var companies = await db.Companies
+            .Where(x => x.TenantId == currentUser.TenantId && x.IsActive && ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        if (companies.Count != ids.Length)
+            throw new ArgumentException("One or more selected companies are invalid or inactive.");
+
+        return normalized.Select(input =>
+            (companies[input.CompanyId], new UserCompanyAccessInput(input.CompanyId, input.CanRead || input.CanWrite, input.CanWrite)))
+            .ToList();
+    }
+
+    private async Task EnsureLicenseAllowsAnotherUserAsync(CancellationToken cancellationToken)
+    {
+        var utcNow = DateTime.UtcNow;
+        var license = await db.LicenseSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == currentUser.TenantId)
+            .OrderByDescending(x => x.ExpiresAtUtc)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("No license is configured for this tenant.");
+        if (!license.IsActive || license.StartsAtUtc > utcNow || license.ExpiresAtUtc < utcNow)
+            throw new InvalidOperationException("The tenant license is not active.");
+        var activeUsers = await db.Users.CountAsync(x => x.TenantId == currentUser.TenantId && x.IsActive, cancellationToken);
+        if (activeUsers >= license.MaxUsers)
+            throw new InvalidOperationException($"The license allows a maximum of {license.MaxUsers} active users, including integration service accounts.");
     }
 
     private void EnsureAdmin()
@@ -208,15 +338,34 @@ public sealed class IntegrationCredentialService(
     {
         var utcNow = DateTime.UtcNow;
         var expiry = requested.HasValue
-            ? requested.Value.Kind == DateTimeKind.Utc
-                ? requested.Value
-                : requested.Value.ToUniversalTime()
+            ? requested.Value.Kind switch
+            {
+                DateTimeKind.Utc => requested.Value,
+                DateTimeKind.Local => requested.Value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(requested.Value, DateTimeKind.Utc)
+            }
             : utcNow.Add(DefaultLifetime);
         if (expiry <= utcNow.AddMinutes(5))
             throw new ArgumentException("Integration credential expiry must be at least five minutes in the future.");
         if (expiry > utcNow.Add(MaximumLifetime))
             throw new ArgumentException("Integration credential expiry cannot be more than two years in the future.");
         return expiry;
+    }
+
+    private static string NormalizeUserName(string? value)
+    {
+        var text = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (text.Length is < 3 or > 80 || text.Any(char.IsWhiteSpace))
+            throw new ArgumentException("Service-account username must contain 3-80 characters without spaces.");
+        return text;
+    }
+
+    private static string NormalizeDisplayName(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length is < 2 or > 160)
+            throw new ArgumentException("Service-account display name must contain 2-160 characters.");
+        return text;
     }
 
     private static string NormalizeName(string? value)
@@ -253,12 +402,12 @@ public sealed class IntegrationCredentialService(
         }
     }
 
-    private void AddAudit(Guid entityId, string action, object newValue) =>
+    private void AddAudit(Guid entityId, string action, object newValue, string entityType = "IntegrationCredential") =>
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = currentUser.TenantId,
             UserId = currentUser.UserId == Guid.Empty ? null : currentUser.UserId,
-            EntityType = "IntegrationCredential",
+            EntityType = entityType,
             EntityId = entityId.ToString(),
             Action = action,
             NewValueJson = JsonSerializer.Serialize(newValue)
