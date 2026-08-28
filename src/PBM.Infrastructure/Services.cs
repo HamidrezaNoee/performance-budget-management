@@ -15,7 +15,7 @@ public sealed class CompanyService(PbmDbContext db, IUserContext user) : ICompan
     }
 }
 
-public sealed class BudgetService(PbmDbContext db, IUserContext user) : IBudgetService
+public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculationService calculation) : IBudgetService
 {
     public async Task<IReadOnlyList<FiscalYearDto>> GetFiscalYearsAsync(Guid companyId, CancellationToken cancellationToken = default)
     {
@@ -64,14 +64,21 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user) : IBudgetS
         var version = await db.BudgetVersions.Include(x => x.BudgetPlan).SingleAsync(x => x.Id == request.VersionId, cancellationToken); EnsureCompanyWrite(version.BudgetPlan!.CompanyId); if (version.IsLocked) throw new InvalidOperationException("Budget version is locked.");
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleOrDefaultAsync(x => x.Id == request.PeriodId && x.FiscalYearId == version.BudgetPlan.FiscalYearId, cancellationToken) ?? throw new ArgumentException("Period does not belong to the budget plan fiscal year.");
         if (period.IsClosed || period.FiscalYear!.IsClosed) throw new InvalidOperationException("Fiscal period is closed and cannot be edited.");
-        if (!await db.Measures.AnyAsync(x => x.Id == request.MeasureId && x.BudgetModelId == version.BudgetPlan.BudgetModelId, cancellationToken)) throw new ArgumentException("Measure does not belong to the budget model.");
+        var measure = await db.Measures.SingleOrDefaultAsync(x => x.Id == request.MeasureId && x.BudgetModelId == version.BudgetPlan.BudgetModelId, cancellationToken) ?? throw new ArgumentException("Measure does not belong to the budget model.");
+        if (measure.IsCalculated) throw new InvalidOperationException("Calculated measures are read-only and are generated from their formula dependencies.");
         var modelDimensions = await db.BudgetModelDimensions.Where(x => x.BudgetModelId == version.BudgetPlan.BudgetModelId).ToListAsync(cancellationToken); var allowedDimensions = modelDimensions.Select(x => x.DimensionId).ToHashSet(); var supplied = request.Dimensions.Select(x => x.DimensionId).Distinct().ToHashSet();
         if (modelDimensions.Where(x => x.IsRequired).Any(x => !supplied.Contains(x.DimensionId))) throw new ArgumentException("One or more required dimensions are missing."); if (supplied.Any(x => !allowedDimensions.Contains(x))) throw new ArgumentException("A supplied dimension does not belong to the budget model."); if (supplied.Count != request.Dimensions.Count) throw new ArgumentException("A dimension can only be supplied once.");
         foreach (var selection in request.Dimensions) if (!await db.DimensionMembers.AnyAsync(x => x.Id == selection.MemberId && x.DimensionId == selection.DimensionId && (x.CompanyId == null || x.CompanyId == version.BudgetPlan.CompanyId), cancellationToken)) throw new ArgumentException("Invalid dimension member selection.");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var hash = BudgetCoordinateKey.Create(request.Dimensions); var coordinatesJson = JsonSerializer.Serialize(request.Dimensions.OrderBy(x => x.DimensionId)); var fact = await db.BudgetFacts.Include(x => x.Dimensions).SingleOrDefaultAsync(x => x.VersionId == request.VersionId && x.PeriodId == request.PeriodId && x.MeasureId == request.MeasureId && x.ValueKind == request.ValueKind && x.CoordinateHash == hash, cancellationToken); var oldValue = fact?.Value;
         if (fact is null) { fact = new BudgetFact { VersionId = request.VersionId, PeriodId = request.PeriodId, MeasureId = request.MeasureId, ValueKind = request.ValueKind, CoordinateHash = hash, CoordinatesJson = coordinatesJson }; db.BudgetFacts.Add(fact); } else { db.BudgetFactDimensions.RemoveRange(fact.Dimensions); fact.Dimensions.Clear(); }
         fact.Value = request.Value; fact.CurrencyCode = request.CurrencyCode; fact.Source = request.Source; fact.Note = request.Note; fact.UpdatedAtUtc = DateTime.UtcNow; foreach (var selection in request.Dimensions) fact.Dimensions.Add(new BudgetFactDimension { BudgetFactId = fact.Id, DimensionId = selection.DimensionId, MemberId = selection.MemberId });
-        AddAudit("BudgetFact", fact.Id, oldValue.HasValue ? "UPDATE" : "CREATE", oldValue.HasValue ? JsonSerializer.Serialize(new { Value = oldValue }) : null, JsonSerializer.Serialize(new { fact.Value, fact.ValueKind, fact.PeriodId, fact.MeasureId, fact.CoordinatesJson })); await db.SaveChangesAsync(cancellationToken); return fact.Id;
+        AddAudit("BudgetFact", fact.Id, oldValue.HasValue ? "UPDATE" : "CREATE", oldValue.HasValue ? JsonSerializer.Serialize(new { Value = oldValue }) : null, JsonSerializer.Serialize(new { fact.Value, fact.ValueKind, fact.PeriodId, fact.MeasureId, fact.CoordinatesJson }));
+        await db.SaveChangesAsync(cancellationToken);
+        await calculation.RecalculateCoordinateAsync(request.VersionId, request.PeriodId, request.ValueKind, request.Dimensions, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return fact.Id;
     }
     public async Task<BudgetGridDto> GetGridAsync(BudgetGridQuery query, CancellationToken cancellationToken = default)
     {
