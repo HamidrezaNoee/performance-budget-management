@@ -101,10 +101,54 @@ public sealed record CapexFinancialSummaryDto(
     decimal BudgetVsApprovedLimitVariance,
     IReadOnlyList<CapexMonthlyFinancialDto> Monthly);
 
+public sealed record CapexCurrencyPortfolioDto(
+    string CurrencyCode,
+    decimal RequestedBudget,
+    decimal ApprovedBudgetLimit,
+    decimal Budget,
+    decimal Actual,
+    decimal Commitment,
+    decimal Forecast,
+    decimal Available);
+
+public sealed record CapexPortfolioProjectDto(
+    Guid ProjectId,
+    string Code,
+    string Name,
+    CapexProjectStatus Status,
+    CapexPriority Priority,
+    string CurrencyCode,
+    decimal? RequestedBudget,
+    decimal? ApprovedBudgetLimit,
+    decimal Budget,
+    decimal Actual,
+    decimal Commitment,
+    decimal Available,
+    decimal CompletionPercent,
+    bool IsOverdue);
+
+public sealed record CapexPortfolioSummaryDto(
+    Guid CompanyId,
+    Guid FiscalYearId,
+    int ProjectCount,
+    int ProposedCount,
+    int SubmittedCount,
+    int ApprovedCount,
+    int InProgressCount,
+    int OnHoldCount,
+    int CompletedCount,
+    int CancelledCount,
+    int OverdueCount,
+    IReadOnlyList<CapexCurrencyPortfolioDto> ByCurrency,
+    IReadOnlyList<CapexPortfolioProjectDto> Projects);
+
 public interface ICapexService
 {
     Task<IReadOnlyList<CapexOwnerUnitDto>> GetOwnerUnitsAsync(Guid companyId, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Owner-unit lookup is provided by the CAPEX service facade.");
+
+    Task<CapexPortfolioSummaryDto> GetPortfolioAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Portfolio summary is provided by the CAPEX service facade.");
 
     Task<IReadOnlyList<CapexProjectDto>> GetProjectsAsync(Guid companyId, CapexProjectStatus? status = null, CancellationToken cancellationToken = default);
     Task<CapexProjectDto> GetProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
