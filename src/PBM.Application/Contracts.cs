@@ -12,7 +12,7 @@ public sealed record MeasureDto(Guid Id, string Code, string Name, string? Unit,
 public sealed record BudgetPlanDto(Guid Id, Guid CompanyId, Guid FiscalYearId, Guid BudgetModelId, string Name, BudgetStatus Status, IReadOnlyList<BudgetVersionDto> Versions);
 public sealed record BudgetVersionDto(Guid Id, Guid ScenarioId, int VersionNumber, string Name, BudgetStatus Status, bool IsLocked);
 public sealed record DimensionSelection(Guid DimensionId, Guid MemberId);
-public sealed record CreateBudgetPlanRequest(Guid CompanyId, Guid FiscalYearId, Guid BudgetModelId, string Name);
+public sealed record CreateBudgetPlanRequest(Guid CompanyId, Guid FiscalYearId, Guid BudgetModelId, string Name, Guid? ScenarioId = null);
 public sealed record UpsertBudgetFactRequest(Guid VersionId, Guid PeriodId, Guid MeasureId, ValueKind ValueKind, decimal Value, string? CurrencyCode, IReadOnlyList<DimensionSelection> Dimensions, string? Source, string? Note);
 public sealed record MonthlySeriesPointDto(Guid PeriodId, string PeriodName, int Sequence, decimal Budget, decimal Actual, decimal Commitment, decimal Forecast);
 public sealed record DashboardSummaryDto(decimal Budget, decimal Actual, decimal Commitment, decimal Forecast, decimal Remaining, decimal Variance, decimal BudgetUtilizationPercent, IReadOnlyList<MonthlySeriesPointDto> Monthly);
