@@ -25,6 +25,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<BudgetVersion> BudgetVersions => Set<BudgetVersion>();
     public DbSet<BudgetFact> BudgetFacts => Set<BudgetFact>();
     public DbSet<BudgetFactDimension> BudgetFactDimensions => Set<BudgetFactDimension>();
+    public DbSet<BudgetAttachment> BudgetAttachments => Set<BudgetAttachment>();
     public DbSet<KpiDefinition> Kpis => Set<KpiDefinition>();
     public DbSet<KpiValue> KpiValues => Set<KpiValue>();
     public DbSet<BudgetComment> BudgetComments => Set<BudgetComment>();
@@ -50,6 +51,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetScenario>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<BudgetPlan>().HasIndex(x => new { x.CompanyId, x.FiscalYearId, x.BudgetModelId }).IsUnique();
         modelBuilder.Entity<BudgetVersion>().HasIndex(x => new { x.BudgetPlanId, x.VersionNumber }).IsUnique();
+        modelBuilder.Entity<BudgetAttachment>().HasIndex(x => new { x.VersionId, x.CreatedAtUtc });
+        modelBuilder.Entity<BudgetAttachment>().HasIndex(x => new { x.VersionId, x.Sha256 });
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<CurrencyDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
@@ -67,6 +70,10 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
 
         modelBuilder.Entity<BudgetFact>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.ValueKind, x.CoordinateHash }).IsUnique();
         modelBuilder.Entity<BudgetFact>().Property(x => x.Value).HasPrecision(28, 8);
+        modelBuilder.Entity<BudgetAttachment>().Property(x => x.FileName).HasMaxLength(240);
+        modelBuilder.Entity<BudgetAttachment>().Property(x => x.ContentType).HasMaxLength(120);
+        modelBuilder.Entity<BudgetAttachment>().Property(x => x.Sha256).HasMaxLength(64).IsFixedLength();
+        modelBuilder.Entity<BudgetAttachment>().Property(x => x.Content).HasColumnType("varbinary(max)");
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Weight).HasPrecision(9, 4);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Minimum).HasPrecision(28, 8);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Maximum).HasPrecision(28, 8);
@@ -85,6 +92,9 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.BudgetFact).WithMany(x => x.Dimensions).HasForeignKey(x => x.BudgetFactId);
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BudgetFactDimension>().HasOne(x => x.Member).WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.Version).WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.Comment).WithMany().HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.UploadedByUser).WithMany().HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StrategicObjective>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Kpi).WithMany().HasForeignKey(x => x.KpiId).OnDelete(DeleteBehavior.Cascade);
