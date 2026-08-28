@@ -123,38 +123,31 @@ public sealed class PerformanceBudgetingService(
                 .ToList();
             if (observations.Count == 0) continue;
 
-            var scored = observations.Select(x => new
-            {
-                Result = KpiScorePolicy.Evaluate(x.Target, x.Actual, definition.Minimum, definition.Maximum)
-            }).ToList();
+            var scored = observations.Select(x =>
+                KpiScorePolicy.Evaluate(x.Target, x.Actual, definition.Minimum, definition.Maximum)).ToList();
             var latest = scored[^1];
             components.Add(new PerformanceKpiComponentDto(
                 definition.Id,
                 definition.Code,
                 definition.Name,
-                latest.Result.Mode.ToString(),
+                latest.Mode.ToString(),
                 Math.Max(0m, definition.Weight),
                 scored.Count,
-                Round(scored.Average(x => x.Result.Score)),
-                latest.Result.Score,
-                latest.Result.IsOnTarget));
+                Round(scored.Average(x => x.Score)),
+                latest.Score,
+                latest.IsOnTarget));
         }
 
-        var totalDefinedWeight = definitions.Where(x => x.Weight > 0m).Sum(x => x.Weight);
-        var observedWeight = components.Where(x => x.Weight > 0m).Sum(x => x.Weight);
-        var kpiCoverage = totalDefinedWeight > 0m
-            ? PercentOrZero(observedWeight, totalDefinedWeight)
-            : definitions.Count == 0
-                ? 0m
-                : PercentOrZero(components.Count, definitions.Count);
-
-        decimal? weightedKpiScore = null;
-        if (components.Count > 0)
-        {
-            weightedKpiScore = observedWeight > 0m
-                ? Round(components.Where(x => x.Weight > 0m).Sum(x => x.AverageScore * x.Weight) / observedWeight)
-                : Round(components.Average(x => x.AverageScore));
-        }
+        var componentByKpiId = components.ToDictionary(x => x.KpiId);
+        var kpiAggregation = StrategicScorePolicy.Aggregate(definitions
+            .Select(definition => new WeightedScoreInput(
+                Math.Max(0m, definition.Weight),
+                componentByKpiId.TryGetValue(definition.Id, out var component)
+                    ? component.AverageScore
+                    : null))
+            .ToList());
+        var kpiCoverage = kpiAggregation.CoveragePercent;
+        var weightedKpiScore = kpiAggregation.WeightedScore;
 
         var objectives = await db.StrategicObjectives.AsNoTracking()
             .Where(x => x.TenantId == user.TenantId && x.IsActive)
@@ -173,20 +166,17 @@ public sealed class PerformanceBudgetingService(
                 .ToListAsync(cancellationToken);
         }
 
-        var componentByKpiId = components.ToDictionary(x => x.KpiId);
         var objectiveComponents = new List<PerformanceObjectiveComponentDto>();
         foreach (var objective in objectives)
         {
             var objectiveLinks = links.Where(x => x.ObjectiveId == objective.Id && x.Weight > 0m).ToList();
-            var totalLinkWeight = objectiveLinks.Sum(x => x.Weight);
-            var observedLinks = objectiveLinks.Where(x => componentByKpiId.ContainsKey(x.KpiId)).ToList();
-            var observedLinkWeight = observedLinks.Sum(x => x.Weight);
-            decimal? objectiveScore = observedLinkWeight > 0m
-                ? Round(observedLinks.Sum(x => componentByKpiId[x.KpiId].AverageScore * x.Weight) / observedLinkWeight)
-                : null;
-            var objectiveCoverage = totalLinkWeight > 0m
-                ? PercentOrZero(observedLinkWeight, totalLinkWeight)
-                : 0m;
+            var objectiveAggregation = StrategicScorePolicy.Aggregate(objectiveLinks
+                .Select(link => new WeightedScoreInput(
+                    link.Weight,
+                    componentByKpiId.TryGetValue(link.KpiId, out var component)
+                        ? component.AverageScore
+                        : null))
+                .ToList());
 
             objectiveComponents.Add(new PerformanceObjectiveComponentDto(
                 objective.Id,
@@ -194,27 +184,16 @@ public sealed class PerformanceBudgetingService(
                 objective.Name,
                 Math.Max(0m, objective.Weight),
                 objectiveLinks.Select(x => x.KpiId).Distinct().Count(),
-                observedLinks.Select(x => x.KpiId).Distinct().Count(),
-                objectiveCoverage,
-                objectiveScore));
+                objectiveLinks.Where(x => componentByKpiId.ContainsKey(x.KpiId)).Select(x => x.KpiId).Distinct().Count(),
+                objectiveAggregation.CoveragePercent,
+                objectiveAggregation.WeightedScore));
         }
 
-        var totalStrategicWeight = objectiveComponents.Where(x => x.StrategicWeight > 0m).Sum(x => x.StrategicWeight);
-        var observedStrategicWeight = objectiveComponents.Where(x => x.StrategicWeight > 0m && x.Score.HasValue).Sum(x => x.StrategicWeight);
-        var strategyCoverage = totalStrategicWeight > 0m
-            ? PercentOrZero(observedStrategicWeight, totalStrategicWeight)
-            : objectiveComponents.Count == 0
-                ? 0m
-                : PercentOrZero(objectiveComponents.Count(x => x.Score.HasValue), objectiveComponents.Count);
-
-        decimal? strategyWeightedScore = null;
-        var scoredObjectives = objectiveComponents.Where(x => x.Score.HasValue).ToList();
-        if (scoredObjectives.Count > 0)
-        {
-            strategyWeightedScore = observedStrategicWeight > 0m
-                ? Round(scoredObjectives.Where(x => x.StrategicWeight > 0m).Sum(x => x.Score!.Value * x.StrategicWeight) / observedStrategicWeight)
-                : Round(scoredObjectives.Average(x => x.Score!.Value));
-        }
+        var strategyAggregation = StrategicScorePolicy.Aggregate(objectiveComponents
+            .Select(objective => new WeightedScoreInput(objective.StrategicWeight, objective.Score))
+            .ToList());
+        var strategyCoverage = strategyAggregation.CoveragePercent;
+        var strategyWeightedScore = strategyAggregation.WeightedScore;
 
         var strategyConfigured = objectives.Count > 0;
         var recommendationScore = strategyConfigured ? strategyWeightedScore : weightedKpiScore;
@@ -266,9 +245,6 @@ public sealed class PerformanceBudgetingService(
 
     private static string NormalizeCurrency(string? currencyCode, string baseCurrency) =>
         string.IsNullOrWhiteSpace(currencyCode) ? baseCurrency : currencyCode.Trim().ToUpperInvariant();
-
-    private static decimal PercentOrZero(decimal numerator, decimal denominator) =>
-        denominator == 0m ? 0m : Round(numerator / denominator * 100m);
 
     private static decimal Round(decimal value) =>
         Math.Round(value, 2, MidpointRounding.AwayFromZero);
