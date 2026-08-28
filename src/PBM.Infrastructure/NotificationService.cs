@@ -4,7 +4,10 @@ using PBM.Domain;
 
 namespace PBM.Infrastructure;
 
-public sealed class NotificationService(PbmDbContext db, IUserContext currentUser) : INotificationService
+public sealed class NotificationService(
+    PbmDbContext db,
+    IUserContext currentUser,
+    OutboxWriter outbox) : INotificationService
 {
     public async Task<IReadOnlyList<NotificationDto>> GetMineAsync(
         bool unreadOnly = false,
@@ -133,6 +136,20 @@ public sealed class NotificationService(PbmDbContext db, IUserContext currentUse
                 ExpiresAtUtc = request.ExpiresAtUtc
             });
         }
+
+        outbox.EnqueueNotificationWebhook(new NotificationDispatchRequest(
+            validUserIds,
+            request.CompanyId,
+            category,
+            title,
+            message,
+            request.Severity,
+            entityType,
+            entityId,
+            actionUrl,
+            request.ExpiresAtUtc));
+
+        // The in-app notification rows and optional external-delivery outbox message are committed atomically.
         await db.SaveChangesAsync(cancellationToken);
     }
 
