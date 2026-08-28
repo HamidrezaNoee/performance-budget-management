@@ -16,6 +16,7 @@ import AutoGraphRoundedIcon from '@mui/icons-material/AutoGraphRounded'
 import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded'
 import BusinessCenterRoundedIcon from '@mui/icons-material/BusinessCenterRounded'
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded'
+import SyncAltRoundedIcon from '@mui/icons-material/SyncAltRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
@@ -32,6 +33,7 @@ import Forecasting from './Forecasting'
 import CashPlanning from './CashPlanning'
 import CapexProjects from './CapexProjects'
 import FinancialReports from './FinancialReports'
+import ActualLedgerWorkspace from './ActualLedgerWorkspace'
 import ReferenceAdmin from './ReferenceAdmin'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import NotificationCenter from './NotificationCenter'
@@ -45,7 +47,7 @@ type LoginResponse = { accessToken: string; displayName: string; roles: string[]
 const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-const viewHashes = ['dashboard', 'inbox', 'budget', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'settings'] as const
+const viewHashes = ['dashboard', 'inbox', 'budget', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
 
 function viewIndexFromHash() {
   const hash = window.location.hash.replace(/^#/, '').toLowerCase()
@@ -171,15 +173,16 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
     ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />],
     ['پیش‌بینی', <AutoGraphRoundedIcon />], ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />],
     ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
-    ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
+    ['Actual و اتصال ERP', <SyncAltRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
   const titles = [
     'داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه',
     'رزرو بودجه و مدیریت تعهدات', 'جابجایی و بازتخصیص بودجه', 'ورود و نگاشت اکسل',
     'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'برنامه نقدینگی و خزانه‌داری',
-    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه'
+    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری',
+    'تنظیمات و داده‌های پایه'
   ]
-  const writeSensitiveView = activeView >= 1 && activeView <= 10
+  const writeSensitiveView = (activeView >= 1 && activeView <= 10) || activeView === 12
 
   return <>
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -218,7 +221,8 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {activeView === 9 && companyId && yearId && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {activeView === 10 && companyId && yearId && <CapexProjects companyId={companyId} fiscalYearId={yearId} roles={roles} canWrite={canWriteCompany} />}
         {activeView === 11 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 12 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+        {activeView === 12 && companyId && yearId && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} roles={roles} canWrite={canWriteCompany} />}
+        {activeView === 13 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
