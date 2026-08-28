@@ -15,6 +15,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DimensionDefinition> Dimensions => Set<DimensionDefinition>();
     public DbSet<DimensionMember> DimensionMembers => Set<DimensionMember>();
@@ -74,6 +75,9 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<CapexMilestone>().HasIndex(x => new { x.ProjectId, x.Code }).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.UserId, x.Scope, x.Key }).IsUnique();
+        modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAtUtc });
+        modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.Status, x.ExpiresAtUtc });
         modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAtUtc });
         modelBuilder.Entity<Notification>().HasIndex(x => new { x.TenantId, x.CompanyId, x.CreatedAtUtc });
         modelBuilder.Entity<CurrencyDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
@@ -133,6 +137,11 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<CapexMilestone>().Property(x => x.Weight).HasPrecision(9, 4);
         modelBuilder.Entity<CapexMilestone>().Property(x => x.ProgressPercent).HasPrecision(9, 4);
         modelBuilder.Entity<CapexMilestone>().Property(x => x.Note).HasMaxLength(1000);
+        modelBuilder.Entity<IdempotencyRecord>().Property(x => x.Key).HasMaxLength(100);
+        modelBuilder.Entity<IdempotencyRecord>().Property(x => x.Scope).HasMaxLength(240);
+        modelBuilder.Entity<IdempotencyRecord>().Property(x => x.RequestHash).HasMaxLength(64).IsFixedLength();
+        modelBuilder.Entity<IdempotencyRecord>().Property(x => x.CorrelationId).HasMaxLength(128);
+        modelBuilder.Entity<IdempotencyRecord>().Property(x => x.FailureType).HasMaxLength(120);
         modelBuilder.Entity<Notification>().Property(x => x.Category).HasMaxLength(80);
         modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
         modelBuilder.Entity<Notification>().Property(x => x.Message).HasMaxLength(1200);
@@ -193,6 +202,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<CapexProject>().HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<CapexMilestone>().HasOne(x => x.Project).WithMany(x => x.Milestones).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<IdempotencyRecord>().HasOne(x => x.User).WithMany(x => x.IdempotencyRecords).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Notification>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Notification>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StrategicObjective>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
