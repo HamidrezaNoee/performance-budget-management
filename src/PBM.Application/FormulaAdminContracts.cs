@@ -14,6 +14,23 @@ public sealed record FormulaMeasureDto(
     string? FormulaExpression,
     int DisplayOrder);
 
+public sealed record CreateMeasureDefinitionRequest(
+    Guid BudgetModelId,
+    string Code,
+    string Name,
+    string? Unit,
+    MeasureValueType ValueType,
+    MeasureAggregation Aggregation,
+    int DisplayOrder,
+    string? FormulaExpression = null);
+
+public sealed record UpdateMeasureDefinitionRequest(
+    string Name,
+    string? Unit,
+    MeasureValueType ValueType,
+    MeasureAggregation Aggregation,
+    int DisplayOrder);
+
 public sealed record FormulaValidationDto(
     bool IsValid,
     IReadOnlyList<string> Dependencies,
@@ -43,6 +60,9 @@ public sealed record FormulaUpdateResultDto(
 public interface IFormulaAdminService
 {
     Task<IReadOnlyList<FormulaMeasureDto>> GetMeasuresAsync(Guid budgetModelId, CancellationToken cancellationToken = default);
+    Task<FormulaMeasureDto> CreateMeasureAsync(CreateMeasureDefinitionRequest request, CancellationToken cancellationToken = default);
+    Task<FormulaMeasureDto> UpdateMeasureAsync(Guid measureId, UpdateMeasureDefinitionRequest request, CancellationToken cancellationToken = default);
+    Task DeleteMeasureAsync(Guid measureId, CancellationToken cancellationToken = default);
     Task<FormulaValidationDto> ValidateAsync(ValidateFormulaRequest request, CancellationToken cancellationToken = default);
     Task<FormulaUpdateResultDto> UpdateFormulaAsync(Guid measureId, UpdateMeasureFormulaRequest request, CancellationToken cancellationToken = default);
     Task<FormulaMeasureDto> ClearFormulaAsync(Guid measureId, CancellationToken cancellationToken = default);
