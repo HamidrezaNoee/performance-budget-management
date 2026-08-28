@@ -37,9 +37,13 @@
 - Multidimensional Budget-vs-Actual variance analysis workspace
 - Rule-based variance anomaly baseline with configurable warning threshold in the UI
 - Executive dashboard semantic metric priority instead of summing unrelated amount measures
+- Budget reservation lifecycle: request, availability control, approval, rejection, release and consume
+- Approved reservations post to Commitment with serializable approval-time availability recheck
+- Reservation workspace is scoped by selected fiscal year and supports role-aware decisions
 - Next: dedicated CAPEX project lifecycle and cash planning
 - Next: richer driver-based budgeting templates and assumptions workspace
 - Next: selectable executive dashboard metric and dimensional drill-down
+- Next: budget transfer/reallocation request lifecycle with source/destination controls
 
 ## Slice 4 — governance and enterprise integration
 - Budget approval state machine, revisions and review comments
@@ -49,12 +53,16 @@
 - Readiness/liveness endpoints and configurable per-client login throttling
 - Migration-aware schema startup policy; production no longer silently uses `EnsureCreated`
 - Database uniqueness rules for one plan per company/year/model and version numbers per plan
+- Supporting file attachments on budget versions/comments with size/type/hash validation
+- Persistent in-app notification center with unread count and Jalali timestamps
+- Workflow and reservation notifications with role/company targeting and deep links
+- JWT token-version revocation after password, role or company-access changes
+- Self-service password change followed by mandatory re-authentication
 - Next: generate and commit the initial EF Core migration and schema upgrade scripts
-- Next: file attachments and supporting evidence on budget versions/comments
-- Next: notification rules and in-app/email/SMS/Teams adapters
+- Next: email/SMS/Teams notification delivery adapters and retry/outbox handling
 - Next: BPMN/workflow engine adapter
 - Next: AD/LDAP/Entra/SSO adapters
-- Next: ERP/accounting/SQL/API actual-data connectors
+- Next: ERP/accounting/SQL/API actual-data connectors and reservation-to-actual reconciliation
 
 ## Slice 5 — analytics and AI
 - Forecasting service (trend/statistical baseline)
@@ -68,7 +76,8 @@
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
 - Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
-- Add SQL Server integration tests for transactions, authorization and workbook imports
-- Add API idempotency/concurrency protection for bulk writes
+- Add SQL Server integration tests for transactions, authorization, reservation concurrency and workbook imports
+- Add API idempotency keys for externally retried write requests and bulk operations
+- Add reservation/ERP reconciliation monitoring for consumed reservations that have not yet produced Actual
 - Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
 - Expand structured observability with correlation IDs, request tracing and metrics
