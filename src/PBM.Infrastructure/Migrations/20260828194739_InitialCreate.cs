@@ -645,7 +645,7 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "StrategicObjectives",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -779,7 +779,7 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "Users",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -799,14 +799,14 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "Roles",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_UserRoles_Users_UserId",
                         column: x => x.UserId,
                         principalSchema: "pbm",
                         principalTable: "Users",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -832,21 +832,21 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "BudgetModels",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_BudgetPlans_Companies_CompanyId",
                         column: x => x.CompanyId,
                         principalSchema: "pbm",
                         principalTable: "Companies",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_BudgetPlans_FiscalYears_FiscalYearId",
                         column: x => x.FiscalYearId,
                         principalSchema: "pbm",
                         principalTable: "FiscalYears",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -985,7 +985,7 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "BudgetScenarios",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -1070,21 +1070,21 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "Companies",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_KpiValues_FiscalPeriods_PeriodId",
                         column: x => x.PeriodId,
                         principalSchema: "pbm",
                         principalTable: "FiscalPeriods",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_KpiValues_Kpis_KpiId",
                         column: x => x.KpiId,
                         principalSchema: "pbm",
                         principalTable: "Kpis",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -1213,14 +1213,14 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "BudgetVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_BudgetComments_Users_UserId",
                         column: x => x.UserId,
                         principalSchema: "pbm",
                         principalTable: "Users",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -1258,14 +1258,14 @@ namespace PBM.Infrastructure.Migrations
                         principalSchema: "pbm",
                         principalTable: "FiscalPeriods",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_BudgetFacts_Measures_MeasureId",
                         column: x => x.MeasureId,
                         principalSchema: "pbm",
                         principalTable: "Measures",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(

@@ -2274,13 +2274,13 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.AppUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.BudgetVersion", "Version")
                         .WithMany()
                         .HasForeignKey("VersionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -2293,13 +2293,13 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.MeasureDefinition", "Measure")
                         .WithMany()
                         .HasForeignKey("MeasureId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.FiscalPeriod", "Period")
                         .WithMany()
                         .HasForeignKey("PeriodId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.BudgetVersion", "Version")
@@ -2377,19 +2377,19 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.BudgetModel", "BudgetModel")
                         .WithMany()
                         .HasForeignKey("BudgetModelId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.FiscalYear", "FiscalYear")
                         .WithMany()
                         .HasForeignKey("FiscalYearId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("BudgetModel");
@@ -2591,7 +2591,7 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.BudgetScenario", "Scenario")
                         .WithMany()
                         .HasForeignKey("ScenarioId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("BudgetPlan");
@@ -2821,7 +2821,7 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.StrategicObjective", "Objective")
                         .WithMany()
                         .HasForeignKey("ObjectiveId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Kpi");
@@ -2834,19 +2834,19 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.Company", "Company")
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.KpiDefinition", "Kpi")
                         .WithMany()
                         .HasForeignKey("KpiId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.FiscalPeriod", "Period")
                         .WithMany()
                         .HasForeignKey("PeriodId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Company");
@@ -2965,7 +2965,7 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.AppUser", "User")
                         .WithMany("CompanyAccess")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Company");
@@ -2978,13 +2978,13 @@ namespace PBM.Infrastructure.Migrations
                     b.HasOne("PBM.Domain.Role", "Role")
                         .WithMany("UserRoles")
                         .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PBM.Domain.AppUser", "User")
                         .WithMany("UserRoles")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Role");
