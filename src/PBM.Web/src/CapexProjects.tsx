@@ -30,11 +30,24 @@ type FinancialSummary = {
   forecast: number; available: number; requestedBudget?: number | null; approvedBudgetLimit?: number | null;
   budgetVsApprovedLimitVariance: number; monthly: Monthly[]
 }
+type PortfolioCurrency = {
+  currencyCode: string; requestedBudget: number; approvedBudgetLimit: number; budget: number;
+  actual: number; commitment: number; forecast: number; available: number
+}
+type PortfolioProject = {
+  projectId: string; code: string; name: string; status: number; priority: number; currencyCode: string;
+  requestedBudget?: number | null; approvedBudgetLimit?: number | null; budget: number; actual: number;
+  commitment: number; available: number; completionPercent: number; isOverdue: boolean
+}
+type Portfolio = {
+  companyId: string; fiscalYearId: string; projectCount: number; proposedCount: number; submittedCount: number;
+  approvedCount: number; inProgressCount: number; onHoldCount: number; completedCount: number; cancelledCount: number;
+  overdueCount: number; byCurrency: PortfolioCurrency[]; projects: PortfolioProject[]
+}
 
 const faNumber = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const faDecimal = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 })
 const faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' })
-
 const statusLabels = ['پیشنهاد', 'ارسال‌شده', 'تأییدشده', 'در حال اجرا', 'متوقف', 'تکمیل‌شده', 'لغوشده']
 const priorityLabels = ['کم', 'عادی', 'بالا', 'بحرانی']
 
@@ -55,23 +68,19 @@ function formatMoney(value?: number | null) {
 }
 
 export default function CapexProjects({
-  companyId,
-  fiscalYearId,
-  roles,
-  canWrite
+  companyId, fiscalYearId, roles, canWrite
 }: {
-  companyId: string
-  fiscalYearId: string
-  roles: string[]
-  canWrite: boolean
+  companyId: string; fiscalYearId: string; roles: string[]; canWrite: boolean
 }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [owners, setOwners] = useState<OwnerUnit[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [selectedId, setSelectedId] = useState('')
   const [project, setProject] = useState<Project | null>(null)
   const [financial, setFinancial] = useState<FinancialSummary | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
+  const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -107,7 +116,7 @@ export default function CapexProjects({
     if (statusFilter !== '') params.status = Number(statusFilter)
     const { data } = await api.get<Project[]>('/capex/projects', { params })
     setProjects(data)
-    setSelectedId(current => current && data.some(x => x.id === current) ? current : data[0]?.id ?? '')
+    if (!creating) setSelectedId(current => current && data.some(x => x.id === current) ? current : data[0]?.id ?? '')
   }
 
   const loadReference = async () => {
@@ -122,6 +131,12 @@ export default function CapexProjects({
     setCurrencyCode(current => currencyResponse.data.some(x => x.code === current) ? current : base?.code ?? currencyResponse.data[0]?.code ?? 'IRR')
   }
 
+  const loadPortfolio = async () => {
+    if (!companyId || !fiscalYearId) { setPortfolio(null); return }
+    const { data } = await api.get<Portfolio>('/capex/portfolio', { params: { companyId, fiscalYearId } })
+    setPortfolio(data)
+  }
+
   const loadProject = async (id: string) => {
     if (!id) { setProject(null); setFinancial(null); return }
     const [projectResponse, financialResponse] = await Promise.all([
@@ -129,8 +144,7 @@ export default function CapexProjects({
       api.get<FinancialSummary>(`/capex/projects/${id}/financial-summary`, { params: { fiscalYearId } })
     ])
     const value = projectResponse.data
-    setProject(value)
-    setFinancial(financialResponse.data)
+    setProject(value); setFinancial(financialResponse.data)
     setName(value.name); setDescription(value.description ?? ''); setPriority(value.priority)
     setStartDate(inputDate(value.startDate)); setEndDate(inputDate(value.endDate))
     setRequestedBudget(value.requestedBudget == null ? '' : String(value.requestedBudget))
@@ -139,38 +153,43 @@ export default function CapexProjects({
     setCompletionPercent(value.completionPercent); setDecisionComment('')
   }
 
-  const reload = async () => {
-    setBusy(true); setError('')
-    try { await Promise.all([loadList(), loadReference()]) }
-    catch (e) { setError(apiError(e, 'دریافت اطلاعات پروژه‌های سرمایه‌ای ناموفق بود.')) }
-    finally { setBusy(false) }
-  }
+  const reloadOverview = async () => Promise.all([loadList(), loadReference(), loadPortfolio()])
 
-  useEffect(() => { setSelectedId(''); setProject(null); setFinancial(null); reload() }, [companyId, statusFilter])
   useEffect(() => {
-    if (!selectedId || !fiscalYearId) { setProject(null); setFinancial(null); return }
+    setCreating(false); setSelectedId(''); setProject(null); setFinancial(null)
+    setBusy(true); setError('')
+    reloadOverview().catch(e => setError(apiError(e, 'دریافت اطلاعات پروژه‌های سرمایه‌ای ناموفق بود.'))).finally(() => setBusy(false))
+  }, [companyId, fiscalYearId, statusFilter])
+
+  useEffect(() => {
+    if (creating || !selectedId || !fiscalYearId) { if (creating) { setProject(null); setFinancial(null) }; return }
     setBusy(true); setError('')
     loadProject(selectedId).catch(e => setError(apiError(e, 'دریافت جزئیات CAPEX ناموفق بود.'))).finally(() => setBusy(false))
-  }, [selectedId, fiscalYearId])
+  }, [selectedId, fiscalYearId, creating])
+
+  const resetProjectForm = () => {
+    setCode(''); setName(''); setDescription(''); setPriority(1); setStartDate(''); setEndDate('')
+    setRequestedBudget(''); setApprovedBudgetLimit(''); setOwnerId(''); setCompletionPercent(0); setDecisionComment('')
+    const base = currencies.find(x => x.isBaseCurrency); setCurrencyCode(base?.code ?? currencies[0]?.code ?? 'IRR')
+  }
+
+  const startNewProject = () => {
+    resetProjectForm(); resetMilestone(); setCreating(true); setSelectedId(''); setProject(null); setFinancial(null); setMessage(''); setError('')
+  }
+
+  const selectProject = (id: string) => { setCreating(false); setSelectedId(id) }
 
   const createProject = async () => {
     if (!canWrite || !code.trim() || !name.trim() || !startDate || !endDate) return
     setBusy(true); setError(''); setMessage('')
     try {
       const { data } = await api.post<Project>('/capex/projects', {
-        companyId,
-        code: code.trim(),
-        name: name.trim(),
-        description: description.trim() || null,
-        priority,
-        startDate,
-        endDate,
-        requestedBudget: requestedBudget === '' ? null : Number(requestedBudget),
-        currencyCode,
-        ownerOrganizationUnitId: ownerId || null
+        companyId, code: code.trim(), name: name.trim(), description: description.trim() || null, priority,
+        startDate, endDate, requestedBudget: requestedBudget === '' ? null : Number(requestedBudget),
+        currencyCode, ownerOrganizationUnitId: ownerId || null
       })
-      setCode(''); setMessage('پروژه سرمایه‌ای ایجاد و Member متناظر آن در Dimension پروژه ساخته شد.')
-      await loadList(); setSelectedId(data.id)
+      setCreating(false); setMessage('پروژه سرمایه‌ای ایجاد و Member متناظر آن در Dimension پروژه ساخته شد.')
+      await Promise.all([loadList(), loadPortfolio()]); setSelectedId(data.id)
     } catch (e) { setError(apiError(e, 'ایجاد پروژه سرمایه‌ای ناموفق بود.')) }
     finally { setBusy(false) }
   }
@@ -185,7 +204,8 @@ export default function CapexProjects({
         approvedBudgetLimit: approvedBudgetLimit === '' ? null : Number(approvedBudgetLimit),
         currencyCode, ownerOrganizationUnitId: ownerId || null, completionPercent
       })
-      setProject(data); setMessage('اطلاعات پروژه سرمایه‌ای ذخیره شد.'); await loadList(); await loadProject(project.id)
+      setProject(data); setMessage('اطلاعات پروژه سرمایه‌ای ذخیره شد.')
+      await Promise.all([loadList(), loadPortfolio(), loadProject(project.id)])
     } catch (e) { setError(apiError(e, 'ذخیره پروژه سرمایه‌ای ناموفق بود.')) }
     finally { setBusy(false) }
   }
@@ -195,12 +215,13 @@ export default function CapexProjects({
     setBusy(true); setError(''); setMessage('')
     try {
       await api.post(`/capex/projects/${project.id}/status`, { status, comment: decisionComment.trim() || null })
-      setDecisionComment(''); setMessage('وضعیت پروژه سرمایه‌ای به‌روزرسانی شد.'); await loadList(); await loadProject(project.id)
+      setDecisionComment(''); setMessage('وضعیت پروژه سرمایه‌ای به‌روزرسانی شد.')
+      await Promise.all([loadList(), loadPortfolio(), loadProject(project.id)])
     } catch (e) { setError(apiError(e, 'تغییر وضعیت پروژه سرمایه‌ای ناموفق بود.')) }
     finally { setBusy(false) }
   }
 
-  const resetMilestone = () => {
+  function resetMilestone() {
     setMilestoneId(null); setMilestoneCode(''); setMilestoneName(''); setMilestoneDueDate('')
     setMilestoneWeight(0); setMilestoneProgress(0); setMilestoneCompleted(false); setMilestoneNote('')
   }
@@ -218,7 +239,7 @@ export default function CapexProjects({
         id: milestoneId, code: milestoneCode.trim(), name: milestoneName.trim(), dueDate: milestoneDueDate,
         weight: milestoneWeight, progressPercent: milestoneProgress, isCompleted: milestoneCompleted, note: milestoneNote.trim() || null
       })
-      resetMilestone(); setMessage('Milestone پروژه ذخیره شد.'); await loadProject(project.id)
+      resetMilestone(); setMessage('Milestone پروژه ذخیره شد.'); await Promise.all([loadProject(project.id), loadList(), loadPortfolio()])
     } catch (e) { setError(apiError(e, 'ذخیره Milestone ناموفق بود.')) }
     finally { setBusy(false) }
   }
@@ -226,19 +247,21 @@ export default function CapexProjects({
   const deleteMilestone = async (item: Milestone) => {
     if (!canWrite || !project || !window.confirm(`Milestone «${item.name}» حذف شود؟`)) return
     setBusy(true); setError(''); setMessage('')
-    try { await api.delete(`/capex/projects/${project.id}/milestones/${item.id}`); resetMilestone(); setMessage('Milestone حذف شد.'); await loadProject(project.id) }
-    catch (e) { setError(apiError(e, 'حذف Milestone ناموفق بود.')) }
+    try {
+      await api.delete(`/capex/projects/${project.id}/milestones/${item.id}`)
+      resetMilestone(); setMessage('Milestone حذف شد.'); await Promise.all([loadProject(project.id), loadList(), loadPortfolio()])
+    } catch (e) { setError(apiError(e, 'حذف Milestone ناموفق بود.')) }
     finally { setBusy(false) }
   }
 
-  const transitionButtons = () => {
-    if (!project || !canWrite) return [] as Array<[number, string, boolean]>
+  const transitionButtons = (): Array<[number, string]> => {
+    if (!project || !canWrite) return []
     switch (project.status) {
-      case 0: return [[1, 'ارسال برای بررسی', true]]
-      case 1: return isReviewer ? [[0, 'برگشت برای اصلاح', true], [2, 'تأیید پروژه', true], [6, 'لغو', true]] : []
-      case 2: return [[3, 'شروع اجرا', true], ...(isReviewer ? [[6, 'لغو', true] as [number, string, boolean]] : [])]
-      case 3: return [[4, 'توقف موقت', true], [5, 'اتمام پروژه', true], ...(isReviewer ? [[6, 'لغو', true] as [number, string, boolean]] : [])]
-      case 4: return [[3, 'ازسرگیری اجرا', true], ...(isReviewer ? [[6, 'لغو', true] as [number, string, boolean]] : [])]
+      case 0: return [[1, 'ارسال برای بررسی']]
+      case 1: return isReviewer ? [[0, 'برگشت برای اصلاح'], [2, 'تأیید پروژه'], [6, 'لغو']] : []
+      case 2: return isReviewer ? [[3, 'شروع اجرا'], [6, 'لغو']] : [[3, 'شروع اجرا']]
+      case 3: return isReviewer ? [[4, 'توقف موقت'], [5, 'اتمام پروژه'], [6, 'لغو']] : [[4, 'توقف موقت'], [5, 'اتمام پروژه']]
+      case 4: return isReviewer ? [[3, 'ازسرگیری اجرا'], [6, 'لغو']] : [[3, 'ازسرگیری اجرا']]
       default: return []
     }
   }
@@ -248,17 +271,32 @@ export default function CapexProjects({
     {message && <Alert severity="success" onClose={() => setMessage('')}>{message}</Alert>}
     {!canWrite && <Alert severity="info">دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است؛ پروژه‌ها، Milestoneها و وضعیت مالی قابل مشاهده‌اند.</Alert>}
 
+    {portfolio && <Card elevation={0}><CardContent>
+      <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2}>
+        <Box><Typography variant="h6" fontWeight={900}>نمای سبد سرمایه‌گذاری</Typography><Typography color="text.secondary">پروژه‌های همپوشان با سال مالی انتخاب‌شده، بدون جمع‌کردن ارزهای متفاوت.</Typography></Box>
+        {canWrite && <Button variant="contained" onClick={startNewProject}>پروژه سرمایه‌ای جدید</Button>}
+      </Stack>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mt={2}>
+        <Chip label={`کل پروژه: ${faNumber.format(portfolio.projectCount)}`} />
+        <Chip label={`منتظر بررسی: ${faNumber.format(portfolio.submittedCount)}`} color={portfolio.submittedCount ? 'warning' : 'default'} variant="outlined" />
+        <Chip label={`در حال اجرا: ${faNumber.format(portfolio.inProgressCount)}`} color="primary" variant="outlined" />
+        <Chip label={`تکمیل: ${faNumber.format(portfolio.completedCount)}`} color="success" variant="outlined" />
+        <Chip label={`دیرکرد: ${faNumber.format(portfolio.overdueCount)}`} color={portfolio.overdueCount ? 'error' : 'default'} variant="outlined" />
+      </Stack>
+      {portfolio.byCurrency.length > 0 && <TableContainer sx={{ mt: 2 }}><Table size="small"><TableHead><TableRow><TableCell>ارز</TableCell><TableCell>درخواستی</TableCell><TableCell>سقف مصوب</TableCell><TableCell>بودجه</TableCell><TableCell>عملکرد</TableCell><TableCell>تعهد</TableCell><TableCell>Forecast</TableCell><TableCell>در دسترس</TableCell></TableRow></TableHead><TableBody>{portfolio.byCurrency.map(item => <TableRow key={item.currencyCode}><TableCell>{item.currencyCode}</TableCell><TableCell>{formatMoney(item.requestedBudget)}</TableCell><TableCell>{formatMoney(item.approvedBudgetLimit)}</TableCell><TableCell>{formatMoney(item.budget)}</TableCell><TableCell>{formatMoney(item.actual)}</TableCell><TableCell>{formatMoney(item.commitment)}</TableCell><TableCell>{formatMoney(item.forecast)}</TableCell><TableCell>{formatMoney(item.available)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>}
+    </CardContent></Card>}
+
     <Card elevation={0}><CardContent>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2}>
         <Box><Typography variant="h6" fontWeight={900}>پروژه‌های سرمایه‌ای</Typography><Typography color="text.secondary">هر پروژه به Member مستقل Dimension PROJECT متصل است و ارقام بودجه/عملکرد از Fact چندبعدی PBM خوانده می‌شود.</Typography></Box>
-        <FormControl size="small" sx={{ minWidth: 180 }}><InputLabel>وضعیت</InputLabel><Select label="وضعیت" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><MenuItem value="">همه</MenuItem>{statusLabels.map((label, index) => <MenuItem value={String(index)} key={label}>{label}</MenuItem>)}</Select></FormControl>
+        <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 180 }}><InputLabel>وضعیت</InputLabel><Select label="وضعیت" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><MenuItem value="">همه</MenuItem>{statusLabels.map((label, index) => <MenuItem value={String(index)} key={label}>{label}</MenuItem>)}</Select></FormControl>{canWrite && <Button variant="outlined" onClick={startNewProject}>جدید</Button>}</Stack>
       </Stack>
-      <TableContainer sx={{ mt: 2 }}><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>پروژه</TableCell><TableCell>وضعیت</TableCell><TableCell>اولویت</TableCell><TableCell>واحد مالک</TableCell><TableCell>بودجه درخواستی</TableCell><TableCell>پیشرفت</TableCell></TableRow></TableHead><TableBody>{projects.map(item => <TableRow key={item.id} hover selected={item.id === selectedId} onClick={() => setSelectedId(item.id)} sx={{ cursor: 'pointer' }}><TableCell sx={{ direction: 'ltr' }}>{item.code}</TableCell><TableCell>{item.name}</TableCell><TableCell><Chip size="small" label={statusLabels[item.status] ?? item.status} /></TableCell><TableCell>{priorityLabels[item.priority] ?? item.priority}</TableCell><TableCell>{item.ownerOrganizationUnitName ?? '-'}</TableCell><TableCell>{formatMoney(item.requestedBudget)} {item.currencyCode}</TableCell><TableCell sx={{ minWidth: 130 }}><Stack direction="row" spacing={1} alignItems="center"><LinearProgress variant="determinate" value={Math.min(100, item.completionPercent)} sx={{ width: 80 }} /><Typography variant="caption">{faDecimal.format(item.completionPercent)}٪</Typography></Stack></TableCell></TableRow>)}</TableBody></Table></TableContainer>
+      <TableContainer sx={{ mt: 2 }}><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>پروژه</TableCell><TableCell>وضعیت</TableCell><TableCell>اولویت</TableCell><TableCell>واحد مالک</TableCell><TableCell>بودجه درخواستی</TableCell><TableCell>پیشرفت</TableCell></TableRow></TableHead><TableBody>{projects.map(item => <TableRow key={item.id} hover selected={item.id === selectedId && !creating} onClick={() => selectProject(item.id)} sx={{ cursor: 'pointer' }}><TableCell sx={{ direction: 'ltr' }}>{item.code}</TableCell><TableCell>{item.name}</TableCell><TableCell><Chip size="small" label={statusLabels[item.status] ?? item.status} /></TableCell><TableCell>{priorityLabels[item.priority] ?? item.priority}</TableCell><TableCell>{item.ownerOrganizationUnitName ?? '-'}</TableCell><TableCell>{formatMoney(item.requestedBudget)} {item.currencyCode}</TableCell><TableCell sx={{ minWidth: 130 }}><Stack direction="row" spacing={1} alignItems="center"><LinearProgress variant="determinate" value={Math.min(100, item.completionPercent)} sx={{ width: 80 }} /><Typography variant="caption">{faDecimal.format(item.completionPercent)}٪</Typography></Stack></TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>
 
-    {canWrite && !project && <Card elevation={0}><CardContent><Typography variant="h6" fontWeight={900}>ایجاد پروژه سرمایه‌ای</Typography><ProjectFields code={code} setCode={setCode} name={name} setName={setName} description={description} setDescription={setDescription} priority={priority} setPriority={setPriority} startDate={startDate} setStartDate={setStartDate} endDate={endDate} setEndDate={setEndDate} requestedBudget={requestedBudget} setRequestedBudget={setRequestedBudget} approvedBudgetLimit={approvedBudgetLimit} setApprovedBudgetLimit={setApprovedBudgetLimit} currencyCode={currencyCode} setCurrencyCode={setCurrencyCode} ownerId={ownerId} setOwnerId={setOwnerId} owners={owners} currencies={currencies} isCreate isReviewer={isReviewer} /><Button variant="contained" sx={{ mt: 2 }} onClick={createProject} disabled={busy || !code.trim() || !name.trim() || !startDate || !endDate}>ایجاد پروژه</Button></CardContent></Card>}
+    {canWrite && creating && <Card elevation={0}><CardContent><Stack direction="row" justifyContent="space-between"><Typography variant="h6" fontWeight={900}>ایجاد پروژه سرمایه‌ای</Typography><Button onClick={() => { setCreating(false); setSelectedId(projects[0]?.id ?? '') }}>انصراف</Button></Stack><ProjectFields code={code} setCode={setCode} name={name} setName={setName} description={description} setDescription={setDescription} priority={priority} setPriority={setPriority} startDate={startDate} setStartDate={setStartDate} endDate={endDate} setEndDate={setEndDate} requestedBudget={requestedBudget} setRequestedBudget={setRequestedBudget} approvedBudgetLimit={approvedBudgetLimit} setApprovedBudgetLimit={setApprovedBudgetLimit} currencyCode={currencyCode} setCurrencyCode={setCurrencyCode} ownerId={ownerId} setOwnerId={setOwnerId} owners={owners} currencies={currencies} isCreate isReviewer={isReviewer} /><Button variant="contained" sx={{ mt: 2 }} onClick={createProject} disabled={busy || !code.trim() || !name.trim() || !startDate || !endDate}>ایجاد پروژه</Button></CardContent></Card>}
 
-    {project && <>
+    {project && !creating && <>
       <Card elevation={0}><CardContent>
         <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2}><Box><Typography variant="h6" fontWeight={900}>{project.code} — {project.name}</Typography><Typography color="text.secondary">درخواست‌کننده: {project.requestedByDisplayName}{project.approvedByDisplayName ? ` | تأییدکننده: ${project.approvedByDisplayName}` : ''}</Typography></Box><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip label={statusLabels[project.status] ?? project.status} color={project.status === 2 || project.status === 3 || project.status === 5 ? 'success' : project.status === 6 ? 'error' : 'default'} /><Chip label={`پیشرفت ${faDecimal.format(project.completionPercent)}٪`} variant="outlined" /></Stack></Stack>
         <Divider sx={{ my: 2 }} />
