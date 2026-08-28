@@ -11,6 +11,7 @@ public static class EndpointRegistration
         api.MapBudgetWorkflowEndpoints();
         api.MapBudgetInboxEndpoints();
         api.MapBudgetAttachmentEndpoints();
+        api.MapBudgetReservationEndpoints();
         api.MapBudgetOperationsEndpoints();
         api.MapCalculationEndpoints();
         api.MapVarianceAnalysisEndpoints();
