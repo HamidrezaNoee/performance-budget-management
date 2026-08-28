@@ -42,7 +42,7 @@ public sealed class VarianceAnalysisService(PbmDbContext db, IUserContext user) 
         if (query.Filters.Any(x => x.DimensionId == query.RowDimensionId || !allowedDimensions.Contains(x.DimensionId)))
             throw new ArgumentException("One or more variance filters are invalid for the selected model.");
 
-        var factQuery = db.BudgetFacts.AsNoTracking().Include(x => x.Dimensions)
+        var factQuery = db.BudgetFacts.AsNoTracking().Include(x => x.Period).Include(x => x.Dimensions)
             .Where(x => x.VersionId == version.Id && x.MeasureId == query.MeasureId);
         foreach (var filter in query.Filters)
             factQuery = factQuery.Where(x => x.Dimensions.Any(d => d.DimensionId == filter.DimensionId && d.MemberId == filter.MemberId));
@@ -111,15 +111,16 @@ public sealed class VarianceAnalysisService(PbmDbContext db, IUserContext user) 
 
     private static decimal Aggregate(IEnumerable<BudgetFact> facts, MeasureAggregation aggregation)
     {
-        var values = facts.Select(x => x.Value).ToList();
-        if (values.Count == 0) return 0m;
+        var materialized = facts.ToList();
+        if (materialized.Count == 0) return 0m;
+        var values = materialized.Select(x => x.Value).ToList();
         return aggregation switch
         {
             MeasureAggregation.Average => values.Average(),
             MeasureAggregation.Min => values.Min(),
             MeasureAggregation.Max => values.Max(),
-            MeasureAggregation.LastNonEmpty => facts.OrderByDescending(x => x.Period!.Sequence).Select(x => x.Value).FirstOrDefault(),
-            MeasureAggregation.None => values.Last(),
+            MeasureAggregation.LastNonEmpty => materialized.OrderByDescending(x => x.Period?.Sequence ?? 0).First().Value,
+            MeasureAggregation.None => materialized.OrderByDescending(x => x.UpdatedAtUtc).First().Value,
             _ => values.Sum()
         };
     }
