@@ -9,13 +9,22 @@ public static class BudgetReservationEndpoints
     {
         var reservations = api.MapGroup("/reservations");
 
-        reservations.MapGet("/", (
+        reservations.MapGet("/", async (
             Guid companyId,
+            Guid? fiscalYearId,
             BudgetReservationStatus? status,
             int? take,
             IBudgetReservationService service,
+            IBudgetService budgetService,
             CancellationToken ct) =>
-            service.GetAsync(companyId, status, take ?? 100, ct));
+        {
+            var items = await service.GetAsync(companyId, status, take ?? 100, ct);
+            if (!fiscalYearId.HasValue) return Results.Ok(items);
+
+            var plans = await budgetService.GetPlansAsync(companyId, fiscalYearId.Value, ct);
+            var versionIds = plans.SelectMany(x => x.Versions).Select(x => x.Id).ToHashSet();
+            return Results.Ok(items.Where(x => versionIds.Contains(x.VersionId)).ToList());
+        });
 
         reservations.MapPost("/availability", (
             BudgetAvailabilityRequest request,
