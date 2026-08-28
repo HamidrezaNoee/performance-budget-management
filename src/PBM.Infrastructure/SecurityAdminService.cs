@@ -95,11 +95,20 @@ public sealed class SecurityAdminService(
             throw new InvalidOperationException("You cannot remove your own SUPERADMIN role.");
         var companies = await ResolveCompanyAccessAsync(request.CompanyAccess, cancellationToken);
 
+        var oldRoleIds = user.UserRoles.Select(x => x.RoleId).OrderBy(x => x).ToArray();
+        var newRoleIds = roles.Select(x => x.Id).OrderBy(x => x).ToArray();
+        var oldCompanyAccess = user.CompanyAccess.Select(x => (x.CompanyId, x.CanRead, x.CanWrite)).OrderBy(x => x.CompanyId).ToArray();
+        var newCompanyAccess = companies.Select(x => (x.Company.Id, x.Input.CanRead, x.Input.CanWrite)).OrderBy(x => x.Id).ToArray();
+        var authorizationChanged = user.IsActive != request.IsActive
+            || !oldRoleIds.SequenceEqual(newRoleIds)
+            || !oldCompanyAccess.SequenceEqual(newCompanyAccess);
+
         var old = new
         {
             user.DisplayName,
             user.Email,
             user.IsActive,
+            user.TokenVersion,
             RoleIds = user.UserRoles.Select(x => x.RoleId).ToArray(),
             CompanyIds = user.CompanyAccess.Select(x => new { x.CompanyId, x.CanRead, x.CanWrite }).ToArray()
         };
@@ -107,6 +116,7 @@ public sealed class SecurityAdminService(
         user.DisplayName = request.DisplayName.Trim();
         user.Email = NormalizeOptional(request.Email);
         user.IsActive = request.IsActive;
+        if (authorizationChanged) user.TokenVersion++;
         user.UpdatedAtUtc = DateTime.UtcNow;
         db.UserRoles.RemoveRange(user.UserRoles);
         db.UserCompanyAccess.RemoveRange(user.CompanyAccess);
@@ -121,6 +131,8 @@ public sealed class SecurityAdminService(
             user.DisplayName,
             user.Email,
             user.IsActive,
+            user.TokenVersion,
+            AuthorizationChanged = authorizationChanged,
             Roles = roles.Select(x => x.Code),
             Companies = companies.Select(x => new { x.Company.Code, x.Input.CanRead, x.Input.CanWrite })
         }, JsonSerializer.Serialize(old));
@@ -135,8 +147,9 @@ public sealed class SecurityAdminService(
         var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId && x.TenantId == currentUser.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("User was not found.");
         user.PasswordHash = passwordHasher.HashPassword(user, newPassword);
+        user.TokenVersion++;
         user.UpdatedAtUtc = DateTime.UtcNow;
-        AddAudit("AppUser", user.Id, "PASSWORD_RESET", new { ResetBy = currentUser.UserId });
+        AddAudit("AppUser", user.Id, "PASSWORD_RESET", new { ResetBy = currentUser.UserId, user.TokenVersion });
         await db.SaveChangesAsync(cancellationToken);
     }
 
