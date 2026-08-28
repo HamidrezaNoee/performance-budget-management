@@ -27,16 +27,22 @@ public sealed class CorrelationIdEndpointFilter(ILogger<CorrelationIdEndpointFil
         var started = Stopwatch.GetTimestamp();
         try
         {
-            return await next(invocationContext);
-        }
-        finally
-        {
+            var result = await next(invocationContext);
             logger.LogInformation(
-                "API {Method} {Path} completed with {StatusCode} in {ElapsedMs:F1} ms",
+                "API {Method} {Path} endpoint completed in {ElapsedMs:F1} ms",
                 context.Request.Method,
                 context.Request.Path.Value,
-                context.Response.StatusCode,
                 Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            return result;
+        }
+        catch
+        {
+            logger.LogWarning(
+                "API {Method} {Path} endpoint failed after {ElapsedMs:F1} ms; exception handler will assign the final response status",
+                context.Request.Method,
+                context.Request.Path.Value,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
         }
     }
 }
