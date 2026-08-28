@@ -40,10 +40,12 @@
 - Budget reservation lifecycle: request, availability control, approval, rejection, release and consume
 - Approved reservations post to Commitment with serializable approval-time availability recheck
 - Reservation workspace is scoped by selected fiscal year and supports role-aware decisions
+- Governed budget transfer/reallocation lifecycle across open periods and multidimensional coordinates
+- Transfer approval preserves total Budget, rechecks source availability under a serializable transaction and recalculates dependent formulas
+- Dedicated RTL transfer workspace with fiscal-year filtering, approval actions and notification deep links
 - Next: dedicated CAPEX project lifecycle and cash planning
 - Next: richer driver-based budgeting templates and assumptions workspace
 - Next: selectable executive dashboard metric and dimensional drill-down
-- Next: budget transfer/reallocation request lifecycle with source/destination controls
 
 ## Slice 4 — governance and enterprise integration
 - Budget approval state machine, revisions and review comments
@@ -55,7 +57,7 @@
 - Database uniqueness rules for one plan per company/year/model and version numbers per plan
 - Supporting file attachments on budget versions/comments with size/type/hash validation
 - Persistent in-app notification center with unread count and Jalali timestamps
-- Workflow and reservation notifications with role/company targeting and deep links
+- Workflow, reservation and transfer notifications with role/company targeting and deep links
 - JWT token-version revocation after password, role or company-access changes
 - Self-service password change followed by mandatory re-authentication
 - Next: generate and commit the initial EF Core migration and schema upgrade scripts
@@ -76,7 +78,7 @@
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
 - Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
-- Add SQL Server integration tests for transactions, authorization, reservation concurrency and workbook imports
+- Add SQL Server integration tests for transactions, authorization, reservation/transfer concurrency and workbook imports
 - Add API idempotency keys for externally retried write requests and bulk operations
 - Add reservation/ERP reconciliation monitoring for consumed reservations that have not yet produced Actual
 - Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
