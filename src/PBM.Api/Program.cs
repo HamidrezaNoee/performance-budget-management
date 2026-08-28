@@ -57,6 +57,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.EnsureCreatedAsync();
     await SeedData.InitializeAsync(db);
     await EnterpriseSeedData.InitializeAsync(db);
+    await PlanningSeedData.InitializeAsync(db);
     await SecuritySeedData.InitializeAsync(db);
     if (app.Environment.IsDevelopment() && !await db.Users.AnyAsync())
     {
