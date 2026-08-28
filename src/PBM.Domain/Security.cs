@@ -20,6 +20,7 @@ public sealed class AppUser : Entity
     public required string PasswordHash { get; set; }
     public string? Email { get; set; }
     public bool IsActive { get; set; } = true;
+    public int TokenVersion { get; set; } = 1;
     public Tenant? Tenant { get; set; }
     public ICollection<UserRole> UserRoles { get; set; } = [];
     public ICollection<UserCompanyAccess> CompanyAccess { get; set; } = [];
