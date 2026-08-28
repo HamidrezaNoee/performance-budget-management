@@ -10,13 +10,14 @@ function apiError(error: unknown) {
   return 'تغییر رمز عبور ناموفق بود.'
 }
 
-export default function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function ChangePasswordDialog({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: () => void }) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [changed, setChanged] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -25,8 +26,15 @@ export default function ChangePasswordDialog({ open, onClose }: { open: boolean;
       setConfirmPassword('')
       setError('')
       setMessage('')
+      setChanged(false)
     }
   }, [open])
+
+  const close = () => {
+    if (busy) return
+    if (changed) onChanged()
+    else onClose()
+  }
 
   const save = async () => {
     setError(''); setMessage('')
@@ -42,26 +50,30 @@ export default function ChangePasswordDialog({ open, onClose }: { open: boolean;
     try {
       await api.post('/account/change-password', { currentPassword, newPassword })
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('')
-      setMessage('رمز عبور با موفقیت تغییر کرد.')
+      setChanged(true)
+      setMessage('رمز عبور با موفقیت تغییر کرد. نشست فعلی برای امنیت باطل شده است؛ با رمز جدید دوباره وارد شوید.')
     } catch (error) { setError(apiError(error)) }
     finally { setBusy(false) }
   }
 
-  return <Dialog open={open} onClose={() => !busy && onClose()} fullWidth maxWidth="xs">
+  return <Dialog open={open} onClose={close} fullWidth maxWidth="xs">
     <DialogTitle>تغییر رمز عبور</DialogTitle>
     <DialogContent>
       <Stack spacing={2} mt={1}>
         <Typography variant="body2" color="text.secondary">برای امنیت حساب، رمز جدید حداقل ۱۲ کاراکتر و شامل حرف بزرگ، حرف کوچک و عدد باشد.</Typography>
         {error && <Alert severity="error">{error}</Alert>}
         {message && <Alert severity="success">{message}</Alert>}
-        <TextField autoFocus type="password" label="رمز عبور فعلی" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" disabled={busy} />
-        <TextField type="password" label="رمز عبور جدید" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" disabled={busy} />
-        <TextField type="password" label="تکرار رمز عبور جدید" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" disabled={busy} onKeyDown={e => e.key === 'Enter' && save()} />
+        {!changed && <>
+          <TextField autoFocus type="password" label="رمز عبور فعلی" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" disabled={busy} />
+          <TextField type="password" label="رمز عبور جدید" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" disabled={busy} />
+          <TextField type="password" label="تکرار رمز عبور جدید" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" disabled={busy} onKeyDown={e => e.key === 'Enter' && save()} />
+        </>}
       </Stack>
     </DialogContent>
     <DialogActions>
-      <Button onClick={onClose} disabled={busy}>بستن</Button>
-      <Button variant="contained" onClick={save} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>تغییر رمز</Button>
+      {changed
+        ? <Button variant="contained" onClick={onChanged}>ورود مجدد</Button>
+        : <><Button onClick={onClose} disabled={busy}>بستن</Button><Button variant="contained" onClick={save} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>تغییر رمز</Button></>}
     </DialogActions>
   </Dialog>
 }
