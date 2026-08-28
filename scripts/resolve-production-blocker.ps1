@@ -22,6 +22,14 @@ function Assert-Docker {
 function Invoke-DotnetSdkContainer {
     param([Parameter(Mandatory = $true)][string]$Command)
 
+    # Windows PowerShell here-strings use CRLF. Passing those bytes directly to `bash -lc`
+    # leaves carriage returns in shell tokens (for example `pipefail\r`). Normalize to LF and
+    # Base64-wrap the script so quoting, paths and multiline commands survive Windows -> Docker.
+    $normalizedCommand = ($Command -replace "`r`n", "`n") -replace "`r", ''
+    $commandBytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedCommand)
+    $encodedCommand = [Convert]::ToBase64String($commandBytes)
+    $containerCommand = "printf '%s' '$encodedCommand' | base64 -d | bash"
+
     $mount = "$repoRoot`:/workspace"
     Write-Host 'Running .NET 10 SDK in Docker...' -ForegroundColor Cyan
     & docker run --rm `
@@ -29,7 +37,7 @@ function Invoke-DotnetSdkContainer {
         -v $mount `
         -w /workspace `
         mcr.microsoft.com/dotnet/sdk:10.0 `
-        bash -lc $Command
+        bash -lc $containerCommand
 
     if ($LASTEXITCODE -ne 0) {
         throw "Dockerized .NET SDK command failed with exit code $LASTEXITCODE."
@@ -61,6 +69,7 @@ $restoreAndBuild = @'
 set -euo pipefail
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
+mkdir -p artifacts
 dotnet tool restore
 dotnet restore PerformanceBudgetManagement.slnx
 dotnet build PerformanceBudgetManagement.slnx -c Release --no-restore
