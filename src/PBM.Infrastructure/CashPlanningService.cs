@@ -172,9 +172,25 @@ public sealed class CashPlanningService(
         ValidateReservedItem(measureCode, item.Code);
         if (!await db.FiscalPeriods.AnyAsync(x => x.Id == request.PeriodId && x.FiscalYearId == context.FiscalYearId, cancellationToken))
             throw new ArgumentException("Period does not belong to the cash plan fiscal year.");
+
         var currency = (request.CurrencyCode ?? string.Empty).Trim().ToUpperInvariant();
         if (!await db.Currencies.AnyAsync(x => x.TenantId == user.TenantId && x.Code == currency, cancellationToken))
             throw new ArgumentException("Currency is not defined for the current tenant.");
+        var currencyDimension = await db.Dimensions.SingleAsync(x => x.TenantId == user.TenantId && x.Code == "CURRENCY", cancellationToken);
+        var currencyMember = await db.DimensionMembers.SingleOrDefaultAsync(x =>
+            x.DimensionId == currencyDimension.Id && x.Code == currency && x.IsActive && (x.CompanyId == null || x.CompanyId == context.CompanyId), cancellationToken);
+        if (currencyMember is null)
+        {
+            currencyMember = new DimensionMember
+            {
+                DimensionId = currencyDimension.Id,
+                CompanyId = null,
+                Code = currency,
+                Name = currency
+            };
+            db.DimensionMembers.Add(currencyMember);
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         return await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
             request.VersionId,
@@ -183,7 +199,10 @@ public sealed class CashPlanningService(
             request.ValueKind,
             request.Value,
             currency,
-            [new DimensionSelection(infrastructure.ItemDimension.Id, item.Id)],
+            [
+                new DimensionSelection(infrastructure.ItemDimension.Id, item.Id),
+                new DimensionSelection(currencyDimension.Id, currencyMember.Id)
+            ],
             "CashPlanning",
             string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim()), cancellationToken);
     }
@@ -192,11 +211,14 @@ public sealed class CashPlanningService(
     {
         var model = await db.BudgetModels.Include(x => x.Dimensions).Include(x => x.Measures)
             .SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == "CASHFLOW", ct);
-        var dimension = await db.Dimensions.SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == "CASHFLOW_ITEM", ct);
-        if (model is null || dimension is null) return null;
+        var itemDimension = await db.Dimensions.SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == "CASHFLOW_ITEM", ct);
+        var currencyDimensionId = await db.Dimensions.Where(x => x.TenantId == user.TenantId && x.Code == "CURRENCY").Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
+        if (model is null || itemDimension is null || !currencyDimensionId.HasValue) return null;
+        if (!model.Dimensions.Any(x => x.DimensionId == itemDimension.Id && x.IsRequired)
+            || !model.Dimensions.Any(x => x.DimensionId == currencyDimensionId.Value && x.IsRequired)) return null;
         var measures = model.Measures.Where(x => CashMeasureCodes.Contains(x.Code, StringComparer.OrdinalIgnoreCase)).ToList();
         if (measures.Count != CashMeasureCodes.Length) return null;
-        return (model, dimension, measures);
+        return (model, itemDimension, measures);
     }
 
     private async Task<(BudgetModel Model, DimensionDefinition ItemDimension, List<MeasureDefinition> Measures)> RequireInfrastructureAsync(CancellationToken ct) =>
@@ -220,8 +242,22 @@ public sealed class CashPlanningService(
                 IsHierarchical = true
             };
             db.Dimensions.Add(itemDimension);
-            await db.SaveChangesAsync(ct);
         }
+
+        var currencyDimension = await db.Dimensions.SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == "CURRENCY", ct);
+        if (currencyDimension is null)
+        {
+            currencyDimension = new DimensionDefinition
+            {
+                TenantId = user.TenantId,
+                Code = "CURRENCY",
+                Name = "ارز",
+                IsSystem = true,
+                IsHierarchical = false
+            };
+            db.Dimensions.Add(currencyDimension);
+        }
+        await db.SaveChangesAsync(ct);
 
         var standardItems = new[]
         {
@@ -244,6 +280,19 @@ public sealed class CashPlanningService(
             if (!existingItemCodes.Contains(code))
                 db.DimensionMembers.Add(new DimensionMember { DimensionId = itemDimension.Id, CompanyId = null, Code = code, Name = name });
 
+        var currencies = await db.Currencies.AsNoTracking().Where(x => x.TenantId == user.TenantId).ToListAsync(ct);
+        var existingCurrencyMembers = await db.DimensionMembers.Where(x => x.DimensionId == currencyDimension.Id).Select(x => x.Code).ToHashSetAsync(ct);
+        foreach (var currency in currencies)
+            if (!existingCurrencyMembers.Contains(currency.Code))
+                db.DimensionMembers.Add(new DimensionMember
+                {
+                    DimensionId = currencyDimension.Id,
+                    CompanyId = null,
+                    Code = currency.Code,
+                    Name = currency.Name,
+                    ExternalKey = currency.Id.ToString()
+                });
+
         var model = await db.BudgetModels.Include(x => x.Dimensions).Include(x => x.Measures)
             .SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.Code == "CASHFLOW", ct);
         if (model is null)
@@ -256,9 +305,10 @@ public sealed class CashPlanningService(
                 Description = "برنامه ماهانه دریافت، پرداخت، مانده نقد و حداقل ذخیره نقدینگی"
             };
             model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = itemDimension.Id, Sequence = 1, IsRequired = true });
+            model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = currencyDimension.Id, Sequence = 2, IsRequired = true });
             var optionalCodes = new[] { "DEPARTMENT", "COSTCENTER" };
             var optional = await db.Dimensions.Where(x => x.TenantId == user.TenantId && optionalCodes.Contains(x.Code)).ToListAsync(ct);
-            var sequence = 2;
+            var sequence = 3;
             foreach (var dimension in optional.OrderBy(x => Array.IndexOf(optionalCodes, x.Code)))
                 model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = dimension.Id, Sequence = sequence++, IsRequired = false });
             model.Measures.Add(new MeasureDefinition { BudgetModelId = model.Id, Code = "OPENING_CASH", Name = "مانده نقد ابتدای دوره", Unit = "ارز", ValueType = MeasureValueType.Amount, Aggregation = MeasureAggregation.Sum, DisplayOrder = 1 });
@@ -269,8 +319,13 @@ public sealed class CashPlanningService(
         }
         else
         {
-            if (!model.Dimensions.Any(x => x.DimensionId == itemDimension.Id))
-                model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = itemDimension.Id, Sequence = 1, IsRequired = true });
+            var itemLink = model.Dimensions.SingleOrDefault(x => x.DimensionId == itemDimension.Id);
+            if (itemLink is null) model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = itemDimension.Id, Sequence = 1, IsRequired = true });
+            else itemLink.IsRequired = true;
+            var currencyLink = model.Dimensions.SingleOrDefault(x => x.DimensionId == currencyDimension.Id);
+            if (currencyLink is null) model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = currencyDimension.Id, Sequence = 2, IsRequired = true });
+            else currencyLink.IsRequired = true;
+
             var existingMeasureCodes = model.Measures.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (!existingMeasureCodes.Contains("OPENING_CASH")) model.Measures.Add(new MeasureDefinition { BudgetModelId = model.Id, Code = "OPENING_CASH", Name = "مانده نقد ابتدای دوره", Unit = "ارز", ValueType = MeasureValueType.Amount, Aggregation = MeasureAggregation.Sum, DisplayOrder = 1 });
             if (!existingMeasureCodes.Contains("CASH_INFLOW")) model.Measures.Add(new MeasureDefinition { BudgetModelId = model.Id, Code = "CASH_INFLOW", Name = "دریافت نقدی", Unit = "ارز", ValueType = MeasureValueType.Amount, Aggregation = MeasureAggregation.Sum, DisplayOrder = 2 });
