@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material'
 import { api } from './api'
 
 type InboxItem = {
@@ -22,6 +22,8 @@ type InboxItem = {
   canReject: boolean
 }
 
+type Comment = { id: string; versionId: string; userId: string; userDisplayName: string; text: string; createdAtUtc: string }
+
 const statusLabels = ['پیش‌نویس', 'ارسال‌شده', 'در حال بررسی', 'برگشت‌شده', 'تأییدشده', 'ردشده', 'اصلاح‌شده', 'بسته‌شده']
 const faDateTime = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { dateStyle: 'short', timeStyle: 'short' })
 
@@ -38,6 +40,10 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [commentItem, setCommentItem] = useState<InboxItem | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [commentBusy, setCommentBusy] = useState(false)
 
   const reload = async () => {
     if (!companyId) return
@@ -61,6 +67,25 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
     finally { setLoading(false) }
   }
 
+  const loadComments = async (item: InboxItem) => {
+    setCommentItem(item); setCommentText(''); setCommentBusy(true); setError('')
+    try { const { data } = await api.get<Comment[]>(`/budget/versions/${item.versionId}/comments`); setComments(data) }
+    catch (error) { setComments([]); setError(apiError(error)) }
+    finally { setCommentBusy(false) }
+  }
+
+  const addComment = async () => {
+    if (!commentItem || !commentText.trim()) return
+    setCommentBusy(true); setError('')
+    try {
+      await api.post(`/budget/versions/${commentItem.versionId}/comments`, { text: commentText.trim() })
+      setCommentText('')
+      const { data } = await api.get<Comment[]>(`/budget/versions/${commentItem.versionId}/comments`)
+      setComments(data)
+    } catch (error) { setError(apiError(error)) }
+    finally { setCommentBusy(false) }
+  }
+
   return <Stack spacing={2.5}>
     <Card elevation={0}><CardContent>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2}>
@@ -80,10 +105,26 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
           {item.canApprove && <Button size="small" variant="contained" color="success" onClick={() => transition(item, 4, false, 'تأیید')}>تأیید</Button>}
           {item.canReturn && <Button size="small" color="warning" onClick={() => transition(item, 3, true, 'برگشت')}>برگشت</Button>}
           {item.canReject && <Button size="small" color="error" onClick={() => transition(item, 5, true, 'رد')}>رد</Button>}
-          {!item.canStartReview && !item.canApprove && !item.canReturn && !item.canReject && <Typography variant="caption" color="text.secondary">برای شما اقدام مستقیمی ندارد.</Typography>}
+          <Button size="small" variant="outlined" onClick={() => loadComments(item)}>نظرات</Button>
+          {!item.canStartReview && !item.canApprove && !item.canReturn && !item.canReject && <Typography variant="caption" color="text.secondary" alignSelf="center">فقط مشاهده</Typography>}
         </Stack></TableCell></TableRow>)}
         {!items.length && !loading && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 6 }}><Typography fontWeight={800}>کارتابل خالی است.</Typography><Typography variant="body2" color="text.secondary">در حال حاضر نسخه‌ای منتظر بررسی یا اصلاح نیست.</Typography></TableCell></TableRow>}
       </TableBody></Table></TableContainer>
     </CardContent></Card>
+
+    <Dialog open={!!commentItem} onClose={() => !commentBusy && setCommentItem(null)} fullWidth maxWidth="sm">
+      <DialogTitle>نظرات نسخه {commentItem?.versionNumber.toLocaleString('fa-IR')} — {commentItem?.versionName}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} mt={1}>
+          <TextField multiline minRows={3} label="نظر جدید" value={commentText} onChange={e => setCommentText(e.target.value)} disabled={commentBusy} />
+          <Button variant="contained" onClick={addComment} disabled={commentBusy || !commentText.trim()}>ثبت نظر</Button>
+          <Divider />
+          {commentBusy && !comments.length && <Box py={3} textAlign="center"><CircularProgress size={24} /></Box>}
+          {comments.map(comment => <Box key={comment.id} sx={{ p: 1.5, border: '1px solid #e8eef5', borderRadius: 2 }}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography fontWeight={800}>{comment.userDisplayName}</Typography><Typography variant="caption" color="text.secondary">{faDateTime.format(new Date(comment.createdAtUtc))}</Typography></Stack><Typography variant="body2" mt={1} sx={{ whiteSpace: 'pre-wrap' }}>{comment.text}</Typography></Box>)}
+          {!comments.length && !commentBusy && <Typography color="text.secondary" textAlign="center" py={2}>هنوز نظری برای این نسخه ثبت نشده است.</Typography>}
+        </Stack>
+      </DialogContent>
+      <DialogActions><Button onClick={() => setCommentItem(null)} disabled={commentBusy}>بستن</Button></DialogActions>
+    </Dialog>
   </Stack>
 }
