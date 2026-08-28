@@ -91,10 +91,10 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
   const selectedMeasure = measures.find(x => x.id === measureId)
 
   const reloadReservations = async () => {
-    if (!companyId) return
+    if (!companyId || !fiscalYearId) return
     setLoading(true); setError('')
     try {
-      const { data } = await api.get<Reservation[]>('/reservations/', { params: { companyId, status: statusFilter === '' ? undefined : statusFilter, take: 300 } })
+      const { data } = await api.get<Reservation[]>('/reservations/', { params: { companyId, fiscalYearId, status: statusFilter === '' ? undefined : statusFilter, take: 300 } })
       setReservations(data)
     } catch (error) { setError(apiError(error, 'دریافت رزروهای بودجه ناموفق بود.')) }
     finally { setLoading(false) }
@@ -104,7 +104,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
     if (!companyId || !fiscalYearId) return
     setLoading(true); setError(''); setMessage(''); setReservations([]); setPlans([]); setModels([]); setPeriods([])
     Promise.all([
-      api.get<Reservation[]>('/reservations/', { params: { companyId, take: 300 } }),
+      api.get<Reservation[]>('/reservations/', { params: { companyId, fiscalYearId, take: 300 } }),
       api.get<Plan[]>('/budget/plans', { params: { companyId, fiscalYearId } }),
       api.get<Model[]>('/reference/models', { params: { companyId } }),
       api.get<Period[]>('/reference/periods', { params: { fiscalYearId } })
@@ -116,7 +116,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
     }).catch(error => setError(apiError(error, 'بارگذاری فضای رزرو بودجه ناموفق بود.'))).finally(() => setLoading(false))
   }, [companyId, fiscalYearId])
 
-  useEffect(() => { if (companyId) reloadReservations() }, [statusFilter])
+  useEffect(() => { if (companyId && fiscalYearId) reloadReservations() }, [statusFilter])
 
   useEffect(() => {
     if (!dialogOpen) return
@@ -205,7 +205,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
     setLoading(true); setError(''); setMessage('')
     try {
       await api.post(`/reservations/${reservation.id}/consume`, { externalReference: external.trim() || null, comment: comment.trim() || null })
-      setMessage(`رزرو ${reservation.reservationNo} به‌عنوان مصرف‌شده ثبت شد.`)
+      setMessage(`رزرو ${reservation.reservationNo} به‌عنوان مصرف‌شده ثبت شد. عملکرد واقعی باید از سند مالی/ERP یا ورود Actual ثبت شود.`)
       await reloadReservations()
     } catch (error) { setError(apiError(error, 'ثبت مصرف رزرو ناموفق بود.')) }
     finally { setLoading(false) }
@@ -225,7 +225,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
 
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
     {message && <Alert severity="success" onClose={() => setMessage('')}>{message}</Alert>}
-    {!operationalVersions.length && !loading && <Alert severity="info">برای ثبت رزرو، حداقل یک نسخه بودجه با وضعیت تأییدشده یا بسته‌شده لازم است.</Alert>}
+    {!operationalVersions.length && !loading && <Alert severity="info">برای ثبت رزرو، حداقل یک نسخه بودجه با وضعیت تأییدشده یا بسته‌شده در سال مالی انتخاب‌شده لازم است.</Alert>}
     {loading && !reservations.length && <Box py={6} textAlign="center"><CircularProgress /></Box>}
 
     <Card elevation={0}><CardContent sx={{ p: 0 }}><TableContainer sx={{ maxHeight: '68vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>شماره / شرح</TableCell><TableCell>دوره / مژر</TableCell><TableCell align="left">مبلغ</TableCell><TableCell>درخواست‌کننده</TableCell><TableCell>وضعیت</TableCell><TableCell>تاریخ</TableCell><TableCell>عملیات</TableCell></TableRow></TableHead><TableBody>
@@ -237,7 +237,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
           {item.decisionComment && <Typography variant="caption" color="text.secondary" alignSelf="center" title={item.decisionComment}>دارای توضیح</Typography>}
         </Stack></TableCell></TableRow>
       })}
-      {!reservations.length && !loading && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6 }}><Typography fontWeight={800}>رزروی ثبت نشده است.</Typography></TableCell></TableRow>}
+      {!reservations.length && !loading && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6 }}><Typography fontWeight={800}>رزروی برای سال مالی انتخاب‌شده ثبت نشده است.</Typography></TableCell></TableRow>}
     </TableBody></Table></TableContainer></CardContent></Card>
 
     <Dialog open={dialogOpen} onClose={() => !dialogBusy && setDialogOpen(false)} fullWidth maxWidth="md">
@@ -256,7 +256,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
           {dimensions.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>{dimensions.map(dimension => <FormControl key={dimension.id} sx={{ minWidth: 220, flex: 1 }}><InputLabel>{dimension.name}{dimension.isRequired ? ' *' : ''}</InputLabel><Select value={selections[dimension.id] ?? ''} label={`${dimension.name}${dimension.isRequired ? ' *' : ''}`} onChange={e => { setSelections(current => ({ ...current, [dimension.id]: e.target.value })); setAvailability(null) }}><MenuItem value=""><em>انتخاب نشده</em></MenuItem>{(members[dimension.id] ?? []).map(member => <MenuItem key={member.id} value={member.id}>{member.name} ({member.code})</MenuItem>)}</Select></FormControl>)}</Stack>}
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <TextField fullWidth label="مبلغ رزرو" value={amount} onChange={e => setAmount(e.target.value)} inputProps={{ inputMode: 'decimal', style: { direction: 'ltr', textAlign: 'right' } }} />
+            <TextField fullWidth label="مبلغ رزرو" value={amount} onChange={e => { setAmount(e.target.value); setAvailability(null) }} inputProps={{ inputMode: 'decimal', style: { direction: 'ltr', textAlign: 'right' } }} />
             <TextField fullWidth label="شماره مرجع/درخواست" value={externalReference} onChange={e => setExternalReference(e.target.value)} />
           </Stack>
           <TextField multiline minRows={3} label="شرح رزرو و علت ایجاد تعهد" value={description} onChange={e => setDescription(e.target.value)} />
