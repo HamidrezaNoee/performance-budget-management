@@ -38,7 +38,6 @@ public sealed class ReservationReconciliationService(
         if (reservations.Count == 0)
             return Empty(companyId, fiscalYearId, graceDays, tolerancePercent);
 
-        var yearIds = reservations.Select(x => x.Version!.BudgetPlan!.FiscalYearId).Distinct().ToArray();
         var versionIds = reservations.Select(x => x.VersionId).Distinct().ToArray();
         var actualFacts = await db.BudgetFacts.AsNoTracking()
             .Where(x => versionIds.Contains(x.VersionId) && x.ValueKind == ValueKind.Actual)
