@@ -13,6 +13,7 @@ public sealed record CapexProjectDto(
     CapexPriority Priority,
     DateTime StartDate,
     DateTime EndDate,
+    decimal? RequestedBudget,
     decimal? ApprovedBudgetLimit,
     string CurrencyCode,
     Guid? OwnerOrganizationUnitId,
@@ -47,7 +48,7 @@ public sealed record CreateCapexProjectRequest(
     CapexPriority Priority,
     DateTime StartDate,
     DateTime EndDate,
-    decimal? RequestedBudgetLimit,
+    decimal? RequestedBudget,
     string CurrencyCode,
     Guid? OwnerOrganizationUnitId);
 
@@ -57,6 +58,7 @@ public sealed record UpdateCapexProjectRequest(
     CapexPriority Priority,
     DateTime StartDate,
     DateTime EndDate,
+    decimal? RequestedBudget,
     decimal? ApprovedBudgetLimit,
     string CurrencyCode,
     Guid? OwnerOrganizationUnitId,
@@ -94,6 +96,7 @@ public sealed record CapexFinancialSummaryDto(
     decimal Commitment,
     decimal Forecast,
     decimal Available,
+    decimal? RequestedBudget,
     decimal? ApprovedBudgetLimit,
     decimal BudgetVsApprovedLimitVariance,
     IReadOnlyList<CapexMonthlyFinancialDto> Monthly);
