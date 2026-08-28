@@ -2,6 +2,7 @@
 
 Assert-PbmPrerequisites -RequireMigrations
 Assert-PbmSecretsConfigured
+Assert-PbmPersonalInstallPorts
 
 $root = Get-PbmRepoRoot
 $verifyScript = Join-Path $root 'scripts/resolve-production-blocker.ps1'
