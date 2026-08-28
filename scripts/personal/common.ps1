@@ -124,6 +124,21 @@ function Assert-PbmSecretsConfigured {
     if ($jwtKey.Length -lt 64) {
         throw 'PBM_JWT_KEY must contain at least 64 characters.'
     }
+
+    # Keep the local installer aligned with Program.ValidateBootstrapPassword so an
+    # invalid admin password fails immediately instead of after the containers start.
+    $adminPassword = Get-PbmEnvValue -Name 'PBM_ADMIN_PASSWORD'
+    $hasUpper = $false
+    $hasLower = $false
+    $hasDigit = $false
+    foreach ($ch in $adminPassword.ToCharArray()) {
+        if ([char]::IsUpper($ch)) { $hasUpper = $true }
+        if ([char]::IsLower($ch)) { $hasLower = $true }
+        if ([char]::IsDigit($ch)) { $hasDigit = $true }
+    }
+    if ($adminPassword.Length -lt 12 -or -not $hasUpper -or -not $hasLower -or -not $hasDigit) {
+        throw 'PBM_ADMIN_PASSWORD must be at least 12 characters and contain uppercase, lowercase and numeric characters.'
+    }
 }
 
 function Test-PbmTcpPortAvailable {
