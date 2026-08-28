@@ -15,6 +15,7 @@ public static class PlanningSeedData
         await EnsureScenariosAsync(db, tenant.Id, cancellationToken);
         await EnsureExpenseModelDimensionsAsync(db, tenant.Id, cancellationToken);
         await EnsureTradeLandedCostMeasuresAsync(db, tenant.Id, cancellationToken);
+        await EnsureDriverBasedMeasuresAsync(db, tenant.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -130,6 +131,68 @@ public static class PlanningSeedData
             });
             existing.Add(code);
         }
+    }
+
+    private static async Task EnsureDriverBasedMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
+    {
+        var models = await db.BudgetModels.Include(x => x.Measures)
+            .Where(x => x.TenantId == tenantId && (x.Code == "EXPENSE" || x.Code == "HR" || x.Code == "FINANCE"))
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+
+        if (models.TryGetValue("EXPENSE", out var expense))
+        {
+            AddMeasure(expense, "DRIVER_VOLUME", "مقدار محرک بودجه", "واحد", MeasureValueType.Quantity);
+            AddMeasure(expense, "DRIVER_RATE", "نرخ هر واحد محرک", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
+            AddMeasure(expense, "DRIVER_BUDGET_AMOUNT", "بودجه مبتنی بر محرک", "ریال", MeasureValueType.Amount,
+                formula: "[DRIVER_VOLUME] * [DRIVER_RATE]");
+        }
+
+        if (models.TryGetValue("HR", out var hr))
+        {
+            AddMeasure(hr, "AVERAGE_HEADCOUNT", "متوسط تعداد نیروی انسانی", "نفر", MeasureValueType.Quantity, MeasureAggregation.Average,
+                "([OPENING_HEADCOUNT] + [CLOSING_HEADCOUNT]) / 2");
+            AddMeasure(hr, "AVG_COST_PER_EMPLOYEE", "متوسط هزینه هر نفر", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
+            AddMeasure(hr, "PERSONNEL_COST", "بودجه هزینه پرسنلی", "ریال", MeasureValueType.Amount,
+                formula: "[AVERAGE_HEADCOUNT] * [AVG_COST_PER_EMPLOYEE]");
+        }
+
+        if (models.TryGetValue("FINANCE", out var finance))
+        {
+            AddMeasure(finance, "OPENING_DEBT", "مانده تسهیلات ابتدای دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
+            AddMeasure(finance, "DRAWDOWN", "دریافت تسهیلات", "ریال", MeasureValueType.Amount);
+            AddMeasure(finance, "PRINCIPAL_REPAYMENT", "بازپرداخت اصل", "ریال", MeasureValueType.Amount);
+            AddMeasure(finance, "CLOSING_DEBT", "مانده تسهیلات پایان دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty,
+                "[OPENING_DEBT] + [DRAWDOWN] - [PRINCIPAL_REPAYMENT]");
+            AddMeasure(finance, "AVERAGE_DEBT", "متوسط مانده تسهیلات", "ریال", MeasureValueType.Amount, MeasureAggregation.Average,
+                "([OPENING_DEBT] + [CLOSING_DEBT]) / 2");
+            AddMeasure(finance, "INTEREST_EXPENSE", "هزینه سود ماهانه", "ریال", MeasureValueType.Amount,
+                formula: "[AVERAGE_DEBT] * [FINANCE_RATE] / 1200");
+        }
+    }
+
+    private static void AddMeasure(
+        BudgetModel model,
+        string code,
+        string name,
+        string unit,
+        MeasureValueType valueType,
+        MeasureAggregation aggregation = MeasureAggregation.Sum,
+        string? formula = null)
+    {
+        if (model.Measures.Any(x => x.Code.Equals(code, StringComparison.OrdinalIgnoreCase))) return;
+        var order = model.Measures.Count == 0 ? 1 : model.Measures.Max(x => x.DisplayOrder) + 1;
+        model.Measures.Add(new MeasureDefinition
+        {
+            BudgetModelId = model.Id,
+            Code = code,
+            Name = name,
+            Unit = unit,
+            ValueType = valueType,
+            Aggregation = aggregation,
+            IsCalculated = formula is not null,
+            FormulaExpression = formula,
+            DisplayOrder = order
+        });
     }
 
     private static async Task EnsureMemberAsync(PbmDbContext db, DimensionDefinition dimension, string code, string name, CancellationToken ct)
