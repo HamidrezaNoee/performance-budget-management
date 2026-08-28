@@ -16,6 +16,7 @@ public sealed class AssumptionDefinition : Entity
 /// Stores a budgeting assumption at company/fiscal-year scope.
 /// ScenarioId = null means the value applies to all scenarios.
 /// PeriodId = null means annual/default value; a period-specific value overrides it.
+/// ScopeKey is persisted so SQL Server can enforce uniqueness even when nullable scope columns are used.
 /// </summary>
 public sealed class AssumptionValue : Entity
 {
@@ -24,6 +25,7 @@ public sealed class AssumptionValue : Entity
     public Guid FiscalYearId { get; set; }
     public Guid? ScenarioId { get; set; }
     public Guid? PeriodId { get; set; }
+    public required string ScopeKey { get; set; }
     public decimal Value { get; set; }
     public string? Source { get; set; }
     public string? Note { get; set; }
@@ -33,4 +35,10 @@ public sealed class AssumptionValue : Entity
     public FiscalYear? FiscalYear { get; set; }
     public BudgetScenario? Scenario { get; set; }
     public FiscalPeriod? Period { get; set; }
+}
+
+public static class AssumptionScopeKey
+{
+    public static string Create(Guid? scenarioId, Guid? periodId) =>
+        $"S:{(scenarioId.HasValue ? scenarioId.Value.ToString("N") : "GLOBAL")}|P:{(periodId.HasValue ? periodId.Value.ToString("N") : "ANNUAL")}";
 }
