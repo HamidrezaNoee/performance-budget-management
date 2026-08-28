@@ -104,9 +104,81 @@ function Assert-PbmSecretsConfigured {
         }
     }
 
+    # Docker Compose expands $NAME and ${NAME} inside unquoted/double-quoted .env values.
+    # Reject that shape before Compose can silently alter a password/key. Single-quoted values are literal.
+    foreach ($line in Get-Content $envFile) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith('#')) { continue }
+        $parts = $trimmed -split '=', 2
+        if ($parts.Count -ne 2) { continue }
+        $name = $parts[0].Trim()
+        if ($requiredSecrets -notcontains $name) { continue }
+        $rawValue = $parts[1].Trim()
+        $isSingleQuoted = $rawValue.Length -ge 2 -and $rawValue.StartsWith("'") -and $rawValue.EndsWith("'")
+        if (-not $isSingleQuoted -and $rawValue.Contains('$')) {
+            throw "$name contains a dollar sign that Docker Compose would interpolate. Wrap the entire value in single quotes in .env.personal, or regenerate the secret without a dollar sign."
+        }
+    }
+
     $jwtKey = Get-PbmEnvValue -Name 'PBM_JWT_KEY'
     if ($jwtKey.Length -lt 64) {
         throw 'PBM_JWT_KEY must contain at least 64 characters.'
+    }
+}
+
+function Test-PbmTcpPortAvailable {
+    param([Parameter(Mandatory = $true)][int]$Port)
+    $listener = $null
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Start()
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $listener) {
+            try { $listener.Stop() } catch { }
+        }
+    }
+}
+
+function Assert-PbmPersonalInstallPorts {
+    $sqlPortText = Get-PbmEnvValue -Name 'PBM_SQL_PORT' -Default '14330'
+    $webPortText = Get-PbmEnvValue -Name 'PBM_WEB_PORT' -Default '3000'
+
+    $sqlPort = 0
+    $webPort = 0
+    if (-not [int]::TryParse($sqlPortText, [ref]$sqlPort) -or $sqlPort -lt 1 -or $sqlPort -gt 65535) {
+        throw "PBM_SQL_PORT is invalid: $sqlPortText"
+    }
+    if (-not [int]::TryParse($webPortText, [ref]$webPort) -or $webPort -lt 1 -or $webPort -gt 65535) {
+        throw "PBM_WEB_PORT is invalid: $webPortText"
+    }
+
+    # If our own service is already running, re-running install should remain idempotent.
+    $ownDbRunning = $false
+    $ownWebRunning = $false
+    try {
+        $base = Get-PbmComposeArgs
+        $root = Get-PbmRepoRoot
+        Push-Location $root
+        try {
+            $dbId = (& docker @base ps -q db 2>$null | Select-Object -First 1)
+            if ($dbId) { $ownDbRunning = ((& docker inspect -f '{{.State.Running}}' $dbId 2>$null).Trim() -eq 'true') }
+            $webId = (& docker @base ps -q web 2>$null | Select-Object -First 1)
+            if ($webId) { $ownWebRunning = ((& docker inspect -f '{{.State.Running}}' $webId 2>$null).Trim() -eq 'true') }
+        }
+        finally { Pop-Location }
+    }
+    catch { }
+
+    if (-not $ownDbRunning -and -not (Test-PbmTcpPortAvailable -Port $sqlPort)) {
+        throw "PBM_SQL_PORT $sqlPort is unavailable on localhost. Set PBM_SQL_PORT=14330 (or another free port) in .env.personal before installation."
+    }
+    if (-not $ownWebRunning -and -not (Test-PbmTcpPortAvailable -Port $webPort)) {
+        throw "PBM_WEB_PORT $webPort is unavailable on localhost. Set PBM_WEB_PORT to another free port in .env.personal before installation."
     }
 }
 
