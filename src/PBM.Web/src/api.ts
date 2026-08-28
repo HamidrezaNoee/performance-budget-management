@@ -21,14 +21,22 @@ export function clearClientSession() {
   setAccessToken(null)
 }
 
-// Read the current token immediately before every request. This avoids a React
-// effect ordering race where Workspace can issue its first protected request
-// before App's token effect has updated Axios defaults (including after refresh).
+// Always attach the latest stored token immediately before dispatch. Axios 1.x
+// represents request headers as AxiosHeaders, so use its set() API when present
+// rather than relying only on plain-object property assignment.
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('pbm_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  if (token) {
+    const headers = config.headers
+    if (headers && typeof headers.set === 'function') headers.set('Authorization', `Bearer ${token}`)
+    else if (headers) headers.Authorization = `Bearer ${token}`
+  }
   return config
 })
+
+// Restore the default header synchronously on a hard refresh before React mounts.
+const storedToken = localStorage.getItem('pbm_token')
+if (storedToken) setAccessToken(storedToken)
 
 api.interceptors.response.use(
   response => response,
