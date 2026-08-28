@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Alert, Box, Card, CardContent, Chip, CircularProgress, FormControl, InputLabel,
+  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, FormControl, InputLabel,
   MenuItem, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Typography
 } from '@mui/material'
@@ -83,12 +83,21 @@ function apiError(error: unknown, fallback: string) {
   return fallback
 }
 
-export default function PerformanceBudgetScorecard({ companyId, fiscalYearId }: { companyId: string; fiscalYearId: string }) {
+export default function PerformanceBudgetScorecard({
+  companyId,
+  fiscalYearId,
+  refreshToken = 0
+}: {
+  companyId: string
+  fiscalYearId: string
+  refreshToken?: number
+}) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [versionId, setVersionId] = useState('')
   const [scorecard, setScorecard] = useState<Scorecard | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [manualRefresh, setManualRefresh] = useState(0)
 
   const versions = useMemo(() => plans.flatMap(plan => plan.versions.map(version => ({ plan, version })))
     .filter(x => x.version.status !== 5)
@@ -124,7 +133,7 @@ export default function PerformanceBudgetScorecard({ companyId, fiscalYearId }: 
       .then(response => setScorecard(response.data))
       .catch(error => { setScorecard(null); setError(apiError(error, 'محاسبه Scorecard بودجه مبتنی بر عملکرد ناموفق بود.')) })
       .finally(() => setLoading(false))
-  }, [versionId])
+  }, [versionId, refreshToken, manualRefresh])
 
   const recommendation = scorecard ? (recommendations[scorecard.recommendation] ?? recommendations[0]) : recommendations[0]
 
@@ -132,7 +141,10 @@ export default function PerformanceBudgetScorecard({ companyId, fiscalYearId }: 
     <Card elevation={0}><CardContent>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2}>
         <Box><Typography variant="h6" fontWeight={900}>Scorecard بودجه مبتنی بر عملکرد</Typography><Typography color="text.secondary">KPIهای وزن‌دار، مصرف YTD بودجه، تعهدات و Forecast به یک Recommendation قابل توضیح برای تصمیم تخصیص تبدیل می‌شوند.</Typography></Box>
-        <FormControl size="small" sx={{ minWidth: 320 }}><InputLabel>نسخه بودجه</InputLabel><Select value={versionId} label="نسخه بودجه" onChange={e => setVersionId(e.target.value)}>{versions.map(({ plan, version }) => <MenuItem key={version.id} value={version.id}>{plan.name} — {version.name} — نسخه {version.versionNumber.toLocaleString('fa-IR')}</MenuItem>)}</Select></FormControl>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <FormControl size="small" sx={{ minWidth: 320 }}><InputLabel>نسخه بودجه</InputLabel><Select value={versionId} label="نسخه بودجه" onChange={e => setVersionId(e.target.value)}>{versions.map(({ plan, version }) => <MenuItem key={version.id} value={version.id}>{plan.name} — {version.name} — نسخه {version.versionNumber.toLocaleString('fa-IR')}</MenuItem>)}</Select></FormControl>
+          <Button variant="outlined" disabled={loading || !versionId} onClick={() => setManualRefresh(value => value + 1)}>به‌روزرسانی Scorecard</Button>
+        </Stack>
       </Stack>
     </CardContent></Card>
 
