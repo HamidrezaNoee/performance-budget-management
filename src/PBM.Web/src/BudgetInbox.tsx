@@ -23,16 +23,25 @@ type InboxItem = {
 }
 
 type Comment = { id: string; versionId: string; userId: string; userDisplayName: string; text: string; createdAtUtc: string }
+type Attachment = { id: string; versionId: string; commentId?: string | null; uploadedByUserId: string; uploadedByDisplayName: string; fileName: string; contentType: string; length: number; sha256: string; createdAtUtc: string }
 
 const statusLabels = ['پیش‌نویس', 'ارسال‌شده', 'در حال بررسی', 'برگشت‌شده', 'تأییدشده', 'ردشده', 'اصلاح‌شده', 'بسته‌شده']
 const faDateTime = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { dateStyle: 'short', timeStyle: 'short' })
+const faNumber = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 })
 
 function apiError(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
-    const response = (error as { response?: { data?: { detail?: string } } }).response
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response
     if (response?.data?.detail) return response.data.detail
+    if (response?.data?.message) return response.data.message
   }
   return 'عملیات کارتابل ناموفق بود.'
+}
+
+function formatBytes(value: number) {
+  if (value >= 1024 * 1024) return `${faNumber.format(value / (1024 * 1024))} مگابایت`
+  if (value >= 1024) return `${faNumber.format(value / 1024)} کیلوبایت`
+  return `${value.toLocaleString('fa-IR')} بایت`
 }
 
 export default function BudgetInbox({ companyId }: { companyId: string }) {
@@ -42,6 +51,7 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
   const [message, setMessage] = useState('')
   const [commentItem, setCommentItem] = useState<InboxItem | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [commentText, setCommentText] = useState('')
   const [commentBusy, setCommentBusy] = useState(false)
 
@@ -67,11 +77,25 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
     finally { setLoading(false) }
   }
 
-  const loadComments = async (item: InboxItem) => {
+  const loadReviewDetails = async (item: InboxItem) => {
     setCommentItem(item); setCommentText(''); setCommentBusy(true); setError('')
-    try { const { data } = await api.get<Comment[]>(`/budget/versions/${item.versionId}/comments`); setComments(data) }
-    catch (error) { setComments([]); setError(apiError(error)) }
+    try {
+      const [commentResponse, attachmentResponse] = await Promise.all([
+        api.get<Comment[]>(`/budget/versions/${item.versionId}/comments`),
+        api.get<Attachment[]>(`/budget/versions/${item.versionId}/attachments`)
+      ])
+      setComments(commentResponse.data); setAttachments(attachmentResponse.data)
+    } catch (error) { setComments([]); setAttachments([]); setError(apiError(error)) }
     finally { setCommentBusy(false) }
+  }
+
+  const refreshReviewDetails = async () => {
+    if (!commentItem) return
+    const [commentResponse, attachmentResponse] = await Promise.all([
+      api.get<Comment[]>(`/budget/versions/${commentItem.versionId}/comments`),
+      api.get<Attachment[]>(`/budget/versions/${commentItem.versionId}/attachments`)
+    ])
+    setComments(commentResponse.data); setAttachments(attachmentResponse.data)
   }
 
   const addComment = async () => {
@@ -80,8 +104,31 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
     try {
       await api.post(`/budget/versions/${commentItem.versionId}/comments`, { text: commentText.trim() })
       setCommentText('')
-      const { data } = await api.get<Comment[]>(`/budget/versions/${commentItem.versionId}/comments`)
-      setComments(data)
+      await refreshReviewDetails()
+    } catch (error) { setError(apiError(error)) }
+    finally { setCommentBusy(false) }
+  }
+
+  const uploadAttachment = async (file: File) => {
+    if (!commentItem) return
+    if (file.size > 10 * 1024 * 1024) { setError('حداکثر حجم هر مستند ۱۰ مگابایت است.'); return }
+    setCommentBusy(true); setError(''); setMessage('')
+    try {
+      const form = new FormData(); form.append('file', file)
+      await api.post(`/budget/versions/${commentItem.versionId}/attachments`, form)
+      await refreshReviewDetails()
+      setMessage(`مستند «${file.name}» ثبت شد.`)
+    } catch (error) { setError(apiError(error)) }
+    finally { setCommentBusy(false) }
+  }
+
+  const downloadAttachment = async (attachment: Attachment) => {
+    setCommentBusy(true); setError('')
+    try {
+      const response = await api.get(`/budget/attachments/${attachment.id}/content`, { responseType: 'blob' })
+      const url = URL.createObjectURL(response.data as Blob)
+      const link = document.createElement('a'); link.href = url; link.download = attachment.fileName; document.body.appendChild(link); link.click(); link.remove()
+      URL.revokeObjectURL(url)
     } catch (error) { setError(apiError(error)) }
     finally { setCommentBusy(false) }
   }
@@ -105,21 +152,35 @@ export default function BudgetInbox({ companyId }: { companyId: string }) {
           {item.canApprove && <Button size="small" variant="contained" color="success" onClick={() => transition(item, 4, false, 'تأیید')}>تأیید</Button>}
           {item.canReturn && <Button size="small" color="warning" onClick={() => transition(item, 3, true, 'برگشت')}>برگشت</Button>}
           {item.canReject && <Button size="small" color="error" onClick={() => transition(item, 5, true, 'رد')}>رد</Button>}
-          <Button size="small" variant="outlined" onClick={() => loadComments(item)}>نظرات</Button>
+          <Button size="small" variant="outlined" onClick={() => loadReviewDetails(item)}>نظرات و مستندات</Button>
           {!item.canStartReview && !item.canApprove && !item.canReturn && !item.canReject && <Typography variant="caption" color="text.secondary" alignSelf="center">فقط مشاهده</Typography>}
         </Stack></TableCell></TableRow>)}
         {!items.length && !loading && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 6 }}><Typography fontWeight={800}>کارتابل خالی است.</Typography><Typography variant="body2" color="text.secondary">در حال حاضر نسخه‌ای منتظر بررسی یا اصلاح نیست.</Typography></TableCell></TableRow>}
       </TableBody></Table></TableContainer>
     </CardContent></Card>
 
-    <Dialog open={!!commentItem} onClose={() => !commentBusy && setCommentItem(null)} fullWidth maxWidth="sm">
-      <DialogTitle>نظرات نسخه {commentItem?.versionNumber.toLocaleString('fa-IR')} — {commentItem?.versionName}</DialogTitle>
+    <Dialog open={!!commentItem} onClose={() => !commentBusy && setCommentItem(null)} fullWidth maxWidth="md">
+      <DialogTitle>نظرات و مستندات نسخه {commentItem?.versionNumber.toLocaleString('fa-IR')} — {commentItem?.versionName}</DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} mt={1}>
+          <Typography fontWeight={900}>ثبت نظر</Typography>
           <TextField multiline minRows={3} label="نظر جدید" value={commentText} onChange={e => setCommentText(e.target.value)} disabled={commentBusy} />
           <Button variant="contained" onClick={addComment} disabled={commentBusy || !commentText.trim()}>ثبت نظر</Button>
           <Divider />
-          {commentBusy && !comments.length && <Box py={3} textAlign="center"><CircularProgress size={24} /></Box>}
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1}>
+            <Box><Typography fontWeight={900}>مستندات و شواهد</Typography><Typography variant="caption" color="text.secondary">PDF، Word، Excel، CSV، تصویر، متن و ZIP تا سقف ۱۰ مگابایت.</Typography></Box>
+            <Button component="label" variant="outlined" disabled={commentBusy}>
+              افزودن مستند
+              <input hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.zip" onChange={e => { const file = e.target.files?.[0]; e.currentTarget.value = ''; if (file) uploadAttachment(file) }} />
+            </Button>
+          </Stack>
+          {attachments.map(attachment => <Box key={attachment.id} sx={{ p: 1.5, border: '1px solid #e8eef5', borderRadius: 2 }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1}><Box><Typography fontWeight={800}>{attachment.fileName}</Typography><Typography variant="caption" color="text.secondary">{formatBytes(attachment.length)} — {attachment.uploadedByDisplayName} — {faDateTime.format(new Date(attachment.createdAtUtc))}</Typography></Box><Button size="small" onClick={() => downloadAttachment(attachment)} disabled={commentBusy}>دریافت</Button></Stack></Box>)}
+          {!attachments.length && !commentBusy && <Typography color="text.secondary" textAlign="center" py={1}>مستندی برای این نسخه ثبت نشده است.</Typography>}
+          <Divider />
+
+          <Typography fontWeight={900}>تاریخچه نظرات</Typography>
+          {commentBusy && !comments.length && !attachments.length && <Box py={3} textAlign="center"><CircularProgress size={24} /></Box>}
           {comments.map(comment => <Box key={comment.id} sx={{ p: 1.5, border: '1px solid #e8eef5', borderRadius: 2 }}><Stack direction="row" justifyContent="space-between" spacing={1}><Typography fontWeight={800}>{comment.userDisplayName}</Typography><Typography variant="caption" color="text.secondary">{faDateTime.format(new Date(comment.createdAtUtc))}</Typography></Stack><Typography variant="body2" mt={1} sx={{ whiteSpace: 'pre-wrap' }}>{comment.text}</Typography></Box>)}
           {!comments.length && !commentBusy && <Typography color="text.secondary" textAlign="center" py={2}>هنوز نظری برای این نسخه ثبت نشده است.</Typography>}
         </Stack>
