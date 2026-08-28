@@ -75,9 +75,14 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
 {
     var user = await db.Users.SingleOrDefaultAsync(x => x.UserName == request.UserName && x.IsActive);
     if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed) return Results.Unauthorized();
-    var roles = await db.UserRoles.Where(x => x.UserId == user.Id).Select(x => x.Role!.Code).ToListAsync(); var companyIds = await db.UserCompanyAccess.Where(x => x.UserId == user.Id && x.CanRead).Select(x => x.CompanyId).ToListAsync();
+    var roles = await db.UserRoles.Where(x => x.UserId == user.Id).Select(x => x.Role!.Code).ToListAsync();
+    var companyAccess = await db.UserCompanyAccess.Where(x => x.UserId == user.Id && x.CanRead).Select(x => new { x.CompanyId, x.CanWrite }).ToListAsync();
+    var companyIds = companyAccess.Select(x => x.CompanyId).ToList();
+    var writableCompanyIds = companyAccess.Where(x => x.CanWrite).Select(x => x.CompanyId).ToList();
     var claims = new List<Claim> { new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new(ClaimTypes.NameIdentifier, user.Id.ToString()), new("tenant_id", user.TenantId.ToString()), new(ClaimTypes.Name, user.DisplayName), new("username", user.UserName) };
-    claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x))); claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
+    claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));
+    claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
+    claims.AddRange(writableCompanyIds.Select(x => new Claim("company_write_id", x.ToString())));
     var token = new JwtSecurityToken(config["Jwt:Issuer"], config["Jwt:Audience"], claims, expires: DateTime.UtcNow.AddHours(8), signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
     return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds));
 });
