@@ -27,6 +27,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<BudgetFact> BudgetFacts => Set<BudgetFact>();
     public DbSet<BudgetFactDimension> BudgetFactDimensions => Set<BudgetFactDimension>();
     public DbSet<BudgetAttachment> BudgetAttachments => Set<BudgetAttachment>();
+    public DbSet<BudgetReservation> BudgetReservations => Set<BudgetReservation>();
+    public DbSet<BudgetReservationDimension> BudgetReservationDimensions => Set<BudgetReservationDimension>();
     public DbSet<KpiDefinition> Kpis => Set<KpiDefinition>();
     public DbSet<KpiValue> KpiValues => Set<KpiValue>();
     public DbSet<BudgetComment> BudgetComments => Set<BudgetComment>();
@@ -54,6 +56,9 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetVersion>().HasIndex(x => new { x.BudgetPlanId, x.VersionNumber }).IsUnique();
         modelBuilder.Entity<BudgetAttachment>().HasIndex(x => new { x.VersionId, x.CreatedAtUtc });
         modelBuilder.Entity<BudgetAttachment>().HasIndex(x => new { x.VersionId, x.Sha256 });
+        modelBuilder.Entity<BudgetReservation>().HasIndex(x => new { x.CompanyId, x.ReservationNo }).IsUnique();
+        modelBuilder.Entity<BudgetReservation>().HasIndex(x => new { x.VersionId, x.Status, x.CreatedAtUtc });
+        modelBuilder.Entity<BudgetReservation>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.CoordinateHash, x.Status });
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAtUtc });
@@ -69,6 +74,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         modelBuilder.Entity<BudgetModelDimension>().HasKey(x => new { x.BudgetModelId, x.DimensionId });
         modelBuilder.Entity<BudgetFactDimension>().HasKey(x => new { x.BudgetFactId, x.DimensionId });
+        modelBuilder.Entity<BudgetReservationDimension>().HasKey(x => new { x.ReservationId, x.DimensionId });
         modelBuilder.Entity<KpiObjectiveLink>().HasKey(x => new { x.KpiId, x.ObjectiveId });
 
         modelBuilder.Entity<BudgetFact>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.ValueKind, x.CoordinateHash }).IsUnique();
@@ -77,6 +83,13 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.ContentType).HasMaxLength(120);
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.Sha256).HasMaxLength(64).IsFixedLength();
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.Content).HasColumnType("varbinary(max)");
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.ReservationNo).HasMaxLength(64);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.Description).HasMaxLength(1000);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.Amount).HasPrecision(28, 8);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.CurrencyCode).HasMaxLength(12);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.CoordinateHash).HasMaxLength(128);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.DecisionComment).HasMaxLength(1200);
+        modelBuilder.Entity<BudgetReservation>().Property(x => x.ExternalReference).HasMaxLength(200);
         modelBuilder.Entity<Notification>().Property(x => x.Category).HasMaxLength(80);
         modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
         modelBuilder.Entity<Notification>().Property(x => x.Message).HasMaxLength(1200);
@@ -104,6 +117,15 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.Version).WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.Comment).WithMany().HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.UploadedByUser).WithMany().HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.Version).WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.Measure).WithMany().HasForeignKey(x => x.MeasureId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservation>().HasOne(x => x.DecidedByUser).WithMany().HasForeignKey(x => x.DecidedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservationDimension>().HasOne(x => x.Reservation).WithMany(x => x.Dimensions).HasForeignKey(x => x.ReservationId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BudgetReservationDimension>().HasOne(x => x.Dimension).WithMany().HasForeignKey(x => x.DimensionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetReservationDimension>().HasOne(x => x.Member).WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Notification>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Notification>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
