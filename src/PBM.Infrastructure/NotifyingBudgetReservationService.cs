@@ -42,7 +42,8 @@ public sealed class NotifyingBudgetReservationService(
                 $"درخواست {result.ReservationNo} به مبلغ {result.Amount:N0} برای بررسی و تصمیم‌گیری ثبت شده است.",
                 NotificationSeverity.Info,
                 "BudgetReservation",
-                result.Id.ToString()), cancellationToken);
+                result.Id.ToString(),
+                "#reservations"), cancellationToken);
         }
         return result;
     }
@@ -117,6 +118,7 @@ public sealed class NotifyingBudgetReservationService(
             message,
             severity,
             "BudgetReservation",
-            reservation.Id.ToString()), cancellationToken);
+            reservation.Id.ToString(),
+            "#reservations"), cancellationToken);
     }
 }
