@@ -5,6 +5,37 @@ function Get-PbmRepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 }
 
+function Get-PbmEnvValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string]$Default = ''
+    )
+    $root = Get-PbmRepoRoot
+    $envFile = Join-Path $root '.env.personal'
+    if (-not (Test-Path $envFile)) { return $Default }
+    foreach ($line in Get-Content $envFile) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith('#')) { continue }
+        $parts = $trimmed -split '=', 2
+        if ($parts.Count -eq 2 -and $parts[0].Trim() -eq $Name) {
+            return $parts[1].Trim().Trim('"').Trim("'")
+        }
+    }
+    return $Default
+}
+
+function Get-PbmBackupDir {
+    $root = Get-PbmRepoRoot
+    $configured = Get-PbmEnvValue -Name 'PBM_BACKUP_DIR' -Default './.pbm/backups'
+    if ([System.IO.Path]::IsPathRooted($configured)) { return $configured }
+    return [System.IO.Path]::GetFullPath((Join-Path $root $configured))
+}
+
+function Get-PbmWebUrl {
+    $port = Get-PbmEnvValue -Name 'PBM_WEB_PORT' -Default '3000'
+    return "http://localhost:$port"
+}
+
 function Get-PbmComposeArgs {
     param([string]$Root = (Get-PbmRepoRoot))
     $envFile = Join-Path $Root '.env.personal'
@@ -53,6 +84,9 @@ function Assert-PbmPrerequisites {
 function Assert-PbmSecretsConfigured {
     $root = Get-PbmRepoRoot
     $envFile = Join-Path $root '.env.personal'
+    if (-not (Test-Path $envFile)) {
+        throw 'Missing .env.personal. Copy .env.personal.example first.'
+    }
     $text = Get-Content $envFile -Raw
     if ($text -match 'CHANGE_ME') {
         throw '.env.personal still contains CHANGE_ME placeholders.'
@@ -61,16 +95,17 @@ function Assert-PbmSecretsConfigured {
 
 function Wait-PbmReady {
     param([int]$TimeoutSeconds = 180)
+    $url = "$(Get-PbmWebUrl)/readyz"
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
         try {
-            $response = Invoke-WebRequest -Uri 'http://localhost:3000/readyz' -UseBasicParsing -TimeoutSec 5
+            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
             if ($response.StatusCode -eq 200) { return }
         }
         catch { }
         Start-Sleep -Seconds 3
     } while ((Get-Date) -lt $deadline)
-    throw "PBM readiness check did not become healthy within $TimeoutSeconds seconds."
+    throw "PBM readiness check did not become healthy within $TimeoutSeconds seconds: $url"
 }
 
 function Get-PbmCurrentGitRef {
