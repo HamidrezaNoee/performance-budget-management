@@ -48,9 +48,9 @@ public sealed class PbmSqlFixture : IAsyncLifetime
     public TestUserContext CreateUserContext() => new(
         UserId,
         TenantId,
-        [CompanyId],
-        [CompanyId],
-        ["INTEGRATION"]);
+        new HashSet<Guid> { CompanyId },
+        new HashSet<Guid> { CompanyId },
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "INTEGRATION" });
 
     public ActualLedgerService CreateLedgerService(PbmDbContext db)
     {
@@ -169,25 +169,35 @@ public sealed class PbmSqlFixture : IAsyncLifetime
     }
 }
 
-public sealed class TestUserContext(
-    Guid userId,
-    Guid tenantId,
-    IReadOnlySet<Guid> companyIds,
-    IReadOnlySet<Guid> writableCompanyIds,
-    IReadOnlySet<string> roles) : IUserContext
+public sealed class TestUserContext : IUserContext
 {
-    public Guid UserId => userId;
-    public Guid TenantId => tenantId;
-    public IReadOnlySet<Guid> CompanyIds => companyIds;
-    public IReadOnlySet<Guid> WritableCompanyIds => writableCompanyIds;
+    private readonly HashSet<string> roles;
+
+    public TestUserContext(
+        Guid userId,
+        Guid tenantId,
+        IReadOnlySet<Guid> companyIds,
+        IReadOnlySet<Guid> writableCompanyIds,
+        IReadOnlySet<string> roles)
+    {
+        UserId = userId;
+        TenantId = tenantId;
+        CompanyIds = companyIds;
+        WritableCompanyIds = writableCompanyIds;
+        this.roles = new HashSet<string>(roles, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public Guid UserId { get; }
+    public Guid TenantId { get; }
+    public IReadOnlySet<Guid> CompanyIds { get; }
+    public IReadOnlySet<Guid> WritableCompanyIds { get; }
     public IReadOnlySet<string> Roles => roles;
-    public bool IsInRole(string role) => roles.Contains(role, StringComparer.OrdinalIgnoreCase);
+    public bool IsInRole(string role) => roles.Contains(role);
     public bool CanAccessCompany(Guid companyId) => CompanyIds.Contains(companyId);
     public bool CanWriteCompany(Guid companyId) => WritableCompanyIds.Contains(companyId);
 }
 
-[CollectionDefinition(Name, DisableParallelization = true)]
+[CollectionDefinition("PBM SQL Integration", DisableParallelization = true)]
 public sealed class SqlIntegrationCollection : ICollectionFixture<PbmSqlFixture>
 {
-    public const string Name = "PBM SQL Integration";
 }
