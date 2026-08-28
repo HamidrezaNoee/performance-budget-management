@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace PBM.Domain;
 
 public enum ActualLedgerEntryType
@@ -33,8 +35,13 @@ public sealed class ActualLedgerEntry : Entity
     public FiscalPeriod? Period { get; set; }
     public MeasureDefinition? Measure { get; set; }
     public AppUser? CreatedByUser { get; set; }
+
+    [ForeignKey(nameof(OriginalEntryId))]
     public ActualLedgerEntry? OriginalEntry { get; set; }
+
+    [InverseProperty(nameof(OriginalEntry))]
     public ICollection<ActualLedgerEntry> Reversals { get; set; } = [];
+
     public ICollection<ActualLedgerDimension> Dimensions { get; set; } = [];
 }
 
