@@ -22,6 +22,7 @@ public static class EndpointRegistration
         api.MapReservationReconciliationEndpoints();
         api.MapBudgetTransferEndpoints();
         api.MapBudgetOperationsEndpoints();
+        api.MapActualLedgerEndpoints();
         api.MapAssumptionEndpoints();
         api.MapFormulaAdminEndpoints();
         api.MapDriverTemplateEndpoints();
