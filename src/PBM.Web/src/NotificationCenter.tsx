@@ -75,12 +75,23 @@ export default function NotificationCenter() {
   useEffect(() => { if (open) loadItems() }, [open])
 
   const markRead = async (item: Notification) => {
-    if (item.isRead) return
+    if (item.isRead) return true
     try {
       await api.post(`/notifications/${item.id}/read`)
       setItems(current => current.map(x => x.id === item.id ? { ...x, isRead: true, readAtUtc: new Date().toISOString() } : x))
       setUnreadCount(current => Math.max(0, current - 1))
-    } catch (error) { setError(apiError(error)) }
+      return true
+    } catch (error) {
+      setError(apiError(error))
+      return false
+    }
+  }
+
+  const openItem = async (item: Notification) => {
+    const marked = await markRead(item)
+    if (!marked) return
+    if (item.actionUrl?.startsWith('#')) window.location.hash = item.actionUrl
+    setOpen(false)
   }
 
   const markAllRead = async () => {
@@ -117,7 +128,7 @@ export default function NotificationCenter() {
         <Stack divider={<Divider flexItem />}>
           {items.map(item => {
             const severity = severityLabel(item.severity)
-            return <Box key={item.id} onClick={() => markRead(item)} sx={{ px: 2.5, py: 2, cursor: item.isRead ? 'default' : 'pointer', bgcolor: item.isRead ? 'transparent' : 'action.hover' }}>
+            return <Box key={item.id} onClick={() => openItem(item)} sx={{ px: 2.5, py: 2, cursor: item.actionUrl || !item.isRead ? 'pointer' : 'default', bgcolor: item.isRead ? 'transparent' : 'action.hover' }}>
               <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                 <Box minWidth={0}>
                   <Stack direction="row" spacing={1} alignItems="center" mb={.7}>
@@ -125,7 +136,7 @@ export default function NotificationCenter() {
                     {!item.isRead && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main', flex: '0 0 auto' }} />}
                   </Stack>
                   <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>{item.message}</Typography>
-                  <Typography variant="caption" color="text.secondary" display="block" mt={1}>{faDateTime.format(new Date(item.createdAtUtc))}</Typography>
+                  <Stack direction="row" spacing={1} mt={1} alignItems="center"><Typography variant="caption" color="text.secondary">{faDateTime.format(new Date(item.createdAtUtc))}</Typography>{item.actionUrl && <Typography variant="caption" color="primary.main">مشاهده جزئیات</Typography>}</Stack>
                 </Box>
                 <Chip size="small" label={severity.label} color={severity.color} variant="outlined" />
               </Stack>
