@@ -15,6 +15,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DimensionDefinition> Dimensions => Set<DimensionDefinition>();
     public DbSet<DimensionMember> DimensionMembers => Set<DimensionMember>();
     public DbSet<BudgetModel> BudgetModels => Set<BudgetModel>();
@@ -55,6 +56,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetAttachment>().HasIndex(x => new { x.VersionId, x.Sha256 });
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAtUtc });
+        modelBuilder.Entity<Notification>().HasIndex(x => new { x.TenantId, x.CompanyId, x.CreatedAtUtc });
         modelBuilder.Entity<CurrencyDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<FxRateSource>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<FxRate>().HasIndex(x => new { x.SourceId, x.FromCurrencyId, x.ToCurrencyId, x.RateDate }).IsUnique();
@@ -74,6 +77,12 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.ContentType).HasMaxLength(120);
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.Sha256).HasMaxLength(64).IsFixedLength();
         modelBuilder.Entity<BudgetAttachment>().Property(x => x.Content).HasColumnType("varbinary(max)");
+        modelBuilder.Entity<Notification>().Property(x => x.Category).HasMaxLength(80);
+        modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
+        modelBuilder.Entity<Notification>().Property(x => x.Message).HasMaxLength(1200);
+        modelBuilder.Entity<Notification>().Property(x => x.EntityType).HasMaxLength(80);
+        modelBuilder.Entity<Notification>().Property(x => x.EntityId).HasMaxLength(120);
+        modelBuilder.Entity<Notification>().Property(x => x.ActionUrl).HasMaxLength(500);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Weight).HasPrecision(9, 4);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Minimum).HasPrecision(28, 8);
         modelBuilder.Entity<KpiDefinition>().Property(x => x.Maximum).HasPrecision(28, 8);
@@ -96,6 +105,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.Comment).WithMany().HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<BudgetAttachment>().HasOne(x => x.UploadedByUser).WithMany().HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Notification>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Notification>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StrategicObjective>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Kpi).WithMany().HasForeignKey(x => x.KpiId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Objective).WithMany().HasForeignKey(x => x.ObjectiveId).OnDelete(DeleteBehavior.Cascade);
