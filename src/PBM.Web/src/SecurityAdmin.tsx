@@ -7,7 +7,7 @@ import {
 import { api } from './api'
 
 type Role = { id: string; code: string; name: string }
-type Company = { id: string; code: string; name: string }
+type Company = { id: string; code: string; name: string; isActive: boolean }
 type CompanyAccess = { companyId: string; companyCode: string; companyName: string; canRead: boolean; canWrite: boolean }
 type User = { id: string; userName: string; displayName: string; email?: string; isActive: boolean; roles: Role[]; companyAccess: CompanyAccess[] }
 type LicenseUsage = { maxUsers: number; activeUsers: number; maxCompanies: number; activeCompanies: number; expiresAtUtc: string; isActive: boolean }
@@ -41,10 +41,10 @@ export default function SecurityAdmin() {
       const [usersResponse, rolesResponse, companiesResponse, licenseResponse] = await Promise.all([
         api.get<User[]>('/admin/security/users'),
         api.get<Role[]>('/admin/security/roles'),
-        api.get<Company[]>('/companies'),
+        api.get<Company[]>('/admin/organization/companies'),
         api.get<LicenseUsage>('/admin/security/license-usage')
       ])
-      setUsers(usersResponse.data); setRoles(rolesResponse.data); setCompanies(companiesResponse.data); setLicense(licenseResponse.data)
+      setUsers(usersResponse.data); setRoles(rolesResponse.data); setCompanies(companiesResponse.data.filter(x => x.isActive)); setLicense(licenseResponse.data)
     } catch { setError('دریافت اطلاعات کاربران و دسترسی‌ها ناموفق بود.') }
   }
 
