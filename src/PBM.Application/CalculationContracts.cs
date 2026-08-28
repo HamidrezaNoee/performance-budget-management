@@ -1,3 +1,5 @@
+using PBM.Domain;
+
 namespace PBM.Application;
 
 public sealed record CalculationResultDto(
