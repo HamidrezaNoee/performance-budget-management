@@ -5,7 +5,7 @@ namespace PBM.Infrastructure;
 
 public static class EnterpriseSeedData
 {
-    public static async Task InitializeAsync(PbmDbContext db, CancellationToken cancellationToken = default)
+    public static async Task InitializeAsync(PbmDbContext db, bool includeWorkbookReferenceMembers = false, CancellationToken cancellationToken = default)
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(cancellationToken);
         if (tenant is null) return;
@@ -35,7 +35,7 @@ public static class EnterpriseSeedData
         await db.SaveChangesAsync(cancellationToken);
         await EnsureEnterpriseBudgetModelsAsync(db, tenant.Id, cancellationToken);
         await EnsureTradeImportMeasuresAsync(db, tenant.Id, cancellationToken);
-        await EnsureWorkbookReferenceMembersAsync(db, tenant.Id, cancellationToken);
+        if (includeWorkbookReferenceMembers) await EnsureWorkbookReferenceMembersAsync(db, tenant.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
