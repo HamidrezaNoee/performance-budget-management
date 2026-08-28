@@ -27,6 +27,7 @@ public sealed class AccountService(
             throw new UnauthorizedAccessException("Current password is incorrect.");
 
         user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+        user.TokenVersion++;
         user.UpdatedAtUtc = DateTime.UtcNow;
         db.AuditLogs.Add(new AuditLog
         {
@@ -35,7 +36,7 @@ public sealed class AccountService(
             EntityType = "AppUser",
             EntityId = user.Id.ToString(),
             Action = "PASSWORD_CHANGE",
-            NewValueJson = JsonSerializer.Serialize(new { ChangedBy = currentUser.UserId, ChangedAtUtc = DateTime.UtcNow })
+            NewValueJson = JsonSerializer.Serialize(new { ChangedBy = currentUser.UserId, ChangedAtUtc = DateTime.UtcNow, user.TokenVersion })
         });
         await db.SaveChangesAsync(cancellationToken);
     }
