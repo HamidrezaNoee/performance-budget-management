@@ -84,7 +84,10 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculati
     }
     public async Task<Guid> UpsertFactAsync(UpsertBudgetFactRequest request, CancellationToken cancellationToken = default)
     {
-        var version = await db.BudgetVersions.Include(x => x.BudgetPlan).SingleAsync(x => x.Id == request.VersionId, cancellationToken); EnsureCompanyWrite(version.BudgetPlan!.CompanyId); if (version.IsLocked) throw new InvalidOperationException("Budget version is locked.");
+        var version = await db.BudgetVersions.Include(x => x.BudgetPlan).SingleAsync(x => x.Id == request.VersionId, cancellationToken);
+        EnsureCompanyWrite(version.BudgetPlan!.CompanyId);
+        if (version.IsLocked || version.Status != BudgetStatus.Draft)
+            throw new InvalidOperationException("Only an unlocked draft budget version can be changed.");
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleOrDefaultAsync(x => x.Id == request.PeriodId && x.FiscalYearId == version.BudgetPlan.FiscalYearId, cancellationToken) ?? throw new ArgumentException("Period does not belong to the budget plan fiscal year.");
         if (period.IsClosed || period.FiscalYear!.IsClosed) throw new InvalidOperationException("Fiscal period is closed and cannot be edited.");
         var measure = await db.Measures.SingleOrDefaultAsync(x => x.Id == request.MeasureId && x.BudgetModelId == version.BudgetPlan.BudgetModelId, cancellationToken) ?? throw new ArgumentException("Measure does not belong to the budget model.");
