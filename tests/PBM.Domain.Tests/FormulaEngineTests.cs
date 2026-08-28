@@ -28,4 +28,19 @@ public sealed class FormulaEngineTests
         var result = _engine.Evaluate("ROUND(MAX([A], [B]) / 3, 2)", new Dictionary<string, decimal> { ["A"] = 10, ["B"] = 20 });
         Assert.Equal(6.67m, result);
     }
+
+    [Fact]
+    public void Supports_explicit_assumption_variable_names()
+    {
+        var variables = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FOREIGN_COST"] = 1_250m,
+            ["ASSUMP:FX_USD"] = 620_000m,
+            ["ASSUMP:CUSTOMS_RATE"] = 0.05m
+        };
+
+        var result = _engine.Evaluate("[FOREIGN_COST] * [ASSUMP:FX_USD] * (1 + [ASSUMP:CUSTOMS_RATE])", variables);
+
+        Assert.Equal(813_750_000m, result);
+    }
 }
