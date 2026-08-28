@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using PBM.Domain;
 using PBM.Infrastructure;
 using Xunit;
@@ -47,5 +48,19 @@ public sealed class ActualLedgerModelTests
         Assert.Contains(dimension.GetForeignKeys(), x =>
             x.PrincipalEntityType.ClrType == typeof(ActualLedgerEntry)
             && x.Properties.Select(p => p.Name).SequenceEqual([nameof(ActualLedgerDimension.EntryId)]));
+    }
+
+    [Fact]
+    public void Ledger_amount_and_external_keys_use_financial_safe_storage_metadata()
+    {
+        using var db = CreateContext();
+        var entry = db.Model.FindEntityType(typeof(ActualLedgerEntry))!;
+
+        Assert.Equal("decimal(28,8)", entry.FindProperty(nameof(ActualLedgerEntry.Amount))!.GetColumnType());
+        Assert.Equal(80, entry.FindProperty(nameof(ActualLedgerEntry.SourceSystem))!.GetMaxLength());
+        Assert.Equal(160, entry.FindProperty(nameof(ActualLedgerEntry.ExternalDocumentId))!.GetMaxLength());
+        Assert.Equal(160, entry.FindProperty(nameof(ActualLedgerEntry.ExternalLineId))!.GetMaxLength());
+        Assert.Equal(64, entry.FindProperty(nameof(ActualLedgerEntry.PayloadHash))!.GetMaxLength());
+        Assert.Equal(128, entry.FindProperty(nameof(ActualLedgerEntry.CoordinateHash))!.GetMaxLength());
     }
 }
