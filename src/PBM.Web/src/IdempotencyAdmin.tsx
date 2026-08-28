@@ -105,7 +105,7 @@ export default function IdempotencyAdmin({ roles }: { roles: string[] }) {
       <Typography variant="h6" fontWeight={900}>تطبیق عملیات Idempotent و Retryهای مبهم</Typography>
       <Typography color="text.secondary" mt={.5}>اگر یک Write مالی بعد از دریافت Idempotency-Key با Exception یا قطع ارتباط در وضعیت نامطمئن بماند، PBM آن Key را خودکار آزاد نمی‌کند. ابتدا اثر واقعی در بودجه/ERP/سند مالی بررسی می‌شود و سپس مدیر تصمیم می‌گیرد.</Typography>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2} alignItems={{ md: 'center' }}>
-        <FormControl size="small" sx={{ minWidth: 210 }}><InputLabel>وضعیت</InputLabel><Select label="وضعیت" value={status} onChange={e => setStatus(e.target.value === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((x, index) => <MenuItem key={x.label} value={index}>{x.label}</MenuItem>)}</Select></FormControl>
+        <FormControl size="small" sx={{ minWidth: 210 }}><InputLabel>وضعیت</InputLabel><Select label="وضعیت" value={status} onChange={e => setStatus(String(e.target.value) === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((x, index) => <MenuItem key={x.label} value={index}>{x.label}</MenuItem>)}</Select></FormControl>
         <Button variant="outlined" onClick={reload} disabled={busy}>به‌روزرسانی</Button>
         {canCleanup && <Button variant="text" onClick={cleanup} disabled={busy}>پاکسازی Completedهای منقضی</Button>}
         <Chip label={`Uncertain قابل مشاهده: ${uncertainCount.toLocaleString('fa-IR')}`} color={uncertainCount > 0 ? 'error' : 'success'} variant="outlined" />

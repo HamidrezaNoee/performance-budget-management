@@ -204,7 +204,7 @@ export default function ActualLedgerWorkspace({
         </TableRow>)}
         {!entries.length && !busy && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5 }}>برای فیلتر انتخاب‌شده ردیف Ledger وجود ندارد.</TableCell></TableRow>}
       </TableBody></Table></TableContainer>
-    </Card>
+    </CardContent></Card>
 
     <Card elevation={0}><CardContent sx={{ p: 0 }}>
       <Box p={2.5}><Typography variant="h6" fontWeight={900}>Reconciliation Ledger ↔ BudgetFact.Actual</Typography><Typography variant="caption" color="text.secondary">مقدار Ledger از Posting + Reversal محاسبه و با Projection عملیاتی مقایسه می‌شود.</Typography></Box>
@@ -215,7 +215,7 @@ export default function ActualLedgerWorkspace({
         })}
         {!reconciliation.length && !busy && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5 }}>Coordinate مدیریت‌شده توسط Actual Ledger وجود ندارد.</TableCell></TableRow>}
       </TableBody></Table></TableContainer>
-    </Card>
+    </CardContent></Card>
 
     <Dialog open={!!reverseEntry} onClose={() => !busy && setReverseEntry(null)} fullWidth maxWidth="sm">
       <DialogTitle>ثبت Reversal سند Actual</DialogTitle><DialogContent><Stack spacing={1.5} mt={1}>{reverseEntry && <Alert severity="warning">این عملیات ردیف اصلی را حذف یا ویرایش نمی‌کند؛ یک ردیف Reversal با مبلغ معکوس ایجاد می‌شود. Reversal روی دوره مالی بسته مجاز نیست.</Alert>}<TextField multiline minRows={4} label="علت Reversal *" value={reversalReason} onChange={e => setReversalReason(e.target.value)} helperText="حداقل ۵ کاراکتر؛ در Audit Trail ثبت می‌شود." /></Stack></DialogContent>

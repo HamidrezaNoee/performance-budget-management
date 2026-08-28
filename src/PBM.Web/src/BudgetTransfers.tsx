@@ -223,7 +223,7 @@ export default function BudgetTransfers({ companyId, fiscalYearId, roles }: { co
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2}>
         <Box><Typography variant="h6" fontWeight={900}>جابجایی و بازتخصیص بودجه</Typography><Typography color="text.secondary">جابجایی فقط از بودجه قابل‌مصرف مبدأ انجام می‌شود؛ در تأیید نهایی مبلغ کل بودجه ثابت می‌ماند و تنها بین دوره/مختصات جابه‌جا می‌شود.</Typography></Box>
         <Stack direction="row" spacing={1}>
-          <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>وضعیت</InputLabel><Select value={statusFilter} label="وضعیت" onChange={e => setStatusFilter(e.target.value === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((item, index) => <MenuItem key={item.label} value={index}>{item.label}</MenuItem>)}</Select></FormControl>
+          <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>وضعیت</InputLabel><Select value={statusFilter} label="وضعیت" onChange={e => setStatusFilter(String(e.target.value) === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((item, index) => <MenuItem key={item.label} value={index}>{item.label}</MenuItem>)}</Select></FormControl>
           <Button variant="outlined" onClick={reloadTransfers} disabled={loading}>به‌روزرسانی</Button>
           <Button variant="contained" onClick={() => setDialogOpen(true)} disabled={operationalVersions.length === 0}>درخواست جابجایی</Button>
         </Stack>

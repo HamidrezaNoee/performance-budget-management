@@ -109,12 +109,12 @@ export default function DriverTemplatesAdmin({ companyId, canManage }: { company
       <Card elevation={0}><CardContent sx={{ p: 0 }}>
         <Box p={2.5}><Typography variant="h6" fontWeight={900}>Assumptionهای موردنیاز</Typography></Box>
         <TableContainer><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>عنوان</TableCell><TableCell>واحد</TableCell><TableCell>شرح</TableCell></TableRow></TableHead><TableBody>{selectedTemplate.assumptions.map(x => <TableRow key={x.code}><TableCell sx={{ direction: 'ltr', fontFamily: 'monospace' }}>{x.code}</TableCell><TableCell>{x.name}</TableCell><TableCell>{x.unit ?? '-'}</TableCell><TableCell>{x.description}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
-      </Card>
+      </CardContent></Card>
 
       <Card elevation={0}><CardContent sx={{ p: 0 }}>
         <Box p={2.5}><Typography variant="h6" fontWeight={900}>Measure و Formulaها</Typography></Box>
         <TableContainer><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>عنوان</TableCell><TableCell>نوع</TableCell><TableCell>Aggregation</TableCell><TableCell>Formula</TableCell></TableRow></TableHead><TableBody>{selectedTemplate.measures.map(x => <TableRow key={x.code}><TableCell sx={{ direction: 'ltr', fontFamily: 'monospace' }}>{x.code}</TableCell><TableCell>{x.name}</TableCell><TableCell>{valueTypeLabels[x.valueType] ?? x.valueType}</TableCell><TableCell>{aggregationLabels[x.aggregation] ?? x.aggregation}</TableCell><TableCell sx={{ direction: 'ltr', fontFamily: 'monospace', fontSize: 12 }}>{x.formulaExpression ?? 'Manual input'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
-      </Card>
+      </CardContent></Card>
     </>}
 
     {result && <Card elevation={0}><CardContent>

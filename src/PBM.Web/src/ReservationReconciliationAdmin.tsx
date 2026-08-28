@@ -97,7 +97,7 @@ export default function ReservationReconciliationAdmin({ companyId }: { companyI
         <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>سال مالی</InputLabel><Select label="سال مالی" value={fiscalYearId} onChange={e => setFiscalYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
         <TextField size="small" type="number" label="مهلت ثبت Actual (روز)" value={graceDays} onChange={e => setGraceDays(Math.max(0, Math.min(365, Number(e.target.value))))} inputProps={{ min: 0, max: 365 }} />
         <TextField size="small" type="number" label="Tolerance %" value={tolerancePercent} onChange={e => setTolerancePercent(Math.max(0, Math.min(100, Number(e.target.value))))} inputProps={{ min: 0, max: 100, step: .1 }} />
-        <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>وضعیت تطبیق</InputLabel><Select label="وضعیت تطبیق" value={statusFilter} onChange={e => setStatusFilter(e.target.value === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((x, index) => <MenuItem key={x.label} value={index}>{x.label}</MenuItem>)}</Select></FormControl>
+        <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>وضعیت تطبیق</InputLabel><Select label="وضعیت تطبیق" value={statusFilter} onChange={e => setStatusFilter(String(e.target.value) === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((x, index) => <MenuItem key={x.label} value={index}>{x.label}</MenuItem>)}</Select></FormControl>
         <Button variant="outlined" onClick={reload} disabled={busy}>بازمحاسبه کنترل</Button>
       </Stack>
     </CardContent></Card>
@@ -117,7 +117,7 @@ export default function ReservationReconciliationAdmin({ companyId }: { companyI
 
       <Card elevation={0}><CardContent sx={{ p: 0 }}>
         <TableContainer><Table size="small"><TableHead><TableRow><TableCell>ارز</TableCell><TableCell>مختصات</TableCell><TableCell>تطبیق‌شده</TableCell><TableCell>باز</TableCell><TableCell align="left">Consumed</TableCell><TableCell align="left">Actual</TableCell><TableCell align="left">Variance</TableCell></TableRow></TableHead><TableBody>{summary.currencies.map(x => <TableRow key={x.currencyCode}><TableCell>{x.currencyCode}</TableCell><TableCell>{number.format(x.coordinateCount)}</TableCell><TableCell>{number.format(x.reconciledCount)}</TableCell><TableCell>{number.format(x.openIssueCount)}</TableCell><TableCell align="left">{number.format(x.consumedAmount)}</TableCell><TableCell align="left">{number.format(x.actualAmount)}</TableCell><TableCell align="left">{number.format(x.variance)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
-      </Card>
+      </CardContent></Card>
 
       <Card elevation={0}><CardContent sx={{ p: 0 }}>
         <TableContainer sx={{ maxHeight: '62vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>دوره / Measure</TableCell><TableCell>رزروها / مرجع</TableCell><TableCell>وضعیت</TableCell><TableCell align="left">Consumed</TableCell><TableCell align="left">Actual</TableCell><TableCell align="left">Variance</TableCell><TableCell>سن مصرف</TableCell><TableCell>منبع Actual</TableCell></TableRow></TableHead><TableBody>
@@ -136,7 +136,7 @@ export default function ReservationReconciliationAdmin({ companyId }: { companyI
           })}
           {!items.length && <TableRow><TableCell colSpan={8} align="center" sx={{ py: 6 }}>موردی با فیلتر انتخاب‌شده وجود ندارد.</TableCell></TableRow>}
         </TableBody></Table></TableContainer>
-      </Card>
+      </CardContent></Card>
     </>}
   </Stack>
 }

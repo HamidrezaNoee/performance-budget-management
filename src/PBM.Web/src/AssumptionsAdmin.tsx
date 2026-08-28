@@ -242,6 +242,6 @@ export default function AssumptionsAdmin({ companyId, canManage }: { companyId: 
         })}
         {!definitions.length && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 6 }}><Typography fontWeight={800}>هنوز Driver تعریف نشده است.</Typography></TableCell></TableRow>}
       </TableBody></Table></TableContainer>
-    </Card>
+    </CardContent></Card>
   </Stack>
 }

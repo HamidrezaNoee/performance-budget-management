@@ -216,7 +216,7 @@ export default function BudgetReservations({ companyId, fiscalYearId, roles }: {
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2}>
         <Box><Typography variant="h6" fontWeight={900}>رزرو بودجه و مدیریت تعهدات</Typography><Typography color="text.secondary">قبل از ایجاد تعهد، مانده بودجه کنترل می‌شود و تأیید رزرو مستقیماً در Commitment بودجه منعکس خواهد شد.</Typography></Box>
         <Stack direction="row" spacing={1}>
-          <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>وضعیت</InputLabel><Select value={statusFilter} label="وضعیت" onChange={e => setStatusFilter(e.target.value === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((item, index) => <MenuItem key={item.label} value={index}>{item.label}</MenuItem>)}</Select></FormControl>
+          <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>وضعیت</InputLabel><Select value={statusFilter} label="وضعیت" onChange={e => setStatusFilter(String(e.target.value) === '' ? '' : Number(e.target.value))}><MenuItem value="">همه</MenuItem>{statusMeta.map((item, index) => <MenuItem key={item.label} value={index}>{item.label}</MenuItem>)}</Select></FormControl>
           <Button variant="outlined" onClick={reloadReservations} disabled={loading}>به‌روزرسانی</Button>
           <Button variant="contained" onClick={() => setDialogOpen(true)} disabled={operationalVersions.length === 0}>درخواست رزرو</Button>
         </Stack>
