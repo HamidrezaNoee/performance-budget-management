@@ -31,6 +31,7 @@ public sealed class CapexProject : Entity
     public CapexPriority Priority { get; set; } = CapexPriority.Normal;
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
+    public decimal? RequestedBudget { get; set; }
     public decimal? ApprovedBudgetLimit { get; set; }
     public string CurrencyCode { get; set; } = "IRR";
     public Guid? OwnerOrganizationUnitId { get; set; }
