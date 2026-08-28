@@ -66,7 +66,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetTransfer>().HasIndex(x => new { x.CompanyId, x.TransferNo }).IsUnique();
         modelBuilder.Entity<BudgetTransfer>().HasIndex(x => new { x.VersionId, x.Status, x.CreatedAtUtc });
         modelBuilder.Entity<AssumptionDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
-        modelBuilder.Entity<AssumptionValue>().HasIndex(x => new { x.DefinitionId, x.CompanyId, x.FiscalYearId, x.ScenarioId, x.PeriodId }).IsUnique();
+        modelBuilder.Entity<AssumptionValue>().HasIndex(x => new { x.DefinitionId, x.CompanyId, x.FiscalYearId, x.ScopeKey }).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAtUtc });
@@ -111,6 +111,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Name).HasMaxLength(200);
         modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Unit).HasMaxLength(50);
         modelBuilder.Entity<AssumptionDefinition>().Property(x => x.Description).HasMaxLength(1000);
+        modelBuilder.Entity<AssumptionValue>().Property(x => x.ScopeKey).HasMaxLength(80);
         modelBuilder.Entity<AssumptionValue>().Property(x => x.Value).HasPrecision(28, 8);
         modelBuilder.Entity<AssumptionValue>().Property(x => x.Source).HasMaxLength(200);
         modelBuilder.Entity<AssumptionValue>().Property(x => x.Note).HasMaxLength(1000);
