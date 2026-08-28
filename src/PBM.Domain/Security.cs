@@ -25,6 +25,7 @@ public sealed class AppUser : Entity
     public ICollection<UserRole> UserRoles { get; set; } = [];
     public ICollection<UserCompanyAccess> CompanyAccess { get; set; } = [];
     public ICollection<IdempotencyRecord> IdempotencyRecords { get; set; } = [];
+    public ICollection<ActualLedgerEntry> ActualLedgerEntries { get; set; } = [];
 }
 
 public sealed class Role : Entity
