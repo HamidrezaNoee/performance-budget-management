@@ -35,6 +35,7 @@ public sealed class PerformanceBudgetingService(
         var today = DateTime.UtcNow.Date;
         var elapsedPeriods = periods.Where(x => x.StartDate.Date <= today || x.IsClosed).ToList();
         var elapsedPeriodIds = elapsedPeriods.Select(x => x.Id).ToHashSet();
+        var elapsedPeriodIdArray = elapsedPeriodIds.ToArray();
 
         var measures = await db.Measures.AsNoTracking()
             .Where(x => x.BudgetModelId == plan.BudgetModelId && x.ValueType == MeasureValueType.Amount)
@@ -98,22 +99,27 @@ public sealed class PerformanceBudgetingService(
             .OrderBy(x => x.Code)
             .ToListAsync(cancellationToken);
         var definitionIds = definitions.Select(x => x.Id).ToArray();
-        var values = definitionIds.Length == 0
-            ? []
-            : await db.KpiValues.AsNoTracking()
+        List<KpiValue> values;
+        if (definitionIds.Length == 0 || elapsedPeriodIdArray.Length == 0)
+        {
+            values = [];
+        }
+        else
+        {
+            values = await db.KpiValues.AsNoTracking()
                 .Include(x => x.Period)
                 .Where(x => definitionIds.Contains(x.KpiId)
                     && x.CompanyId == company.Id
-                    && x.Period!.FiscalYearId == fiscalYear.Id
-                    && (x.Period.StartDate <= today || x.Period.IsClosed))
+                    && elapsedPeriodIdArray.Contains(x.PeriodId))
                 .ToListAsync(cancellationToken);
+        }
 
         var components = new List<PerformanceKpiComponentDto>();
         foreach (var definition in definitions)
         {
             var observations = values
                 .Where(x => x.KpiId == definition.Id)
-                .OrderBy(x => x.Period!.Sequence)
+                .OrderBy(x => x.Period?.Sequence ?? int.MaxValue)
                 .ToList();
             if (observations.Count == 0) continue;
 
