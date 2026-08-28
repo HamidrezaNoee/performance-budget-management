@@ -13,6 +13,7 @@ public sealed class Tenant : Entity
     public required string Name { get; set; }
     public bool IsActive { get; set; } = true;
     public ICollection<Company> Companies { get; set; } = [];
+    public ICollection<OutboxMessage> OutboxMessages { get; set; } = [];
 }
 
 public sealed class Company : Entity
