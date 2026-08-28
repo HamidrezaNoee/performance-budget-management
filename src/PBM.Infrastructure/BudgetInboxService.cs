@@ -52,26 +52,27 @@ public sealed class BudgetInboxService(PbmDbContext db, IUserContext user) : IBu
             x.Status,
             x.IsLocked,
             x.UpdatedAtUtc,
-            CanStartReview(x.Status),
-            CanApprove(x.Status),
-            CanReturn(x.Status),
-            CanReject(x.Status))).ToList();
+            CanStartReview(x.Status, x.CompanyId),
+            CanApprove(x.Status, x.CompanyId),
+            CanReturn(x.Status, x.CompanyId),
+            CanReject(x.Status, x.CompanyId))).ToList();
     }
 
     private bool IsAdmin => user.IsInRole("SUPERADMIN") || user.IsInRole("ADMIN");
     private bool IsReviewManager => IsAdmin || user.IsInRole("BUDGET_MANAGER") || user.IsInRole("CFO");
     private bool IsSeniorReviewer => IsReviewManager || user.IsInRole("CEO");
     private bool IsApprover => IsAdmin || user.IsInRole("CFO") || user.IsInRole("CEO");
+    private bool CanWrite(Guid companyId) => user.IsInRole("SUPERADMIN") || user.CanWriteCompany(companyId);
 
-    private bool CanStartReview(BudgetStatus status) => status == BudgetStatus.Submitted && IsReviewManager;
-    private bool CanApprove(BudgetStatus status) => status == BudgetStatus.UnderReview && IsApprover;
-    private bool CanReturn(BudgetStatus status) => status switch
+    private bool CanStartReview(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.Submitted && IsReviewManager;
+    private bool CanApprove(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.UnderReview && IsApprover;
+    private bool CanReturn(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status switch
     {
         BudgetStatus.Submitted => IsReviewManager,
         BudgetStatus.UnderReview => IsSeniorReviewer,
         _ => false
     };
-    private bool CanReject(BudgetStatus status) => CanReturn(status);
+    private bool CanReject(BudgetStatus status, Guid companyId) => CanReturn(status, companyId);
 
     private void EnsureCompanyRead(Guid companyId)
     {
