@@ -5,6 +5,7 @@ import {
   Stack, TextField, Toolbar, Typography
 } from '@mui/material'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
+import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
 import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded'
@@ -15,6 +16,7 @@ import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, setAccessToken } from './api'
+import BudgetInbox from './BudgetInbox'
 import BudgetPlanning from './BudgetPlanning'
 import WorkbookImport from './WorkbookImport'
 import KpiPerformance from './KpiPerformance'
@@ -132,13 +134,14 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const canWriteCompany = roleSet.has('SUPERADMIN') || writableCompanyIds.includes(companyId)
   const menu = [
-    ['داشبورد', <DashboardRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
-    ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />], ['عملکرد و KPI', <InsightsRoundedIcon />],
-    ['تحلیل انحراف', <DifferenceRoundedIcon />], ['پیش‌بینی', <AutoGraphRoundedIcon />],
-    ['گزارش‌ها', <AssessmentRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
+    ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />],
+    ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />], ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />],
+    ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />],
+    ['پیش‌بینی', <AutoGraphRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
+    ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
-  const titles = ['داشبورد مدیریت بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
-  const writeSensitiveView = activeView === 1 || activeView === 2 || activeView === 3
+  const titles = ['داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
+  const writeSensitiveView = activeView >= 1 && activeView <= 4
 
   return <Box sx={{ display: 'flex', minHeight: '100vh' }}>
     <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
@@ -160,15 +163,16 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         </Stack>
       </Stack>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت و تغییر از سمت سرور نیز مسدود شده است.</Alert>}
+      {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت، بررسی و تغییر از سمت سرور نیز مطابق سطح دسترسی محدود می‌شود.</Alert>}
       {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
-      {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 4 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 5 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 7 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+      {activeView === 1 && companyId && <BudgetInbox companyId={companyId} />}
+      {activeView === 2 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 3 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 4 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 5 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 6 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 7 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 8 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
     </Container></Box>
   </Box>
 }
