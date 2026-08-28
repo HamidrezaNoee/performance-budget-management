@@ -38,7 +38,7 @@ public sealed class ActualLedgerEntry : Entity
     public ICollection<ActualLedgerDimension> Dimensions { get; set; } = [];
 }
 
-public sealed class ActualLedgerDimension
+public sealed class ActualLedgerDimension : Entity
 {
     public Guid EntryId { get; set; }
     public Guid DimensionId { get; set; }
