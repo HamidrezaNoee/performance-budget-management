@@ -65,7 +65,14 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
         source.BudgetPlan.Status = BudgetStatus.Revised;
         source.BudgetPlan.UpdatedAtUtc = DateTime.UtcNow;
         db.BudgetVersions.Add(revision);
-        AddAudit("BudgetVersion", revision.Id, "CREATE_REVISION", null, new { SourceVersionId = source.Id, source.VersionNumber, revision.VersionNumber, revision.Name, CopiedFacts = source.Facts.Count });
+        AddAudit("BudgetVersion", revision.Id, "CREATE_REVISION", null, new
+        {
+            SourceVersionId = source.Id,
+            SourceVersionNumber = source.VersionNumber,
+            RevisionVersionNumber = revision.VersionNumber,
+            RevisionName = revision.Name,
+            CopiedFacts = source.Facts.Count
+        });
         await db.SaveChangesAsync(cancellationToken);
 
         return ToDto(revision);
