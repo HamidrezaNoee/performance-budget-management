@@ -16,7 +16,7 @@ import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { api, setAccessToken } from './api'
+import { api, clearClientSession, setAccessToken } from './api'
 import BudgetInbox from './BudgetInbox'
 import BudgetPlanning from './BudgetPlanning'
 import WorkbookImport from './WorkbookImport'
@@ -26,6 +26,7 @@ import Forecasting from './Forecasting'
 import FinancialReports from './FinancialReports'
 import ReferenceAdmin from './ReferenceAdmin'
 import ChangePasswordDialog from './ChangePasswordDialog'
+import NotificationCenter from './NotificationCenter'
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
 type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
@@ -58,8 +59,8 @@ export default function App() {
   useEffect(() => { setAccessToken(token) }, [token])
 
   const logout = () => {
-    localStorage.removeItem('pbm_token'); localStorage.removeItem('pbm_display_name'); localStorage.removeItem('pbm_roles'); localStorage.removeItem('pbm_writable_company_ids')
-    setAccessToken(null); setToken(null); setDisplayName(''); setRoles([]); setWritableCompanyIds([])
+    clearClientSession()
+    setToken(null); setDisplayName(''); setRoles([]); setWritableCompanyIds([])
   }
 
   if (!token) return <Login onLoggedIn={response => {
@@ -149,7 +150,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   return <>
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
-        <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
+        <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><NotificationCenter /><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
       </AppBar>
       <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
         <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
