@@ -84,13 +84,14 @@ public static class PlanningSeedData
         foreach (var code in new[] { "COSTTYPE", "PROGRAM", "ACTIVITY", "PROJECT" })
         {
             if (!dimensions.TryGetValue(code, out var dimension) || attached.Contains(dimension.Id)) continue;
-            expense.Dimensions.Add(new BudgetModelDimension
+            db.BudgetModelDimensions.Add(new BudgetModelDimension
             {
                 BudgetModelId = expense.Id,
                 DimensionId = dimension.Id,
                 Sequence = nextSequence++,
                 IsRequired = false
             });
+            attached.Add(dimension.Id);
         }
     }
 
@@ -117,7 +118,7 @@ public static class PlanningSeedData
         void Add(string code, string name, string unit, MeasureValueType valueType, MeasureAggregation aggregation = MeasureAggregation.Sum, string? formula = null)
         {
             if (existing.Contains(code)) return;
-            trade.Measures.Add(new MeasureDefinition
+            db.Measures.Add(new MeasureDefinition
             {
                 BudgetModelId = trade.Id,
                 Code = code,
@@ -141,36 +142,37 @@ public static class PlanningSeedData
 
         if (models.TryGetValue("EXPENSE", out var expense))
         {
-            AddMeasure(expense, "DRIVER_VOLUME", "مقدار محرک بودجه", "واحد", MeasureValueType.Quantity);
-            AddMeasure(expense, "DRIVER_RATE", "نرخ هر واحد محرک", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
-            AddMeasure(expense, "DRIVER_BUDGET_AMOUNT", "بودجه مبتنی بر محرک", "ریال", MeasureValueType.Amount,
+            AddMeasure(db, expense, "DRIVER_VOLUME", "مقدار محرک بودجه", "واحد", MeasureValueType.Quantity);
+            AddMeasure(db, expense, "DRIVER_RATE", "نرخ هر واحد محرک", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
+            AddMeasure(db, expense, "DRIVER_BUDGET_AMOUNT", "بودجه مبتنی بر محرک", "ریال", MeasureValueType.Amount,
                 formula: "[DRIVER_VOLUME] * [DRIVER_RATE]");
         }
 
         if (models.TryGetValue("HR", out var hr))
         {
-            AddMeasure(hr, "AVERAGE_HEADCOUNT", "متوسط تعداد نیروی انسانی", "نفر", MeasureValueType.Quantity, MeasureAggregation.Average,
+            AddMeasure(db, hr, "AVERAGE_HEADCOUNT", "متوسط تعداد نیروی انسانی", "نفر", MeasureValueType.Quantity, MeasureAggregation.Average,
                 "([OPENING_HEADCOUNT] + [CLOSING_HEADCOUNT]) / 2");
-            AddMeasure(hr, "AVG_COST_PER_EMPLOYEE", "متوسط هزینه هر نفر", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
-            AddMeasure(hr, "PERSONNEL_COST", "بودجه هزینه پرسنلی", "ریال", MeasureValueType.Amount,
+            AddMeasure(db, hr, "AVG_COST_PER_EMPLOYEE", "متوسط هزینه هر نفر", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
+            AddMeasure(db, hr, "PERSONNEL_COST", "بودجه هزینه پرسنلی", "ریال", MeasureValueType.Amount,
                 formula: "[AVERAGE_HEADCOUNT] * [AVG_COST_PER_EMPLOYEE]");
         }
 
         if (models.TryGetValue("FINANCE", out var finance))
         {
-            AddMeasure(finance, "OPENING_DEBT", "مانده تسهیلات ابتدای دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
-            AddMeasure(finance, "DRAWDOWN", "دریافت تسهیلات", "ریال", MeasureValueType.Amount);
-            AddMeasure(finance, "PRINCIPAL_REPAYMENT", "بازپرداخت اصل", "ریال", MeasureValueType.Amount);
-            AddMeasure(finance, "CLOSING_DEBT", "مانده تسهیلات پایان دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty,
+            AddMeasure(db, finance, "OPENING_DEBT", "مانده تسهیلات ابتدای دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
+            AddMeasure(db, finance, "DRAWDOWN", "دریافت تسهیلات", "ریال", MeasureValueType.Amount);
+            AddMeasure(db, finance, "PRINCIPAL_REPAYMENT", "بازپرداخت اصل", "ریال", MeasureValueType.Amount);
+            AddMeasure(db, finance, "CLOSING_DEBT", "مانده تسهیلات پایان دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty,
                 "[OPENING_DEBT] + [DRAWDOWN] - [PRINCIPAL_REPAYMENT]");
-            AddMeasure(finance, "AVERAGE_DEBT", "متوسط مانده تسهیلات", "ریال", MeasureValueType.Amount, MeasureAggregation.Average,
+            AddMeasure(db, finance, "AVERAGE_DEBT", "متوسط مانده تسهیلات", "ریال", MeasureValueType.Amount, MeasureAggregation.Average,
                 "([OPENING_DEBT] + [CLOSING_DEBT]) / 2");
-            AddMeasure(finance, "INTEREST_EXPENSE", "هزینه سود ماهانه", "ریال", MeasureValueType.Amount,
+            AddMeasure(db, finance, "INTEREST_EXPENSE", "هزینه سود ماهانه", "ریال", MeasureValueType.Amount,
                 formula: "[AVERAGE_DEBT] * [FINANCE_RATE] / 1200");
         }
     }
 
     private static void AddMeasure(
+        PbmDbContext db,
         BudgetModel model,
         string code,
         string name,
@@ -181,7 +183,7 @@ public static class PlanningSeedData
     {
         if (model.Measures.Any(x => x.Code.Equals(code, StringComparison.OrdinalIgnoreCase))) return;
         var order = model.Measures.Count == 0 ? 1 : model.Measures.Max(x => x.DisplayOrder) + 1;
-        model.Measures.Add(new MeasureDefinition
+        var measure = new MeasureDefinition
         {
             BudgetModelId = model.Id,
             Code = code,
@@ -192,12 +194,16 @@ public static class PlanningSeedData
             IsCalculated = formula is not null,
             FormulaExpression = formula,
             DisplayOrder = order
-        });
+        };
+        db.Measures.Add(measure);
+        model.Measures.Add(measure);
     }
 
     private static async Task EnsureMemberAsync(PbmDbContext db, DimensionDefinition dimension, string code, string name, CancellationToken ct)
     {
         if (await db.DimensionMembers.AnyAsync(x => x.DimensionId == dimension.Id && x.CompanyId == null && x.Code == code, ct)) return;
-        dimension.Members.Add(new DimensionMember { DimensionId = dimension.Id, Code = code, Name = name });
+        var member = new DimensionMember { DimensionId = dimension.Id, Code = code, Name = name };
+        db.DimensionMembers.Add(member);
+        dimension.Members.Add(member);
     }
 }
