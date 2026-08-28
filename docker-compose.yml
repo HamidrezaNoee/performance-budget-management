@@ -24,12 +24,16 @@ services:
       Jwt__Key: "${PBM_JWT_KEY:?Set PBM_JWT_KEY in .env}"
       Jwt__Issuer: PBM
       Jwt__Audience: PBM.Web
+      Database__AutoMigrate: "false"
+      Database__AllowEnsureCreated: "true"
       Bootstrap__UseDemoSeed: "true"
       Bootstrap__ProvisionInitialTenant: "false"
       BootstrapAdmin__UserName: "admin"
       BootstrapAdmin__DisplayName: "مدیر کل سامانه"
       BootstrapAdmin__Password: "${PBM_BOOTSTRAP_ADMIN_PASSWORD:?Set PBM_BOOTSTRAP_ADMIN_PASSWORD in .env}"
       Cors__AllowedOrigins__0: "http://localhost:3000"
+      RateLimiting__Login__PermitLimit: "10"
+      RateLimiting__Login__WindowSeconds: "60"
     depends_on:
       db:
         condition: service_healthy
