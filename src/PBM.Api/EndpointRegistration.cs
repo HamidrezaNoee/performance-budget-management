@@ -26,6 +26,7 @@ public static class EndpointRegistration
         api.MapActualLedgerEndpoints();
         api.MapIntegrationCredentialEndpoints();
         api.MapOutboxAdminEndpoints();
+        api.MapSystemInfoEndpoints();
         api.MapAssumptionEndpoints();
         api.MapFormulaAdminEndpoints();
         api.MapDriverTemplateEndpoints();
