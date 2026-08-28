@@ -17,7 +17,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
 
     public async Task<IReadOnlyList<FiscalYearDetailsDto>> GetYearsAsync(Guid companyId, CancellationToken cancellationToken = default)
     {
-        await EnsureCompanyAsync(companyId, cancellationToken);
+        await EnsureCompanyAsync(companyId, false, cancellationToken);
         var years = await db.FiscalYears.AsNoTracking().Include(x => x.Periods)
             .Where(x => x.CompanyId == companyId)
             .OrderByDescending(x => x.StartDate)
@@ -27,7 +27,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
 
     public async Task<FiscalYearDetailsDto> CreateYearAsync(CreateFiscalYearRequest request, CancellationToken cancellationToken = default)
     {
-        await EnsureCompanyAsync(request.CompanyId, cancellationToken);
+        await EnsureCompanyAsync(request.CompanyId, true, cancellationToken);
         ValidateYearRequest(request);
         var code = request.Code.Trim();
         if (await db.FiscalYears.AnyAsync(x => x.CompanyId == request.CompanyId && x.Code == code, cancellationToken))
@@ -85,7 +85,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
     public async Task<FiscalPeriodDto> AddPeriodAsync(Guid fiscalYearId, CreateFiscalPeriodRequest request, CancellationToken cancellationToken = default)
     {
         var fiscalYear = await db.FiscalYears.Include(x => x.Periods).SingleAsync(x => x.Id == fiscalYearId, cancellationToken);
-        await EnsureCompanyAsync(fiscalYear.CompanyId, cancellationToken);
+        await EnsureCompanyAsync(fiscalYear.CompanyId, true, cancellationToken);
         if (fiscalYear.IsClosed) throw new InvalidOperationException("سال مالی بسته است و امکان افزودن دوره وجود ندارد.");
         if (request.Sequence <= 0) throw new ArgumentException("Sequence must be greater than zero.");
         if (request.JalaliMonth is < 1 or > 12) throw new ArgumentException("Jalali month must be between 1 and 12.");
@@ -117,7 +117,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
     public async Task<FiscalPeriodDto> SetPeriodClosedAsync(Guid periodId, bool isClosed, CancellationToken cancellationToken = default)
     {
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleAsync(x => x.Id == periodId, cancellationToken);
-        await EnsureCompanyAsync(period.FiscalYear!.CompanyId, cancellationToken);
+        await EnsureCompanyAsync(period.FiscalYear!.CompanyId, true, cancellationToken);
         var oldValue = period.IsClosed;
         period.IsClosed = isClosed;
         period.UpdatedAtUtc = DateTime.UtcNow;
@@ -129,7 +129,7 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
     public async Task<FiscalYearDetailsDto> SetYearClosedAsync(Guid fiscalYearId, bool isClosed, CancellationToken cancellationToken = default)
     {
         var fiscalYear = await db.FiscalYears.Include(x => x.Periods).SingleAsync(x => x.Id == fiscalYearId, cancellationToken);
-        await EnsureCompanyAsync(fiscalYear.CompanyId, cancellationToken);
+        await EnsureCompanyAsync(fiscalYear.CompanyId, true, cancellationToken);
         var oldValue = fiscalYear.IsClosed;
         fiscalYear.IsClosed = isClosed;
         fiscalYear.UpdatedAtUtc = DateTime.UtcNow;
@@ -143,11 +143,13 @@ public sealed class FiscalCalendarService(PbmDbContext db, IUserContext user) : 
         return ToDto(fiscalYear);
     }
 
-    private async Task EnsureCompanyAsync(Guid companyId, CancellationToken cancellationToken)
+    private async Task EnsureCompanyAsync(Guid companyId, bool write, CancellationToken cancellationToken)
     {
         var exists = await db.Companies.AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive, cancellationToken);
         if (!exists) throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        if (user.IsInRole("SUPERADMIN")) return;
+        if (!user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        if (write && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private static void ValidateYearRequest(CreateFiscalYearRequest request)
