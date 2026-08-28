@@ -9,6 +9,12 @@ public static class CapexEndpoints
     {
         var capex = api.MapGroup("/capex");
 
+        capex.MapGet("/owner-units", (
+            Guid companyId,
+            ICapexService service,
+            CancellationToken ct) =>
+            service.GetOwnerUnitsAsync(companyId, ct));
+
         capex.MapGet("/projects", (
             Guid companyId,
             CapexProjectStatus? status,
