@@ -3,7 +3,7 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "${PBM_SA_PASSWORD:-Your_password123!}"
+      MSSQL_SA_PASSWORD: "${PBM_SA_PASSWORD:?Set PBM_SA_PASSWORD in .env}"
     ports:
       - "1433:1433"
     volumes:
@@ -20,10 +20,12 @@ services:
       dockerfile: src/PBM.Api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__PbmDatabase: "Server=db,1433;Database=PerformanceBudgetManagement;User Id=sa;Password=${PBM_SA_PASSWORD:-Your_password123!};TrustServerCertificate=True;Encrypt=False"
-      Jwt__Key: "${PBM_JWT_KEY:-DEV-ONLY-CHANGE-ME-THIS-KEY-MUST-BE-AT-LEAST-32-CHARS}"
+      ConnectionStrings__PbmDatabase: "Server=db,1433;Database=PerformanceBudgetManagement;User Id=sa;Password=${PBM_SA_PASSWORD:?Set PBM_SA_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False"
+      Jwt__Key: "${PBM_JWT_KEY:?Set PBM_JWT_KEY in .env}"
       Jwt__Issuer: PBM
       Jwt__Audience: PBM.Web
+      BootstrapAdmin__Password: "${PBM_BOOTSTRAP_ADMIN_PASSWORD:?Set PBM_BOOTSTRAP_ADMIN_PASSWORD in .env}"
+      Cors__AllowedOrigins__0: "http://localhost:3000"
     depends_on:
       db:
         condition: service_healthy
