@@ -78,7 +78,10 @@ export default function CashPlanning({
 
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const selectedVersion = useMemo(() => setup?.versions.find(x => x.id === versionId), [setup, versionId])
-  const canEdit = canWrite && !!selectedVersion && selectedVersion.status === 0 && !selectedVersion.isLocked
+  const canPlanEdit = canWrite && !!selectedVersion && selectedVersion.status === 0 && !selectedVersion.isLocked
+  const canExecutionEdit = canWrite && !!selectedVersion && selectedVersion.status === 4
+  const canEditKind = (kind: number) => canPlanEdit || (canExecutionEdit && (kind === 1 || kind === 2))
+  const canEditEntry = canEditKind(valueKind)
   const canReview = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || roleSet.has('BUDGET_MANAGER') || roleSet.has('CFO')
   const canApprove = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || roleSet.has('CFO') || roleSet.has('CEO')
 
@@ -95,6 +98,11 @@ export default function CashPlanning({
     if (availableItems.length === 0) { setItemMemberId(''); return }
     if (!availableItems.some(x => x.id === itemMemberId)) setItemMemberId(availableItems[0].id)
   }, [availableItems, itemMemberId])
+
+  useEffect(() => {
+    if (!selectedVersion) return
+    if (selectedVersion.status === 4 && valueKind !== 1 && valueKind !== 2) setValueKind(1)
+  }, [selectedVersion?.id, selectedVersion?.status])
 
   const workflowTransitions = useMemo((): Array<[number, string]> => {
     if (!selectedVersion || !canWrite) return []
@@ -159,19 +167,21 @@ export default function CashPlanning({
   }
 
   const saveEntry = async () => {
-    if (!canEdit || !versionId || !periodId || !itemMemberId || !measureCode || value === '' || !currencyCode) return
+    if (!canEditEntry || !versionId || !periodId || !itemMemberId || !measureCode || value === '' || !currencyCode) return
     setBusy(true); setError(''); setMessage('')
     try {
       await api.put('/cash-planning/entries', {
         versionId, periodId, itemMemberId, measureCode, valueKind, value: Number(value), currencyCode, note: note.trim() || null
       })
-      setValue(''); setNote(''); setMessage('آیتم برنامه نقدینگی ذخیره شد.'); await loadVersionData()
+      setValue(''); setNote('');
+      setMessage(selectedVersion?.status === 4 ? 'داده اجرایی روی نسخه مصوب ثبت شد؛ Budget مصوب بدون تغییر باقی ماند.' : 'آیتم برنامه نقدینگی ذخیره شد.')
+      await loadVersionData()
     } catch (e) { setError(apiError(e, 'ثبت آیتم نقدینگی ناموفق بود.')) }
     finally { setBusy(false) }
   }
 
   const editEntry = (entry: Entry) => {
-    if (!canEdit) return
+    if (!canEditKind(entry.valueKind)) return
     setPeriodId(entry.periodId); setMeasureCode(entry.measureCode); setItemMemberId(entry.itemMemberId)
     setValueKind(entry.valueKind); setValue(String(entry.value)); setCurrencyCode(entry.currencyCode); setNote(entry.note ?? '')
   }
@@ -186,7 +196,10 @@ export default function CashPlanning({
     finally { setBusy(false) }
   }
 
-  const allowedKinds = measureCode === 'OPENING_CASH' || measureCode === 'MINIMUM_CASH_BUFFER' ? [0, 1, 3] : [0, 1, 2, 3]
+  const baseAllowedKinds = measureCode === 'OPENING_CASH' || measureCode === 'MINIMUM_CASH_BUFFER' ? [0, 1, 3] : [0, 1, 2, 3]
+  const allowedKinds = selectedVersion?.status === 4
+    ? baseAllowedKinds.filter(kind => kind === 1 || kind === 2)
+    : baseAllowedKinds
 
   return <Stack spacing={2.5}>
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
@@ -201,7 +214,7 @@ export default function CashPlanning({
       {setup?.budgetPlanId && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2}>
         <FormControl size="small" sx={{ minWidth: 260 }}><InputLabel>نسخه برنامه</InputLabel><Select label="نسخه برنامه" value={versionId} onChange={e => setVersionId(e.target.value)}>{setup.versions.map(x => <MenuItem key={x.id} value={x.id}>نسخه {x.versionNumber.toLocaleString('fa-IR')} — {x.name} — {statusLabels[x.status] ?? x.status}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>ارز</InputLabel><Select label="ارز" value={currencyCode} onChange={e => setCurrencyCode(e.target.value)}>{currencies.map(x => <MenuItem key={x.id} value={x.code}>{x.code} — {x.name}</MenuItem>)}</Select></FormControl>
-        {selectedVersion && <Chip label={selectedVersion.isLocked ? `${statusLabels[selectedVersion.status] ?? selectedVersion.status} — قفل` : statusLabels[selectedVersion.status] ?? selectedVersion.status} color={canEdit ? 'success' : 'default'} variant="outlined" />}
+        {selectedVersion && <Chip label={selectedVersion.isLocked ? `${statusLabels[selectedVersion.status] ?? selectedVersion.status} — قفل برنامه` : statusLabels[selectedVersion.status] ?? selectedVersion.status} color={canPlanEdit || canExecutionEdit ? 'success' : 'default'} variant="outlined" />}
       </Stack>}
     </CardContent></Card>
 
@@ -228,19 +241,20 @@ export default function CashPlanning({
 
     {setup?.budgetPlanId && <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>ثبت دریافت / پرداخت / مانده</Typography>
-      {!canEdit && <Alert severity="info" sx={{ mt: 1.5 }}>ورود اطلاعات فقط روی نسخه پیش‌نویس و باز مجاز است. برای نسخه فعلی امکان ویرایش وجود ندارد.</Alert>}
+      {selectedVersion?.status === 4 && canWrite && <Alert severity="info" sx={{ mt: 1.5 }}>نسخه مصوب است: فقط «عملکرد واقعی» و «تعهد» قابل ثبت‌اند. Budget و Forecast مصوب فقط از مسیر Revision تغییر می‌کنند.</Alert>}
+      {!canPlanEdit && !canExecutionEdit && <Alert severity="info" sx={{ mt: 1.5 }}>نسخه فعلی در وضعیت قابل ثبت نیست. برای برنامه‌ریزی به Draft و برای ثبت اجرای واقعی به Approved نیاز است.</Alert>}
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2} mt={2}>
         <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>ماه</InputLabel><Select label="ماه" value={periodId} onChange={e => setPeriodId(e.target.value)}>{periods.map(x => <MenuItem key={x.id} value={x.id} disabled={x.isClosed}>{x.name}{x.isClosed ? ' — بسته' : ''}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 230 }}><InputLabel>آیتم جریان نقدی</InputLabel><Select label="آیتم جریان نقدی" value={itemMemberId} onChange={e => setItemMemberId(e.target.value)}>{availableItems.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl>
-        <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>نوع مبلغ</InputLabel><Select label="نوع مبلغ" value={measureCode} onChange={e => { const next = e.target.value; setMeasureCode(next); if ((next === 'OPENING_CASH' || next === 'MINIMUM_CASH_BUFFER') && valueKind === 2) setValueKind(0) }}>{Object.entries(measureLabels).map(([code, label]) => <MenuItem key={code} value={code}>{label}</MenuItem>)}</Select></FormControl>
+        <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>نوع مبلغ</InputLabel><Select label="نوع مبلغ" value={measureCode} onChange={e => { const next = e.target.value; setMeasureCode(next); if ((next === 'OPENING_CASH' || next === 'MINIMUM_CASH_BUFFER') && valueKind === 2) setValueKind(selectedVersion?.status === 4 ? 1 : 0) }}>{Object.entries(measureLabels).map(([code, label]) => <MenuItem key={code} value={code}>{label}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>نوع مقدار</InputLabel><Select label="نوع مقدار" value={valueKind} onChange={e => setValueKind(Number(e.target.value))}>{allowedKinds.map(kind => <MenuItem key={kind} value={kind}>{kindLabels[kind]}</MenuItem>)}</Select></FormControl>
         <TextField size="small" type="number" label={`مبلغ ${currencyCode}`} value={value} onChange={e => setValue(e.target.value)} inputProps={{ min: 0 }} />
-        <Button variant="contained" onClick={saveEntry} disabled={!canEdit || busy || !periodId || !itemMemberId || value === ''}>ذخیره</Button>
+        <Button variant="contained" onClick={saveEntry} disabled={!canEditEntry || busy || !periodId || !itemMemberId || value === ''}>ذخیره</Button>
       </Stack>
       <TextField size="small" fullWidth label="یادداشت / منبع" value={note} onChange={e => setNote(e.target.value)} sx={{ mt: 1.5 }} />
       <Divider sx={{ my: 2 }} />
-      <Typography fontWeight={800}>ورودی‌های ثبت‌شده</Typography><Typography variant="body2" color="text.secondary">برای ویرایش یک سطر روی آن کلیک کنید؛ همان Coordinate به‌روزرسانی می‌شود و Currency Dimension مانع overwrite ارزهای دیگر است.</Typography>
-      <TableContainer sx={{ mt: 1 }}><Table size="small"><TableHead><TableRow><TableCell>ماه</TableCell><TableCell>آیتم</TableCell><TableCell>نوع مبلغ</TableCell><TableCell>نوع مقدار</TableCell><TableCell>مبلغ</TableCell><TableCell>ارز</TableCell><TableCell>یادداشت</TableCell></TableRow></TableHead><TableBody>{entries.map(entry => <TableRow key={entry.factId} hover onClick={() => editEntry(entry)} sx={{ cursor: canEdit ? 'pointer' : 'default' }}><TableCell>{entry.periodName}</TableCell><TableCell>{entry.itemName}</TableCell><TableCell>{measureLabels[entry.measureCode] ?? entry.measureName}</TableCell><TableCell>{kindLabels[entry.valueKind] ?? entry.valueKind}</TableCell><TableCell>{money(entry.value)}</TableCell><TableCell>{entry.currencyCode}</TableCell><TableCell>{entry.note ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
+      <Typography fontWeight={800}>ورودی‌های ثبت‌شده</Typography><Typography variant="body2" color="text.secondary">برای ویرایش سطرهای مجاز روی آن کلیک کنید؛ در نسخه مصوب فقط Actual/Commitment قابل ویرایش‌اند و Currency Dimension مانع overwrite ارزهای دیگر است.</Typography>
+      <TableContainer sx={{ mt: 1 }}><Table size="small"><TableHead><TableRow><TableCell>ماه</TableCell><TableCell>آیتم</TableCell><TableCell>نوع مبلغ</TableCell><TableCell>نوع مقدار</TableCell><TableCell>مبلغ</TableCell><TableCell>ارز</TableCell><TableCell>یادداشت</TableCell></TableRow></TableHead><TableBody>{entries.map(entry => <TableRow key={entry.factId} hover={canEditKind(entry.valueKind)} onClick={() => editEntry(entry)} sx={{ cursor: canEditKind(entry.valueKind) ? 'pointer' : 'default' }}><TableCell>{entry.periodName}</TableCell><TableCell>{entry.itemName}</TableCell><TableCell>{measureLabels[entry.measureCode] ?? entry.measureName}</TableCell><TableCell>{kindLabels[entry.valueKind] ?? entry.valueKind}</TableCell><TableCell>{money(entry.value)}</TableCell><TableCell>{entry.currencyCode}</TableCell><TableCell>{entry.note ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>}
   </Stack>
 }
