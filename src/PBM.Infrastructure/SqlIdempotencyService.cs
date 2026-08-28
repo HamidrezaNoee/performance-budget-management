@@ -21,7 +21,7 @@ public sealed class SqlIdempotencyService(PbmDbContext db, IUserContext user) : 
         if (user.UserId == Guid.Empty || user.TenantId == Guid.Empty)
             throw new UnauthorizedAccessException("Authenticated user is required for idempotent writes.");
         if (retention <= TimeSpan.Zero || retention > TimeSpan.FromDays(30))
-            throw new ArgumentOutOfRangeException(nameof(retention), "Idempotency retention must be between zero and 30 days.");
+            throw new ArgumentOutOfRangeException(nameof(retention), "Idempotency retention must be greater than zero and at most 30 days.");
 
         var normalizedKey = NormalizeRequired(key, 100, "Idempotency key");
         var normalizedScope = NormalizeRequired(scope, 240, "Idempotency scope");
@@ -50,9 +50,20 @@ public sealed class SqlIdempotencyService(PbmDbContext db, IUserContext user) : 
 
         if (existing is not null && existing.ExpiresAtUtc <= now)
         {
-            records.Remove(existing);
-            await db.SaveChangesAsync(cancellationToken);
-            existing = null;
+            if (existing.Status == IdempotencyRecordStatus.Completed)
+            {
+                records.Remove(existing);
+                await db.SaveChangesAsync(cancellationToken);
+                existing = null;
+            }
+            else if (existing.Status == IdempotencyRecordStatus.Processing)
+            {
+                existing.Status = IdempotencyRecordStatus.Uncertain;
+                existing.FailureType = "StaleProcessingTimeout";
+                existing.UpdatedAtUtc = now;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            // Uncertain records intentionally never auto-expire. They require explicit business reconciliation.
         }
 
         if (existing is not null)
