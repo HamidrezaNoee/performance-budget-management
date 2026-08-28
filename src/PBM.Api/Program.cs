@@ -132,7 +132,8 @@ app.MapGet("/readyz", async (PbmDbContext db, CancellationToken ct) =>
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PbmDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PBM.DatabaseStartup");
+    await DatabaseSchemaInitializer.InitializeAsync(db, builder.Configuration, app.Environment, startupLogger);
 
     var useDemoSeed = builder.Configuration.GetValue<bool>("Bootstrap:UseDemoSeed");
     var provisionInitialTenant = builder.Configuration.GetValue<bool>("Bootstrap:ProvisionInitialTenant");
