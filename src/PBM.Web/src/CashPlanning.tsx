@@ -31,7 +31,7 @@ type Entry = {
 }
 
 const faNumber = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
-const statusLabels = ['Draft', 'Submitted', 'Under Review', 'Returned', 'Approved', 'Rejected', 'Revised', 'Closed']
+const statusLabels = ['پیش‌نویس', 'ارسال‌شده', 'در حال بررسی', 'برگشت برای اصلاح', 'تأییدشده', 'ردشده', 'بازنگری‌شده', 'بسته']
 const kindLabels = ['بودجه', 'عملکرد واقعی', 'تعهد', 'پیش‌بینی']
 const measureLabels: Record<string, string> = {
   OPENING_CASH: 'مانده نقد ابتدای دوره',
@@ -39,6 +39,8 @@ const measureLabels: Record<string, string> = {
   CASH_OUTFLOW: 'پرداخت نقدی',
   MINIMUM_CASH_BUFFER: 'حداقل ذخیره نقدینگی'
 }
+const inflowItems = new Set(['CUSTOMER_COLLECTIONS', 'OTHER_OPERATING_INFLOW', 'LOAN_DRAWDOWN', 'OTHER_FINANCING'])
+const outflowItems = new Set(['SUPPLIER_PAYMENTS', 'PAYROLL', 'TAX_AND_DUTY', 'OTHER_OPERATING_OUTFLOW', 'CAPEX_PAYMENTS', 'LOAN_REPAYMENT', 'FINANCE_COST', 'OTHER_FINANCING'])
 
 function apiError(error: unknown, fallback: string) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -50,7 +52,11 @@ function apiError(error: unknown, fallback: string) {
 
 function money(value: number) { return faNumber.format(value) }
 
-export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { companyId: string; fiscalYearId: string; canWrite: boolean }) {
+export default function CashPlanning({
+  companyId, fiscalYearId, canWrite, roles
+}: {
+  companyId: string; fiscalYearId: string; canWrite: boolean; roles: string[]
+}) {
   const [setup, setSetup] = useState<Setup | null>(null)
   const [periods, setPeriods] = useState<Period[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
@@ -61,6 +67,7 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [workflowComment, setWorkflowComment] = useState('')
 
   const [periodId, setPeriodId] = useState('')
   const [itemMemberId, setItemMemberId] = useState('')
@@ -69,8 +76,40 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
 
+  const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const selectedVersion = useMemo(() => setup?.versions.find(x => x.id === versionId), [setup, versionId])
   const canEdit = canWrite && !!selectedVersion && selectedVersion.status === 0 && !selectedVersion.isLocked
+  const canReview = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || roleSet.has('BUDGET_MANAGER') || roleSet.has('CFO')
+  const canApprove = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || roleSet.has('CFO') || roleSet.has('CEO')
+
+  const availableItems = useMemo(() => {
+    const items = setup?.items ?? []
+    if (measureCode === 'OPENING_CASH') return items.filter(x => x.code === 'OPENING_BALANCE')
+    if (measureCode === 'MINIMUM_CASH_BUFFER') return items.filter(x => x.code === 'LIQUIDITY_BUFFER')
+    if (measureCode === 'CASH_INFLOW') return items.filter(x => inflowItems.has(x.code))
+    if (measureCode === 'CASH_OUTFLOW') return items.filter(x => outflowItems.has(x.code))
+    return items
+  }, [setup, measureCode])
+
+  useEffect(() => {
+    if (availableItems.length === 0) { setItemMemberId(''); return }
+    if (!availableItems.some(x => x.id === itemMemberId)) setItemMemberId(availableItems[0].id)
+  }, [availableItems, itemMemberId])
+
+  const workflowTransitions = useMemo((): Array<[number, string]> => {
+    if (!selectedVersion || !canWrite) return []
+    switch (selectedVersion.status) {
+      case 0: return [[1, 'ارسال برای بررسی']]
+      case 1: return canReview ? [[2, 'شروع بررسی'], [3, 'برگشت برای اصلاح'], [5, 'رد برنامه']] : []
+      case 2: return [
+        ...(canReview ? [[3, 'برگشت برای اصلاح'] as [number, string], [5, 'رد برنامه'] as [number, string]] : []),
+        ...(canApprove ? [[4, 'تأیید برنامه'] as [number, string]] : [])
+      ]
+      case 3: return [[0, 'بازگشت به پیش‌نویس']]
+      case 4: return canApprove ? [[7, 'بستن برنامه']] : []
+      default: return []
+    }
+  }, [selectedVersion, canWrite, canReview, canApprove])
 
   const loadSetup = async () => {
     const [setupResponse, periodResponse, currencyResponse] = await Promise.all([
@@ -82,7 +121,6 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
     setVersionId(current => current && setupResponse.data.versions.some(x => x.id === current)
       ? current : [...setupResponse.data.versions].sort((a, b) => b.versionNumber - a.versionNumber)[0]?.id ?? '')
     setPeriodId(current => current && periodResponse.data.some(x => x.id === current) ? current : periodResponse.data.find(x => !x.isClosed)?.id ?? periodResponse.data[0]?.id ?? '')
-    setItemMemberId(current => current && setupResponse.data.items.some(x => x.id === current) ? current : setupResponse.data.items[0]?.id ?? '')
     const base = currencyResponse.data.find(x => x.isBaseCurrency)
     setCurrencyCode(current => current && currencyResponse.data.some(x => x.code === current) ? current : base?.code ?? currencyResponse.data[0]?.code ?? 'IRR')
   }
@@ -104,6 +142,7 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
   }, [companyId, fiscalYearId])
 
   useEffect(() => {
+    if (!versionId || !currencyCode) return
     setBusy(true); setError('')
     loadVersionData().catch(e => setError(apiError(e, 'دریافت برنامه نقدینگی ناموفق بود.'))).finally(() => setBusy(false))
   }, [versionId, currencyCode])
@@ -133,8 +172,18 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
 
   const editEntry = (entry: Entry) => {
     if (!canEdit) return
-    setPeriodId(entry.periodId); setItemMemberId(entry.itemMemberId); setMeasureCode(entry.measureCode)
+    setPeriodId(entry.periodId); setMeasureCode(entry.measureCode); setItemMemberId(entry.itemMemberId)
     setValueKind(entry.valueKind); setValue(String(entry.value)); setCurrencyCode(entry.currencyCode); setNote(entry.note ?? '')
+  }
+
+  const changeWorkflowStatus = async (status: number) => {
+    if (!versionId || !canWrite) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      await api.post(`/budget/versions/${versionId}/status`, { status, comment: workflowComment.trim() || null })
+      setWorkflowComment(''); setMessage('وضعیت برنامه نقدینگی به‌روزرسانی شد.'); await loadSetup(); await loadVersionData()
+    } catch (e) { setError(apiError(e, 'تغییر وضعیت برنامه نقدینگی ناموفق بود.')) }
+    finally { setBusy(false) }
   }
 
   const allowedKinds = measureCode === 'OPENING_CASH' || measureCode === 'MINIMUM_CASH_BUFFER' ? [0, 1, 3] : [0, 1, 2, 3]
@@ -146,15 +195,22 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
 
     <Card elevation={0}><CardContent>
       <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" alignItems={{ lg: 'center' }} spacing={2}>
-        <div><Typography variant="h6" fontWeight={900}>برنامه نقدینگی و خزانه‌داری</Typography><Typography color="text.secondary">Rolling cash balance بر اساس دریافت، پرداخت، Forecast و تعهدات؛ ارزها مستقل نگهداری و تحلیل می‌شوند.</Typography></div>
+        <div><Typography variant="h6" fontWeight={900}>برنامه نقدینگی و خزانه‌داری</Typography><Typography color="text.secondary">Rolling cash balance بر اساس دریافت، پرداخت، Forecast و تعهدات؛ ارزها به‌صورت Dimension مستقل نگهداری و تحلیل می‌شوند.</Typography></div>
         {!setup?.budgetPlanId && canWrite && <Button variant="contained" onClick={ensurePlan} disabled={busy}>ایجاد Cash Plan</Button>}
       </Stack>
       {setup?.budgetPlanId && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2}>
         <FormControl size="small" sx={{ minWidth: 260 }}><InputLabel>نسخه برنامه</InputLabel><Select label="نسخه برنامه" value={versionId} onChange={e => setVersionId(e.target.value)}>{setup.versions.map(x => <MenuItem key={x.id} value={x.id}>نسخه {x.versionNumber.toLocaleString('fa-IR')} — {x.name} — {statusLabels[x.status] ?? x.status}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>ارز</InputLabel><Select label="ارز" value={currencyCode} onChange={e => setCurrencyCode(e.target.value)}>{currencies.map(x => <MenuItem key={x.id} value={x.code}>{x.code} — {x.name}</MenuItem>)}</Select></FormControl>
-        {selectedVersion && <Chip label={selectedVersion.isLocked ? 'نسخه قفل است' : statusLabels[selectedVersion.status] ?? selectedVersion.status} color={canEdit ? 'success' : 'default'} variant="outlined" />}
+        {selectedVersion && <Chip label={selectedVersion.isLocked ? `${statusLabels[selectedVersion.status] ?? selectedVersion.status} — قفل` : statusLabels[selectedVersion.status] ?? selectedVersion.status} color={canEdit ? 'success' : 'default'} variant="outlined" />}
       </Stack>}
     </CardContent></Card>
+
+    {workflowTransitions.length > 0 && <Card elevation={0}><CardContent>
+      <Typography variant="h6" fontWeight={900}>گردش تأیید Cash Plan</Typography>
+      <Typography variant="body2" color="text.secondary">همان State Machine و RBAC بودجه اصلی برای نسخه نقدینگی استفاده می‌شود.</Typography>
+      <TextField fullWidth multiline minRows={2} label="توضیح گردش / تصمیم" value={workflowComment} onChange={e => setWorkflowComment(e.target.value)} sx={{ mt: 1.5 }} />
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap mt={1.5}>{workflowTransitions.map(([status, label]) => <Button key={status} variant={status === 1 || status === 2 || status === 4 || status === 7 ? 'contained' : 'outlined'} color={status === 5 ? 'error' : 'primary'} onClick={() => changeWorkflowStatus(status)} disabled={busy}>{label}</Button>)}</Stack>
+    </CardContent></Card>}
 
     {summary && <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>شاخص‌های نقدینگی — {summary.currencyCode}</Typography>
@@ -172,10 +228,10 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
 
     {setup?.budgetPlanId && <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>ثبت دریافت / پرداخت / مانده</Typography>
-      {!canEdit && <Alert severity="info" sx={{ mt: 1.5 }}>ورود اطلاعات فقط روی نسخه Draft و باز مجاز است. برای نسخه فعلی امکان ویرایش وجود ندارد.</Alert>}
+      {!canEdit && <Alert severity="info" sx={{ mt: 1.5 }}>ورود اطلاعات فقط روی نسخه پیش‌نویس و باز مجاز است. برای نسخه فعلی امکان ویرایش وجود ندارد.</Alert>}
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2} mt={2}>
         <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>ماه</InputLabel><Select label="ماه" value={periodId} onChange={e => setPeriodId(e.target.value)}>{periods.map(x => <MenuItem key={x.id} value={x.id} disabled={x.isClosed}>{x.name}{x.isClosed ? ' — بسته' : ''}</MenuItem>)}</Select></FormControl>
-        <FormControl size="small" sx={{ minWidth: 230 }}><InputLabel>آیتم جریان نقدی</InputLabel><Select label="آیتم جریان نقدی" value={itemMemberId} onChange={e => setItemMemberId(e.target.value)}>{setup.items.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl>
+        <FormControl size="small" sx={{ minWidth: 230 }}><InputLabel>آیتم جریان نقدی</InputLabel><Select label="آیتم جریان نقدی" value={itemMemberId} onChange={e => setItemMemberId(e.target.value)}>{availableItems.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>نوع مبلغ</InputLabel><Select label="نوع مبلغ" value={measureCode} onChange={e => { const next = e.target.value; setMeasureCode(next); if ((next === 'OPENING_CASH' || next === 'MINIMUM_CASH_BUFFER') && valueKind === 2) setValueKind(0) }}>{Object.entries(measureLabels).map(([code, label]) => <MenuItem key={code} value={code}>{label}</MenuItem>)}</Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>نوع مقدار</InputLabel><Select label="نوع مقدار" value={valueKind} onChange={e => setValueKind(Number(e.target.value))}>{allowedKinds.map(kind => <MenuItem key={kind} value={kind}>{kindLabels[kind]}</MenuItem>)}</Select></FormControl>
         <TextField size="small" type="number" label={`مبلغ ${currencyCode}`} value={value} onChange={e => setValue(e.target.value)} inputProps={{ min: 0 }} />
@@ -183,7 +239,7 @@ export default function CashPlanning({ companyId, fiscalYearId, canWrite }: { co
       </Stack>
       <TextField size="small" fullWidth label="یادداشت / منبع" value={note} onChange={e => setNote(e.target.value)} sx={{ mt: 1.5 }} />
       <Divider sx={{ my: 2 }} />
-      <Typography fontWeight={800}>ورودی‌های ثبت‌شده</Typography><Typography variant="body2" color="text.secondary">برای ویرایش یک سطر روی آن کلیک کنید؛ همان Coordinate به‌روزرسانی می‌شود.</Typography>
+      <Typography fontWeight={800}>ورودی‌های ثبت‌شده</Typography><Typography variant="body2" color="text.secondary">برای ویرایش یک سطر روی آن کلیک کنید؛ همان Coordinate به‌روزرسانی می‌شود و Currency Dimension مانع overwrite ارزهای دیگر است.</Typography>
       <TableContainer sx={{ mt: 1 }}><Table size="small"><TableHead><TableRow><TableCell>ماه</TableCell><TableCell>آیتم</TableCell><TableCell>نوع مبلغ</TableCell><TableCell>نوع مقدار</TableCell><TableCell>مبلغ</TableCell><TableCell>ارز</TableCell><TableCell>یادداشت</TableCell></TableRow></TableHead><TableBody>{entries.map(entry => <TableRow key={entry.factId} hover onClick={() => editEntry(entry)} sx={{ cursor: canEdit ? 'pointer' : 'default' }}><TableCell>{entry.periodName}</TableCell><TableCell>{entry.itemName}</TableCell><TableCell>{measureLabels[entry.measureCode] ?? entry.measureName}</TableCell><TableCell>{kindLabels[entry.valueKind] ?? entry.valueKind}</TableCell><TableCell>{money(entry.value)}</TableCell><TableCell>{entry.currencyCode}</TableCell><TableCell>{entry.note ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>}
   </Stack>
