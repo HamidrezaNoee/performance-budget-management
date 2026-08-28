@@ -20,9 +20,9 @@ public sealed record PerformanceBudgetCurrencyDto(
     decimal YtdActual,
     decimal YtdCommitment,
     decimal YtdForecast,
-    decimal YtdUtilizationPercent,
-    decimal YtdExposurePercent,
-    decimal AnnualForecastPercent);
+    decimal? YtdUtilizationPercent,
+    decimal? YtdExposurePercent,
+    decimal? AnnualForecastPercent);
 
 public sealed record PerformanceKpiComponentDto(
     Guid KpiId,
