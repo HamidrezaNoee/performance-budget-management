@@ -51,6 +51,7 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
         var errors = new List<string>();
         var created = 0;
         var updated = 0;
+        var failed = 0;
         var progress = true;
         var currencyCodes = facts.Where(x => !string.IsNullOrWhiteSpace(x.CurrencyCode)).Select(x => x.CurrencyCode!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var coordinateCurrency = currencyCodes.Count == 1 ? currencyCodes[0] : null;
@@ -71,6 +72,7 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
                 {
                     errors.Add($"{measure.Code}: {ex.Message}");
                     pending.Remove(measure);
+                    failed++;
                     continue;
                 }
 
@@ -124,16 +126,18 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return new CalculationResultDto(1, created, updated, pending.Count + errors.Count(x => x.Contains("division", StringComparison.OrdinalIgnoreCase)), errors.Count, errors);
+        return new CalculationResultDto(1, created, updated, failed + pending.Count, errors);
     }
 
     public async Task<CalculationResultDto> RecalculateVersionAsync(Guid versionId, CancellationToken cancellationToken = default)
     {
-        var companyId = await db.BudgetVersions.Where(x => x.Id == versionId).Select(x => x.BudgetPlan!.CompanyId).SingleAsync(cancellationToken);
-        EnsureCompanyWrite(companyId);
+        var context = await db.BudgetVersions.AsNoTracking().Where(x => x.Id == versionId)
+            .Select(x => new { CompanyId = x.BudgetPlan!.CompanyId, ModelId = x.BudgetPlan.BudgetModelId })
+            .SingleAsync(cancellationToken);
+        EnsureCompanyWrite(context.CompanyId);
 
         var calculatedIds = await db.Measures.AsNoTracking()
-            .Where(x => x.BudgetModel!.BudgetPlans.Any(p => p.Versions.Any(v => v.Id == versionId)) && x.IsCalculated)
+            .Where(x => x.BudgetModelId == context.ModelId && x.IsCalculated)
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
 
@@ -175,7 +179,7 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
     }
 
     private static IReadOnlyList<string> ExtractDependencies(string expression) =>
-        VariableRegex().Matches(expression).Select(x => x.Groups[1].Value.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        VariableRegex().Matches(expression).Cast<Match>().Select(x => x.Groups[1].Value.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     [GeneratedRegex(@"\[([^\]]+)\]", RegexOptions.CultureInvariant)]
     private static partial Regex VariableRegex();
