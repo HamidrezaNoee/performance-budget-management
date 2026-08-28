@@ -82,7 +82,7 @@ if ($Action -eq 'verify') {
         throw "Initial EF migration is still missing. Run: .\scripts\resolve-production-blocker.ps1 -Action generate-initial"
     }
 
-    $command = $restoreAndBuild + @'
+    $command = $restoreAndBuild + "`n" + @'
 dotnet ef migrations has-pending-model-changes --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj
 dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj --output artifacts/pbm-schema-idempotent.sql
 '@
@@ -103,7 +103,7 @@ if ($existing.Count -gt 0) {
 }
 
 $escapedMigrationName = $MigrationName -replace "'", "''"
-$command = $restoreAndBuild + @"
+$command = $restoreAndBuild + "`n" + @"
 dotnet ef migrations add '$escapedMigrationName' --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj --output-dir Migrations
 dotnet ef migrations has-pending-model-changes --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj
 dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.Infrastructure.csproj --startup-project src/PBM.Api/PBM.Api.csproj --output artifacts/pbm-schema-idempotent.sql
