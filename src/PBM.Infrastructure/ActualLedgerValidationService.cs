@@ -35,6 +35,7 @@ public sealed class ActualLedgerValidationService(PbmDbContext db, IUserContext 
         CancellationToken cancellationToken)
     {
         EnsureAuthenticatedWriter();
+        EnsureLedgerWriterRole();
         if (request.Amount == 0m)
             throw new ArgumentException("A source-system Actual ledger posting cannot have a zero amount.");
 
@@ -148,6 +149,19 @@ public sealed class ActualLedgerValidationService(PbmDbContext db, IUserContext 
     {
         if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
             throw new UnauthorizedAccessException("You do not have write access to this company.");
+    }
+
+    public void EnsureLedgerWriterRole()
+    {
+        if (user.IsInRole("SUPERADMIN")
+            || user.IsInRole("ADMIN")
+            || user.IsInRole("CFO")
+            || user.IsInRole("BUDGET_MANAGER")
+            || user.IsInRole("BUDGET_EXPERT")
+            || user.IsInRole("INTEGRATION"))
+            return;
+        throw new UnauthorizedAccessException(
+            "Actual Ledger posting requires finance, budget or INTEGRATION service-account permission.");
     }
 
     public void EnsureProjectionAdminRole()
