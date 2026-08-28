@@ -10,6 +10,7 @@ public static class ServiceRegistration
     public static IServiceCollection AddPbmServices(this IServiceCollection services)
     {
         services.AddScoped<IUserContext, HttpUserContext>();
+        services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IBudgetService, BudgetService>();
         services.AddScoped<IBudgetOperationsService, BudgetOperationsService>();
