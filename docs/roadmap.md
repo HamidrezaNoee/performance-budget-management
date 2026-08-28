@@ -48,8 +48,17 @@
 - Assumption changes automatically recalculate affected unlocked Draft versions only
 - Standard enterprise driver definitions are seeded without fake financial values
 - Dedicated RTL assumptions workspace for annual/periodic and global/scenario-specific values
+- Formula Designer validates measure/assumption dependencies, self-reference and dependency cycles
+- Dynamic measure creation and governed formula editing without redeployment
+- CAPEX project lifecycle with Proposed → Submitted → Approved → InProgress/OnHold → Completed/Cancelled states
+- Requested CAPEX and approved budget ceiling are stored independently with reviewer-only approval governance
+- CAPEX projects automatically create a PROJECT dimension member and use the multidimensional BudgetFact model as financial source of truth
+- Weighted CAPEX milestones drive physical completion and cannot be overridden through the API
+- CAPEX financial summary exposes Budget / Actual / Commitment / Forecast / Available by fiscal month
+- CAPEX portfolio summary separates currencies, surfaces overdue projects and aggregates workflow status counts
+- Dedicated RTL CAPEX workspace with project creation, review actions, milestones, Jalali display and portfolio KPIs
 - Next: reusable driver-based budgeting templates for sales, payroll, import landed cost and financing
-- Next: dedicated CAPEX project lifecycle and cash planning
+- Next: dedicated cash planning / treasury workspace
 - Next: selectable executive dashboard metric and dimensional drill-down
 
 ## Slice 4 — governance and enterprise integration
@@ -62,7 +71,7 @@
 - Database uniqueness rules for one plan per company/year/model and version numbers per plan
 - Supporting file attachments on budget versions/comments with size/type/hash validation
 - Persistent in-app notification center with unread count and Jalali timestamps
-- Workflow, reservation and transfer notifications with role/company targeting and deep links
+- Workflow, reservation, transfer and CAPEX notifications with role/company targeting and deep links
 - JWT token-version revocation after password, role or company-access changes
 - Self-service password change followed by mandatory re-authentication
 - Next: generate and commit the initial EF Core migration and schema upgrade scripts
@@ -83,7 +92,7 @@
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
 - Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
-- Add SQL Server integration tests for transactions, authorization, assumption scope resolution, reservation/transfer concurrency and workbook imports
+- Add SQL Server integration tests for transactions, authorization, assumption scope resolution, CAPEX workflow/portfolio aggregation, reservation/transfer concurrency and workbook imports
 - Add API idempotency keys for externally retried write requests and bulk operations
 - Add reservation/ERP reconciliation monitoring for consumed reservations that have not yet produced Actual
 - Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
