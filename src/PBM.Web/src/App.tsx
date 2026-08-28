@@ -215,7 +215,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {activeView === 6 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
         {activeView === 7 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
         {activeView === 8 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 9 && companyId && yearId && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {activeView === 9 && companyId && yearId && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {activeView === 10 && companyId && yearId && <CapexProjects companyId={companyId} fiscalYearId={yearId} roles={roles} canWrite={canWriteCompany} />}
         {activeView === 11 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
         {activeView === 12 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
