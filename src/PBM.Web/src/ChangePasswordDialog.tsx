@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material'
-import { api } from './api'
+import { api, clearClientSession } from './api'
 
 function apiError(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -10,7 +10,7 @@ function apiError(error: unknown) {
   return 'تغییر رمز عبور ناموفق بود.'
 }
 
-export default function ChangePasswordDialog({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: () => void }) {
+export default function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -30,9 +30,15 @@ export default function ChangePasswordDialog({ open, onClose, onChanged }: { ope
     }
   }, [open])
 
+  const returnToLogin = () => {
+    if (busy) return
+    clearClientSession()
+    window.location.reload()
+  }
+
   const close = () => {
     if (busy) return
-    if (changed) onChanged()
+    if (changed) returnToLogin()
     else onClose()
   }
 
@@ -72,7 +78,7 @@ export default function ChangePasswordDialog({ open, onClose, onChanged }: { ope
     </DialogContent>
     <DialogActions>
       {changed
-        ? <Button variant="contained" onClick={onChanged}>ورود مجدد</Button>
+        ? <Button variant="contained" onClick={returnToLogin}>ورود مجدد</Button>
         : <><Button onClick={onClose} disabled={busy}>بستن</Button><Button variant="contained" onClick={save} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>تغییر رمز</Button></>}
     </DialogActions>
   </Dialog>
