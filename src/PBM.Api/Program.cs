@@ -84,18 +84,47 @@ var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
     throw new InvalidOperationException("Jwt:Key is required and must contain at least 32 UTF-8 bytes.");
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
-    ValidateIssuer = true,
-    ValidateAudience = true,
-    ValidateLifetime = true,
-    ValidateIssuerSigningKey = true,
-    ValidIssuer = builder.Configuration["Jwt:Issuer"],
-    ValidAudience = builder.Configuration["Jwt:Audience"],
-    IssuerSigningKey = signingKey,
-    ClockSkew = TimeSpan.FromMinutes(1),
-    NameClaimType = ClaimTypes.Name,
-    RoleClaimType = ClaimTypes.Role
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = signingKey,
+        ClockSkew = TimeSpan.FromMinutes(1),
+        NameClaimType = ClaimTypes.Name,
+        RoleClaimType = ClaimTypes.Role
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var principal = context.Principal;
+            var userIdText = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var tenantIdText = principal?.FindFirstValue("tenant_id");
+            var tokenVersionText = principal?.FindFirstValue("token_version");
+            if (!Guid.TryParse(userIdText, out var userId)
+                || !Guid.TryParse(tenantIdText, out var tenantId)
+                || !int.TryParse(tokenVersionText, NumberStyles.None, CultureInfo.InvariantCulture, out var tokenVersion))
+            {
+                context.Fail("Authentication token is missing required PBM security claims.");
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<PbmDbContext>();
+            var valid = await db.Users.AsNoTracking().AnyAsync(x =>
+                x.Id == userId
+                && x.TenantId == tenantId
+                && x.IsActive
+                && x.TokenVersion == tokenVersion,
+                context.HttpContext.RequestAborted);
+            if (!valid) context.Fail("Authentication session has been revoked.");
+        }
+    };
 });
 builder.Services.AddAuthorization();
 
@@ -219,6 +248,7 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
         new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
         new(ClaimTypes.NameIdentifier, user.Id.ToString()),
         new("tenant_id", user.TenantId.ToString()),
+        new("token_version", user.TokenVersion.ToString(CultureInfo.InvariantCulture)),
         new(ClaimTypes.Name, user.DisplayName),
         new("username", user.UserName)
     };
