@@ -22,6 +22,7 @@ public static class ServiceRegistration
         services.AddScoped<IActualLedgerService, ActualLedgerService>();
         services.AddScoped<IActualLedgerKeyPostingService, ActualLedgerKeyPostingService>();
         services.AddScoped<IActualLedgerBatchService, ActualLedgerBatchService>();
+        services.AddScoped<IIntegrationCredentialService, IntegrationCredentialService>();
         services.AddScoped<IBudgetOperationsService, BudgetOperationsService>();
         services.AddScoped<IAssumptionService, AssumptionService>();
         services.AddScoped<IFormulaAdminService, FormulaAdminService>();
@@ -45,7 +46,8 @@ public static class ServiceRegistration
         services.AddScoped<IVarianceAnalysisService, VarianceAnalysisService>();
         services.AddScoped<IFinancialReportService, FinancialReportService>();
         services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
-        services.AddScoped<ISecurityAdminService, SecurityAdminService>();
+        services.AddScoped<SecurityAdminService>();
+        services.AddScoped<ISecurityAdminService, GovernedSecurityAdminService>();
         services.AddScoped<IOrganizationAdminService, OrganizationAdminService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.AddScoped<IKpiService, ScoredKpiService>();
