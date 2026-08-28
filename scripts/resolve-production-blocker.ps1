@@ -84,7 +84,11 @@ dotnet ef migrations script --idempotent --project src/PBM.Infrastructure/PBM.In
     exit 0
 }
 
-$existing = Get-InitialMigrationFiles | Where-Object { $_.Name -notlike '*ModelSnapshot.cs' -and $_.Name -notlike '*.Designer.cs' }
+# Always force collection semantics. PowerShell may unwrap zero/one pipeline results into $null/scalar,
+# which breaks .Count under StrictMode.
+$existing = @(Get-InitialMigrationFiles | Where-Object {
+    $_.Name -notlike '*ModelSnapshot.cs' -and $_.Name -notlike '*.Designer.cs'
+})
 if ($existing.Count -gt 0) {
     throw 'A migration already exists. Use -Action verify instead of generating another initial migration.'
 }
