@@ -17,6 +17,7 @@ builder.Services.AddDbContext<PbmDbContext>(options => options.UseSqlServer(buil
 builder.Services.AddScoped<IUserContext, HttpUserContext>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
+builder.Services.AddScoped<IBudgetOperationsService, BudgetOperationsService>();
 builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
 builder.Services.AddScoped<ICalculationService, CalculationService>();
 builder.Services.AddScoped<IDashboardService, ExecutiveDashboardService>();
@@ -113,6 +114,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 api.MapEnterpriseEndpoints();
 api.MapForecastEndpoints();
 api.MapBudgetWorkflowEndpoints();
+api.MapBudgetOperationsEndpoints();
 api.MapCalculationEndpoints();
 api.MapFinancialReportEndpoints();
 api.MapWorkbookImportPipelineEndpoints();
