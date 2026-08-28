@@ -76,20 +76,63 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PbmDbContext>();
     await db.Database.EnsureCreatedAsync();
-    await SeedData.InitializeAsync(db);
-    await EnterpriseSeedData.InitializeAsync(db);
+
+    var useDemoSeed = builder.Configuration.GetValue<bool>("Bootstrap:UseDemoSeed");
+    var provisionInitialTenant = builder.Configuration.GetValue<bool>("Bootstrap:ProvisionInitialTenant");
+    var hasTenant = await db.Tenants.AnyAsync();
+
+    if (!hasTenant)
+    {
+        if (useDemoSeed)
+        {
+            if (!app.Environment.IsDevelopment() && !builder.Configuration.GetValue<bool>("Bootstrap:AllowDemoSeedOutsideDevelopment"))
+                throw new InvalidOperationException("Demo seed is blocked outside Development. Set Bootstrap:AllowDemoSeedOutsideDevelopment=true only for a disposable non-production environment.");
+            await SeedData.InitializeAsync(db);
+        }
+        else if (provisionInitialTenant)
+        {
+            var licenseDays = builder.Configuration.GetValue<int?>("Bootstrap:LicenseDays") ?? 365;
+            if (licenseDays is < 1 or > 3650) throw new InvalidOperationException("Bootstrap:LicenseDays must be between 1 and 3650.");
+            var startsAt = DateTime.UtcNow.Date;
+            await InitialTenantProvisioner.InitializeAsync(db, new InitialTenantProvisioningOptions(
+                RequiredSetting(builder.Configuration, "Bootstrap:TenantCode"),
+                RequiredSetting(builder.Configuration, "Bootstrap:TenantName"),
+                RequiredSetting(builder.Configuration, "Bootstrap:CompanyCode"),
+                RequiredSetting(builder.Configuration, "Bootstrap:CompanyName"),
+                builder.Configuration["Bootstrap:Industry"],
+                RequiredSetting(builder.Configuration, "Bootstrap:LicenseKey"),
+                startsAt,
+                startsAt.AddDays(licenseDays),
+                builder.Configuration.GetValue<int?>("Bootstrap:MaxCompanies") ?? 5,
+                builder.Configuration.GetValue<int?>("Bootstrap:MaxUsers") ?? 100));
+        }
+        else
+        {
+            throw new InvalidOperationException("PBM database has no tenant. Enable Bootstrap:ProvisionInitialTenant for first deployment, enable Bootstrap:UseDemoSeed for local demo data, or provision the tenant externally before startup.");
+        }
+    }
+
+    await EnterpriseSeedData.InitializeAsync(db, includeWorkbookReferenceMembers: useDemoSeed);
     await PlanningSeedData.InitializeAsync(db);
     await SecuritySeedData.InitializeAsync(db);
-    if (app.Environment.IsDevelopment() && !await db.Users.AnyAsync())
+
+    if (!await db.Users.AnyAsync())
     {
         var tenantId = await db.Tenants.Select(x => x.Id).FirstAsync();
-        var companyId = await db.Companies.Select(x => x.Id).FirstAsync();
+        var companyId = await db.Companies.Where(x => x.TenantId == tenantId && x.IsActive).Select(x => x.Id).FirstAsync();
         var role = await db.Roles.SingleAsync(x => x.TenantId == tenantId && x.Code == "SUPERADMIN");
-        var user = new AppUser { TenantId = tenantId, UserName = "admin", DisplayName = "مدیر سیستم", PasswordHash = "pending" };
+        var bootstrapUserName = RequiredSetting(builder.Configuration, "BootstrapAdmin:UserName");
+        var bootstrapPassword = RequiredSetting(builder.Configuration, "BootstrapAdmin:Password");
+        var bootstrapDisplayName = builder.Configuration["BootstrapAdmin:DisplayName"]?.Trim();
+        if (string.IsNullOrWhiteSpace(bootstrapDisplayName)) bootstrapDisplayName = "مدیر کل سامانه";
+        var user = new AppUser
+        {
+            TenantId = tenantId,
+            UserName = bootstrapUserName,
+            DisplayName = bootstrapDisplayName,
+            PasswordHash = "pending"
+        };
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
-        var bootstrapPassword = builder.Configuration["BootstrapAdmin:Password"];
-        if (string.IsNullOrWhiteSpace(bootstrapPassword))
-            throw new InvalidOperationException("BootstrapAdmin:Password is required when creating the development administrator.");
         user.PasswordHash = hasher.HashPassword(user, bootstrapPassword);
         db.Users.Add(user);
         db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
@@ -156,6 +199,14 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 api.MapPbmModuleEndpoints();
 
 app.Run();
+
+static string RequiredSetting(IConfiguration configuration, string key)
+{
+    var value = configuration[key]?.Trim();
+    return string.IsNullOrWhiteSpace(value)
+        ? throw new InvalidOperationException($"Configuration value '{key}' is required for initial provisioning.")
+        : value;
+}
 
 public sealed record LoginRequest(string UserName, string Password);
 public sealed record LoginResponse(string AccessToken, string DisplayName, IReadOnlyList<string> Roles, IReadOnlyList<Guid> CompanyIds, IReadOnlyList<Guid> WritableCompanyIds);
