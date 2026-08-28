@@ -8,6 +8,7 @@ import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded'
+import DifferenceRoundedIcon from '@mui/icons-material/DifferenceRounded'
 import AutoGraphRoundedIcon from '@mui/icons-material/AutoGraphRounded'
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
@@ -17,6 +18,7 @@ import { api, setAccessToken } from './api'
 import BudgetPlanning from './BudgetPlanning'
 import WorkbookImport from './WorkbookImport'
 import KpiPerformance from './KpiPerformance'
+import VarianceAnalysis from './VarianceAnalysis'
 import Forecasting from './Forecasting'
 import FinancialReports from './FinancialReports'
 import ReferenceAdmin from './ReferenceAdmin'
@@ -132,10 +134,11 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const menu = [
     ['داشبورد', <DashboardRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
     ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />], ['عملکرد و KPI', <InsightsRoundedIcon />],
-    ['پیش‌بینی', <AutoGraphRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
-    ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
+    ['تحلیل انحراف', <DifferenceRoundedIcon />], ['پیش‌بینی', <AutoGraphRoundedIcon />],
+    ['گزارش‌ها', <AssessmentRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
-  const titles = ['داشبورد مدیریت بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
+  const titles = ['داشبورد مدیریت بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
+  const writeSensitiveView = activeView === 1 || activeView === 2 || activeView === 3
 
   return <Box sx={{ display: 'flex', minHeight: '100vh' }}>
     <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
@@ -157,14 +160,15 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         </Stack>
       </Stack>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {!canWriteCompany && activeView !== 0 && activeView !== 4 && activeView !== 5 && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت و تغییر از سمت سرور نیز مسدود شده است.</Alert>}
+      {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت و تغییر از سمت سرور نیز مسدود شده است.</Alert>}
       {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
       {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+      {activeView === 4 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 5 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 6 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 7 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
     </Container></Box>
   </Box>
 }
