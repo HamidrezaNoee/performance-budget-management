@@ -98,6 +98,8 @@ public sealed class PbmSqlFixture : IAsyncLifetime
         await using var db = CreateContext();
         await SeedData.InitializeAsync(db);
         await EnterpriseSeedData.InitializeAsync(db);
+        await PlanningSeedData.InitializeAsync(db);
+        await AssumptionSeedData.InitializeAsync(db);
         await SecuritySeedData.InitializeAsync(db);
 
         var tenant = await db.Tenants.SingleAsync();
