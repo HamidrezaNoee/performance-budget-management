@@ -103,7 +103,9 @@ public sealed record CapexFinancialSummaryDto(
 
 public interface ICapexService
 {
-    Task<IReadOnlyList<CapexOwnerUnitDto>> GetOwnerUnitsAsync(Guid companyId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CapexOwnerUnitDto>> GetOwnerUnitsAsync(Guid companyId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Owner-unit lookup is provided by the CAPEX service facade.");
+
     Task<IReadOnlyList<CapexProjectDto>> GetProjectsAsync(Guid companyId, CapexProjectStatus? status = null, CancellationToken cancellationToken = default);
     Task<CapexProjectDto> GetProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
     Task<CapexProjectDto> CreateProjectAsync(CreateCapexProjectRequest request, CancellationToken cancellationToken = default);
