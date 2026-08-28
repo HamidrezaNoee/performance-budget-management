@@ -4,6 +4,13 @@ Assert-PbmPrerequisites -RequireMigrations
 Assert-PbmSecretsConfigured
 
 $root = Get-PbmRepoRoot
+$verifyScript = Join-Path $root 'scripts/resolve-production-blocker.ps1'
+if (-not (Test-Path $verifyScript)) { throw 'Missing scripts/resolve-production-blocker.ps1.' }
+
+Write-Host 'Verifying Release build, unit tests and EF migration drift in Dockerized .NET 10 SDK...' -ForegroundColor Cyan
+& $verifyScript -Action verify
+if ($LASTEXITCODE -ne 0) { throw 'PBM verification failed. Personal Production installation is blocked.' }
+
 $backupDir = Join-Path $root '.pbm/backups'
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
@@ -29,5 +36,5 @@ $state | ConvertTo-Json | Set-Content -Path (Join-Path $stateDir 'install-state.
 
 Write-Host ''
 Write-Host 'PBM Personal Production is ready.' -ForegroundColor Green
-Write-Host 'Open: http://localhost:3000'
+Write-Host "Open: $(Get-PbmWebUrl)"
 Write-Host 'Important: never run docker compose down -v for this installation.' -ForegroundColor Yellow
