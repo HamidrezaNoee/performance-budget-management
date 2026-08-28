@@ -23,13 +23,6 @@ public static class PerformanceFundingPolicy
         IReadOnlyList<PerformanceFundingCurrencySignal> currencies)
     {
         var reasons = new List<string>();
-        if (!weightedKpiScore.HasValue || dataCoveragePercent < 50m)
-        {
-            reasons.Add(weightedKpiScore.HasValue
-                ? $"KPI data coverage is only {dataCoveragePercent:0.##}%; at least 50% is required for a funding recommendation."
-                : "No scored KPI observations are available for this fiscal year.");
-            return new PerformanceFundingDecision(PerformanceFundingRecommendation.InsufficientData, reasons);
-        }
 
         foreach (var currency in currencies)
         {
@@ -58,6 +51,20 @@ public static class PerformanceFundingPolicy
                 reasons.Add($"{currency.CurrencyCode}: annual forecast is {forecast.Value:0.##}% of annual budget.");
                 return new PerformanceFundingDecision(PerformanceFundingRecommendation.CorrectiveAction, reasons);
             }
+        }
+
+        if (currencies.Count == 0)
+        {
+            reasons.Add("No financial facts are available for the selected funding measure.");
+            return new PerformanceFundingDecision(PerformanceFundingRecommendation.InsufficientData, reasons);
+        }
+
+        if (!weightedKpiScore.HasValue || dataCoveragePercent < 50m)
+        {
+            reasons.Add(weightedKpiScore.HasValue
+                ? $"KPI data coverage is only {dataCoveragePercent:0.##}%; at least 50% is required for a funding recommendation."
+                : "No scored KPI observations are available for this fiscal year.");
+            return new PerformanceFundingDecision(PerformanceFundingRecommendation.InsufficientData, reasons);
         }
 
         var score = weightedKpiScore.Value;
