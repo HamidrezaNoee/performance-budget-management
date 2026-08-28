@@ -18,6 +18,7 @@ builder.Services.AddScoped<IUserContext, HttpUserContext>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
+builder.Services.AddScoped<ICalculationService, CalculationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
@@ -112,6 +113,7 @@ api.MapPost("/imports/workbook/inspect", async (HttpRequest request, IWorkbookIm
 api.MapEnterpriseEndpoints();
 api.MapForecastEndpoints();
 api.MapBudgetWorkflowEndpoints();
+api.MapCalculationEndpoints();
 api.MapFinancialReportEndpoints();
 api.MapWorkbookImportPipelineEndpoints();
 api.MapFiscalCalendarEndpoints();
