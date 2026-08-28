@@ -21,6 +21,7 @@ builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
+builder.Services.AddScoped<ISecurityAdminService, SecurityAdminService>();
 builder.Services.AddScoped<IReferenceDataService, ReferenceDataService>();
 builder.Services.AddScoped<IKpiService, KpiService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
@@ -100,6 +101,7 @@ api.MapBudgetWorkflowEndpoints();
 api.MapFinancialReportEndpoints();
 api.MapWorkbookImportPipelineEndpoints();
 api.MapFiscalCalendarEndpoints();
+api.MapSecurityAdminEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
