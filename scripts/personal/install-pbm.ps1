@@ -1,0 +1,33 @@
+. (Join-Path $PSScriptRoot 'common.ps1')
+
+Assert-PbmPrerequisites -RequireMigrations
+Assert-PbmSecretsConfigured
+
+$root = Get-PbmRepoRoot
+$backupDir = Join-Path $root '.pbm/backups'
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+Write-Host 'Building PBM Personal Production images...' -ForegroundColor Cyan
+Invoke-PbmDockerCompose -Arguments @('build')
+
+Write-Host 'Starting SQL Server, API and Web...' -ForegroundColor Cyan
+Invoke-PbmDockerCompose -Arguments @('up', '-d')
+
+Write-Host 'Waiting for PBM readiness...' -ForegroundColor Cyan
+Wait-PbmReady -TimeoutSeconds 240
+
+$stateDir = Join-Path $root '.pbm'
+New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+$state = [ordered]@{
+    installedAtUtc = [DateTime]::UtcNow.ToString('o')
+    gitCommit = Get-PbmCurrentGitRef
+    composeProfile = 'personal'
+    database = 'PerformanceBudgetManagement'
+    persistentVolume = 'pbm_personal_sql_data'
+}
+$state | ConvertTo-Json | Set-Content -Path (Join-Path $stateDir 'install-state.json') -Encoding UTF8
+
+Write-Host ''
+Write-Host 'PBM Personal Production is ready.' -ForegroundColor Green
+Write-Host 'Open: http://localhost:3000'
+Write-Host 'Important: never run docker compose down -v for this installation.' -ForegroundColor Yellow
