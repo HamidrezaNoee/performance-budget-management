@@ -9,6 +9,17 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: "PbmIntegration_2026!Strong"
+        ports:
+          - 1433:1433
+    env:
+      PBM_INTEGRATION_SQL: "Server=localhost,1433;Database=PBM_Integration_CI;User Id=sa;Password=PbmIntegration_2026!Strong;Encrypt=False;TrustServerCertificate=True"
+      PBM_DESIGNTIME_CONNECTION: "Server=localhost,1433;Database=PBM_Integration_EF;User Id=sa;Password=PbmIntegration_2026!Strong;Encrypt=False;TrustServerCertificate=True"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
