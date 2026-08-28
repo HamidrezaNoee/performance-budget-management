@@ -1,6 +1,6 @@
 namespace PBM.Application;
 
-public sealed record FiscalPeriodDto(
+public sealed record FiscalPeriodDetailsDto(
     Guid Id,
     Guid FiscalYearId,
     int Sequence,
@@ -20,7 +20,7 @@ public sealed record FiscalYearDetailsDto(
     DateTime StartDate,
     DateTime EndDate,
     bool IsClosed,
-    IReadOnlyList<FiscalPeriodDto> Periods);
+    IReadOnlyList<FiscalPeriodDetailsDto> Periods);
 
 public sealed record CreateFiscalYearRequest(
     Guid CompanyId,
@@ -45,7 +45,7 @@ public interface IFiscalCalendarService
 {
     Task<IReadOnlyList<FiscalYearDetailsDto>> GetYearsAsync(Guid companyId, CancellationToken cancellationToken = default);
     Task<FiscalYearDetailsDto> CreateYearAsync(CreateFiscalYearRequest request, CancellationToken cancellationToken = default);
-    Task<FiscalPeriodDto> AddPeriodAsync(Guid fiscalYearId, CreateFiscalPeriodRequest request, CancellationToken cancellationToken = default);
-    Task<FiscalPeriodDto> SetPeriodClosedAsync(Guid periodId, bool isClosed, CancellationToken cancellationToken = default);
+    Task<FiscalPeriodDetailsDto> AddPeriodAsync(Guid fiscalYearId, CreateFiscalPeriodRequest request, CancellationToken cancellationToken = default);
+    Task<FiscalPeriodDetailsDto> SetPeriodClosedAsync(Guid periodId, bool isClosed, CancellationToken cancellationToken = default);
     Task<FiscalYearDetailsDto> SetYearClosedAsync(Guid fiscalYearId, bool isClosed, CancellationToken cancellationToken = default);
 }
