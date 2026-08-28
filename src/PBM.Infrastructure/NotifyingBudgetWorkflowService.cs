@@ -48,7 +48,8 @@ public sealed class NotifyingBudgetWorkflowService(
             presentation.Message,
             presentation.Severity,
             "BudgetVersion",
-            result.Id.ToString()), cancellationToken);
+            result.Id.ToString(),
+            "#inbox"), cancellationToken);
 
         return result;
     }
