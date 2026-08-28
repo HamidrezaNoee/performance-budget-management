@@ -18,6 +18,7 @@ public static class ServiceRegistration
         services.AddScoped<IFormulaAdminService, FormulaAdminService>();
         services.AddScoped<CapexService>();
         services.AddScoped<ICapexService, CapexFacadeService>();
+        services.AddScoped<ICashPlanningService, CashPlanningService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<BudgetReservationService>();
         services.AddScoped<IBudgetReservationService, NotifyingBudgetReservationService>();
