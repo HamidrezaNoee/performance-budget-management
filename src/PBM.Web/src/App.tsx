@@ -13,6 +13,7 @@ import DifferenceRoundedIcon from '@mui/icons-material/DifferenceRounded'
 import AutoGraphRoundedIcon from '@mui/icons-material/AutoGraphRounded'
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
+import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, setAccessToken } from './api'
@@ -24,6 +25,7 @@ import VarianceAnalysis from './VarianceAnalysis'
 import Forecasting from './Forecasting'
 import FinancialReports from './FinancialReports'
 import ReferenceAdmin from './ReferenceAdmin'
+import ChangePasswordDialog from './ChangePasswordDialog'
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
 type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
@@ -108,6 +110,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeView, setActiveView] = useState(0)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
 
   useEffect(() => {
     api.get<Company[]>('/companies').then(response => {
@@ -143,38 +146,44 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const titles = ['داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه', 'ورود و نگاشت اکسل', 'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'گزارش‌های مالی و مدیریتی', 'تنظیمات و داده‌های پایه']
   const writeSensitiveView = activeView >= 1 && activeView <= 4
 
-  return <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-    <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
-      <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
-    </AppBar>
-    <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
-      <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
-      <Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
-      <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => setActiveView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
-      <Box flexGrow={1} />
-      <List sx={{ p: 1 }}><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
-    </Drawer>
-    <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}>
-        <Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box>
-        <Stack direction="row" spacing={1.5}>
-          <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
+  return <>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
+        <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
+      </AppBar>
+      <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
+        <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
+        <Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
+        <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => setActiveView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
+        <Box flexGrow={1} />
+        <List sx={{ p: 1 }}>
+          <ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton>
+          <ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton>
+        </List>
+      </Drawer>
+      <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}>
+          <Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box>
+          <Stack direction="row" spacing={1.5}>
+            <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
+          </Stack>
         </Stack>
-      </Stack>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت، بررسی و تغییر از سمت سرور نیز مطابق سطح دسترسی محدود می‌شود.</Alert>}
-      {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
-      {activeView === 1 && companyId && <BudgetInbox companyId={companyId} />}
-      {activeView === 2 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 3 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 4 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 5 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 7 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 8 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
-    </Container></Box>
-  </Box>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت، بررسی و تغییر از سمت سرور نیز مطابق سطح دسترسی محدود می‌شود.</Alert>}
+        {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
+        {activeView === 1 && companyId && <BudgetInbox companyId={companyId} />}
+        {activeView === 2 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 3 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 4 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 5 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 6 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 7 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+        {activeView === 8 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+      </Container></Box>
+    </Box>
+    <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
+  </>
 }
 
 function DashboardContent({ loading, summary }: { loading: boolean; summary: DashboardSummary | null }) {
