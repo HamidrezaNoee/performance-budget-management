@@ -16,6 +16,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<IntegrationCredential> IntegrationCredentials => Set<IntegrationCredential>();
     public DbSet<ActualLedgerEntry> ActualLedgerEntries => Set<ActualLedgerEntry>();
     public DbSet<ActualLedgerDimension> ActualLedgerDimensions => Set<ActualLedgerDimension>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -80,6 +81,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.UserId, x.Scope, x.Key }).IsUnique();
         modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAtUtc });
         modelBuilder.Entity<IdempotencyRecord>().HasIndex(x => new { x.TenantId, x.Status, x.ExpiresAtUtc });
+        modelBuilder.Entity<IntegrationCredential>().HasIndex(x => x.ClientId).IsUnique();
+        modelBuilder.Entity<IntegrationCredential>().HasIndex(x => new { x.TenantId, x.UserId, x.RevokedAtUtc, x.ExpiresAtUtc });
         modelBuilder.Entity<ActualLedgerEntry>().HasIndex(x => new { x.TenantId, x.CompanyId, x.SourceSystem, x.ExternalDocumentId, x.ExternalLineId, x.EntryType }).IsUnique();
         modelBuilder.Entity<ActualLedgerEntry>().HasIndex(x => new { x.VersionId, x.PeriodId, x.MeasureId, x.CoordinateHash });
         modelBuilder.Entity<ActualLedgerEntry>().HasIndex(x => new { x.TenantId, x.CompanyId, x.CreatedAtUtc });
@@ -149,6 +152,11 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<IdempotencyRecord>().Property(x => x.RequestHash).HasMaxLength(64).IsFixedLength();
         modelBuilder.Entity<IdempotencyRecord>().Property(x => x.CorrelationId).HasMaxLength(128);
         modelBuilder.Entity<IdempotencyRecord>().Property(x => x.FailureType).HasMaxLength(120);
+        modelBuilder.Entity<IntegrationCredential>().Property(x => x.Name).HasMaxLength(160);
+        modelBuilder.Entity<IntegrationCredential>().Property(x => x.ClientId).HasMaxLength(80);
+        modelBuilder.Entity<IntegrationCredential>().Property(x => x.SecretHash).HasMaxLength(64);
+        modelBuilder.Entity<IntegrationCredential>().Property(x => x.SecretSalt).HasMaxLength(32);
+        modelBuilder.Entity<IntegrationCredential>().Property(x => x.RevocationReason).HasMaxLength(500);
         modelBuilder.Entity<ActualLedgerEntry>().Property(x => x.SourceSystem).HasMaxLength(80);
         modelBuilder.Entity<ActualLedgerEntry>().Property(x => x.ExternalDocumentId).HasMaxLength(160);
         modelBuilder.Entity<ActualLedgerEntry>().Property(x => x.ExternalLineId).HasMaxLength(160);
@@ -219,6 +227,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<CapexMilestone>().HasOne(x => x.Project).WithMany(x => x.Milestones).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<IdempotencyRecord>().HasOne(x => x.User).WithMany(x => x.IdempotencyRecords).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<IntegrationCredential>().HasOne(x => x.User).WithMany(x => x.IntegrationCredentials).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ActualLedgerEntry>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ActualLedgerEntry>().HasOne(x => x.Version).WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ActualLedgerEntry>().HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Restrict);
