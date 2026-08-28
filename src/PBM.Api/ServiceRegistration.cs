@@ -43,6 +43,7 @@ public static class ServiceRegistration
         services.AddScoped<IOrganizationAdminService, OrganizationAdminService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.AddScoped<IKpiService, ScoredKpiService>();
+        services.AddScoped<IPerformanceBudgetingService, PerformanceBudgetingService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IForecastService, ForecastService>();
         services.AddScoped<IScenarioService, ScenarioService>();
