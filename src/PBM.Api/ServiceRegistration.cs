@@ -11,6 +11,7 @@ public static class ServiceRegistration
     {
         services.AddScoped<IUserContext, HttpUserContext>();
         services.AddScoped<IIdempotencyService, SqlIdempotencyService>();
+        services.AddScoped<IIdempotencyAdminService, IdempotencyAdminService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<BudgetService>();
