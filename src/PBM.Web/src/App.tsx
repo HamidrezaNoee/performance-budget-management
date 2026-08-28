@@ -159,12 +159,12 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {!canWriteCompany && activeView !== 0 && activeView !== 4 && activeView !== 5 && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت و تغییر از سمت سرور نیز مسدود شده است.</Alert>}
       {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
-      {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-      {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+      {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} canWriteCompany={canWriteCompany} />}
+      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
     </Container></Box>
   </Box>
 }
