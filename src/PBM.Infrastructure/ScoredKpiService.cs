@@ -98,9 +98,11 @@ public sealed class ScoredKpiService(PbmDbContext db, IUserContext user) : IKpiS
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear)
             .SingleOrDefaultAsync(x => x.Id == request.PeriodId, cancellationToken)
             ?? throw new ArgumentException("Fiscal period was not found.");
-        if (period.FiscalYear?.CompanyId != request.CompanyId)
+        var fiscalYear = period.FiscalYear
+            ?? throw new InvalidOperationException("Fiscal period has no fiscal year.");
+        if (fiscalYear.CompanyId != request.CompanyId)
             throw new ArgumentException("Period does not belong to the company.");
-        if (period.IsClosed || period.FiscalYear.IsClosed)
+        if (period.IsClosed || fiscalYear.IsClosed)
             throw new InvalidOperationException("Fiscal period is closed and KPI values cannot be changed.");
 
         var value = await db.KpiValues.SingleOrDefaultAsync(
