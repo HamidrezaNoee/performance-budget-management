@@ -50,13 +50,36 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculati
     }
     public async Task<BudgetPlanDto> CreatePlanAsync(CreateBudgetPlanRequest request, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId); if (string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("Plan name is required.");
+        EnsureCompanyWrite(request.CompanyId);
+        var planName = request.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(planName)) throw new ArgumentException("Plan name is required.");
+
         var company = await db.Companies.SingleAsync(x => x.Id == request.CompanyId && x.TenantId == user.TenantId, cancellationToken);
         var fiscalYear = await db.FiscalYears.SingleAsync(x => x.Id == request.FiscalYearId && x.CompanyId == request.CompanyId, cancellationToken);
         if (fiscalYear.IsClosed) throw new InvalidOperationException("Fiscal year is closed and cannot accept a new budget plan.");
-        var model = await db.BudgetModels.SingleAsync(x => x.Id == request.BudgetModelId && x.TenantId == company.TenantId, cancellationToken); var scenario = await db.BudgetScenarios.FirstAsync(x => x.TenantId == company.TenantId && x.Code == "BASE", cancellationToken);
-        var plan = new BudgetPlan { CompanyId = company.Id, FiscalYearId = fiscalYear.Id, BudgetModelId = model.Id, Name = request.Name }; var version = new BudgetVersion { BudgetPlanId = plan.Id, ScenarioId = scenario.Id, Name = "نسخه اولیه", VersionNumber = 1 }; plan.Versions.Add(version); db.BudgetPlans.Add(plan);
-        AddAudit("BudgetPlan", plan.Id, "CREATE", null, JsonSerializer.Serialize(new { plan.Name, plan.CompanyId, plan.FiscalYearId, plan.BudgetModelId })); await db.SaveChangesAsync(cancellationToken);
+
+        var model = await db.BudgetModels.SingleAsync(x => x.Id == request.BudgetModelId && x.TenantId == company.TenantId && x.IsActive, cancellationToken);
+        if (await db.BudgetPlans.AnyAsync(x => x.CompanyId == company.Id && x.FiscalYearId == fiscalYear.Id && x.BudgetModelId == model.Id, cancellationToken))
+            throw new InvalidOperationException("A budget plan already exists for the selected company, fiscal year and budget model.");
+
+        BudgetScenario scenario;
+        if (request.ScenarioId.HasValue)
+        {
+            scenario = await db.BudgetScenarios.SingleOrDefaultAsync(x => x.Id == request.ScenarioId.Value && x.TenantId == company.TenantId && x.IsActive, cancellationToken)
+                ?? throw new ArgumentException("Selected budget scenario is invalid or inactive.");
+        }
+        else
+        {
+            scenario = await db.BudgetScenarios.SingleOrDefaultAsync(x => x.TenantId == company.TenantId && x.Code == "BASE" && x.IsActive, cancellationToken)
+                ?? throw new InvalidOperationException("The active BASE budget scenario is required before a plan can be created.");
+        }
+
+        var plan = new BudgetPlan { CompanyId = company.Id, FiscalYearId = fiscalYear.Id, BudgetModelId = model.Id, Name = planName };
+        var version = new BudgetVersion { BudgetPlanId = plan.Id, ScenarioId = scenario.Id, Name = "نسخه اولیه", VersionNumber = 1 };
+        plan.Versions.Add(version);
+        db.BudgetPlans.Add(plan);
+        AddAudit("BudgetPlan", plan.Id, "CREATE", null, JsonSerializer.Serialize(new { plan.Name, plan.CompanyId, plan.FiscalYearId, plan.BudgetModelId, ScenarioId = scenario.Id, ScenarioCode = scenario.Code }));
+        await db.SaveChangesAsync(cancellationToken);
         return new BudgetPlanDto(plan.Id, plan.CompanyId, plan.FiscalYearId, plan.BudgetModelId, plan.Name, plan.Status, [new BudgetVersionDto(version.Id, version.ScenarioId, version.VersionNumber, version.Name, version.Status, version.IsLocked)]);
     }
     public async Task<Guid> UpsertFactAsync(UpsertBudgetFactRequest request, CancellationToken cancellationToken = default)
