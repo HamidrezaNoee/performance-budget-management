@@ -25,14 +25,14 @@ type Company = { id: string; tenantId: string; code: string; name: string; indus
 type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
 type MonthlyPoint = { periodId: string; periodName: string; sequence: number; budget: number; actual: number; commitment: number; forecast: number }
 type DashboardSummary = { budget: number; actual: number; commitment: number; forecast: number; remaining: number; variance: number; budgetUtilizationPercent: number; monthly: MonthlyPoint[] }
-type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[] }
+type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[]; writableCompanyIds: string[] }
 
 const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 
-function readStoredRoles(): string[] {
-  try { return JSON.parse(localStorage.getItem('pbm_roles') ?? '[]') as string[] }
+function readStoredArray(key: string): string[] {
+  try { return JSON.parse(localStorage.getItem(key) ?? '[]') as string[] }
   catch { return [] }
 }
 
@@ -47,22 +47,24 @@ function formatAmount(value: number) {
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('pbm_token'))
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('pbm_display_name') ?? '')
-  const [roles, setRoles] = useState<string[]>(readStoredRoles)
+  const [roles, setRoles] = useState<string[]>(() => readStoredArray('pbm_roles'))
+  const [writableCompanyIds, setWritableCompanyIds] = useState<string[]>(() => readStoredArray('pbm_writable_company_ids'))
   useEffect(() => { setAccessToken(token) }, [token])
 
   const logout = () => {
-    localStorage.removeItem('pbm_token'); localStorage.removeItem('pbm_display_name'); localStorage.removeItem('pbm_roles')
-    setAccessToken(null); setToken(null); setDisplayName(''); setRoles([])
+    localStorage.removeItem('pbm_token'); localStorage.removeItem('pbm_display_name'); localStorage.removeItem('pbm_roles'); localStorage.removeItem('pbm_writable_company_ids')
+    setAccessToken(null); setToken(null); setDisplayName(''); setRoles([]); setWritableCompanyIds([])
   }
 
   if (!token) return <Login onLoggedIn={response => {
     localStorage.setItem('pbm_token', response.accessToken)
     localStorage.setItem('pbm_display_name', response.displayName)
     localStorage.setItem('pbm_roles', JSON.stringify(response.roles))
-    setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles)
+    localStorage.setItem('pbm_writable_company_ids', JSON.stringify(response.writableCompanyIds))
+    setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles); setWritableCompanyIds(response.writableCompanyIds)
   }} />
 
-  return <Workspace displayName={displayName} roles={roles} onLogout={logout} />
+  return <Workspace displayName={displayName} roles={roles} writableCompanyIds={writableCompanyIds} onLogout={logout} />
 }
 
 function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }) {
@@ -93,7 +95,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }
   </CardContent></Card></Box>
 }
 
-function Workspace({ displayName, roles, onLogout }: { displayName: string; roles: string[]; onLogout: () => void }) {
+function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displayName: string; roles: string[]; writableCompanyIds: string[]; onLogout: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [years, setYears] = useState<FiscalYear[]>([])
   const [companyId, setCompanyId] = useState('')
@@ -125,6 +127,8 @@ function Workspace({ displayName, roles, onLogout }: { displayName: string; role
   }, [companyId, yearId])
 
   const selectedCompany = useMemo(() => companies.find(x => x.id === companyId), [companies, companyId])
+  const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
+  const canWriteCompany = roleSet.has('SUPERADMIN') || writableCompanyIds.includes(companyId)
   const menu = [
     ['داشبورد', <DashboardRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
     ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />], ['عملکرد و KPI', <InsightsRoundedIcon />],
@@ -153,13 +157,14 @@ function Workspace({ displayName, roles, onLogout }: { displayName: string; role
         </Stack>
       </Stack>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {!canWriteCompany && activeView !== 0 && activeView !== 4 && activeView !== 5 && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت و تغییر از سمت سرور نیز مسدود شده است.</Alert>}
       {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
-      {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+      {activeView === 1 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+      {activeView === 2 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+      {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} canWriteCompany={canWriteCompany} />}
     </Container></Box>
   </Box>
 }
