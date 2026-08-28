@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PBM.Application;
@@ -14,6 +15,7 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
         if (request.GrowthPercent is < -100m or > 1000m)
             throw new ArgumentException("Growth percent must be between -100 and 1000.");
 
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var target = await GetEditableVersionAsync(request.TargetVersionId, cancellationToken);
         var targetYear = target.BudgetPlan!.FiscalYear!;
         var previousYear = await db.FiscalYears.AsNoTracking()
@@ -62,7 +64,6 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
         var updated = 0;
         var skipped = 0;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         foreach (var source in sourceFacts)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -213,6 +214,7 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
         CancellationToken cancellationToken = default)
     {
         if (request.Rows.Count == 0) throw new ArgumentException("At least one row is required for bulk paste.");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var target = await GetEditableVersionAsync(request.VersionId, cancellationToken);
         var plan = target.BudgetPlan!;
 
@@ -260,7 +262,6 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
         var skipped = 0;
         var touched = new HashSet<(Guid PeriodId, string Hash)>();
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         foreach (var row in request.Rows)
         {
             if (row.Cells.Select(x => x.PeriodId).Distinct().Count() != row.Cells.Count)
