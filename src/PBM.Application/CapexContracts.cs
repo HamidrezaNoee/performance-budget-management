@@ -2,6 +2,8 @@ using PBM.Domain;
 
 namespace PBM.Application;
 
+public sealed record CapexOwnerUnitDto(Guid Id, Guid? ParentId, string Code, string Name, string UnitType);
+
 public sealed record CapexProjectDto(
     Guid Id,
     Guid CompanyId,
@@ -64,9 +66,7 @@ public sealed record UpdateCapexProjectRequest(
     Guid? OwnerOrganizationUnitId,
     decimal CompletionPercent);
 
-public sealed record ChangeCapexProjectStatusRequest(
-    CapexProjectStatus Status,
-    string? Comment);
+public sealed record ChangeCapexProjectStatusRequest(CapexProjectStatus Status, string? Comment);
 
 public sealed record UpsertCapexMilestoneRequest(
     Guid? Id,
@@ -103,6 +103,7 @@ public sealed record CapexFinancialSummaryDto(
 
 public interface ICapexService
 {
+    Task<IReadOnlyList<CapexOwnerUnitDto>> GetOwnerUnitsAsync(Guid companyId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CapexProjectDto>> GetProjectsAsync(Guid companyId, CapexProjectStatus? status = null, CancellationToken cancellationToken = default);
     Task<CapexProjectDto> GetProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
     Task<CapexProjectDto> CreateProjectAsync(CreateCapexProjectRequest request, CancellationToken cancellationToken = default);
