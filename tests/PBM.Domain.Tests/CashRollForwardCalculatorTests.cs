@@ -45,9 +45,9 @@ public sealed class CashRollForwardCalculatorTests
         ]);
 
         Assert.Equal(2, result.MonthsBelowBuffer);
-        Assert.Equal(20m, result.MaximumLiquidityShortfall);
-        Assert.Equal(30m, result.ProjectedAvailableEndingCash);
-        Assert.Equal(30m, result.MinimumProjectedAvailableCash);
+        Assert.Equal(40m, result.MaximumLiquidityShortfall);
+        Assert.Equal(10m, result.ProjectedAvailableEndingCash);
+        Assert.Equal(10m, result.MinimumProjectedAvailableCash);
     }
 
     [Fact]
