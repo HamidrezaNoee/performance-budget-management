@@ -71,6 +71,30 @@ function Get-InitialMigrationFiles {
     return @(Get-ChildItem -Path $migrationsDirectory -Filter '*.cs' -File -ErrorAction SilentlyContinue)
 }
 
+function Test-TemporarySqlServerReady {
+    param(
+        [Parameter(Mandatory = $true)][string]$ContainerName,
+        [Parameter(Mandatory = $true)][string]$Password
+    )
+
+    # sqlcmd writes normal connection failures to stderr while SQL Server is still booting.
+    # With $ErrorActionPreference='Stop', Windows PowerShell can promote that stderr to a
+    # NativeCommandError and abort the retry loop. Temporarily suppress native stderr so a
+    # non-zero exit code simply means "not ready yet".
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        & docker exec $ContainerName /opt/mssql-tools18/bin/sqlcmd `
+            -S localhost -U sa -P $Password -C -b -l 2 -Q 'SELECT 1' 2>&1 | Out-Null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return ($exitCode -eq 0)
+}
+
 function Invoke-MigrationSqlServerSmokeTest {
     $suffix = [Guid]::NewGuid().ToString('N').Substring(0, 10)
     $network = "pbm-migration-smoke-$suffix"
@@ -94,12 +118,22 @@ function Invoke-MigrationSqlServerSmokeTest {
         $containerCreated = $true
 
         $ready = $false
-        for ($i = 0; $i -lt 60; $i++) {
-            & docker exec $dbContainer /opt/mssql-tools18/bin/sqlcmd `
-                -S localhost -U sa -P $password -C -b -Q 'SELECT 1' *> $null
-            if ($LASTEXITCODE -eq 0) {
+        Write-Host 'Waiting for temporary SQL Server to accept connections...' -ForegroundColor DarkCyan
+        for ($i = 1; $i -le 90; $i++) {
+            if (Test-TemporarySqlServerReady -ContainerName $dbContainer -Password $password) {
                 $ready = $true
+                Write-Host "Temporary SQL Server is ready after $i attempt(s)." -ForegroundColor DarkCyan
                 break
+            }
+
+            if (($i % 10) -eq 0) {
+                $running = (& docker inspect -f '{{.State.Running}}' $dbContainer 2>$null).Trim()
+                if ($running -ne 'true') {
+                    Write-Host 'Temporary SQL Server stopped unexpectedly. Logs:' -ForegroundColor Yellow
+                    & docker logs --tail 120 $dbContainer
+                    throw 'Temporary SQL Server container stopped before becoming ready.'
+                }
+                Write-Host "Still waiting for SQL Server... attempt $i/90" -ForegroundColor DarkGray
             }
             Start-Sleep -Seconds 2
         }
