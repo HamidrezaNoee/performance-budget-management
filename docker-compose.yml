@@ -24,6 +24,7 @@ services:
       Jwt__Key: "${PBM_JWT_KEY:?Set PBM_JWT_KEY in .env}"
       Jwt__Issuer: PBM
       Jwt__Audience: PBM.Web
+      IntegrationAuth__TokenMinutes: "${PBM_INTEGRATION_TOKEN_MINUTES:-30}"
       Database__AutoMigrate: "false"
       Database__AllowEnsureCreated: "true"
       Bootstrap__UseDemoSeed: "true"
@@ -34,6 +35,16 @@ services:
       Cors__AllowedOrigins__0: "http://localhost:3000"
       RateLimiting__Login__PermitLimit: "10"
       RateLimiting__Login__WindowSeconds: "60"
+      Outbox__PollSeconds: "${PBM_OUTBOX_POLL_SECONDS:-5}"
+      Outbox__BatchSize: "${PBM_OUTBOX_BATCH_SIZE:-20}"
+      Outbox__LockSeconds: "${PBM_OUTBOX_LOCK_SECONDS:-120}"
+      Outbox__MaxAttempts: "${PBM_OUTBOX_MAX_ATTEMPTS:-8}"
+      Outbox__BaseDelaySeconds: "${PBM_OUTBOX_BASE_DELAY_SECONDS:-15}"
+      Outbox__MaxDelaySeconds: "${PBM_OUTBOX_MAX_DELAY_SECONDS:-3600}"
+      OutboundNotifications__Webhook__Enabled: "${PBM_NOTIFICATION_WEBHOOK_ENABLED:-false}"
+      OutboundNotifications__Webhook__Url: "${PBM_NOTIFICATION_WEBHOOK_URL:-}"
+      OutboundNotifications__Webhook__AllowHttp: "${PBM_NOTIFICATION_WEBHOOK_ALLOW_HTTP:-false}"
+      OutboundNotifications__Webhook__BearerToken: "${PBM_NOTIFICATION_WEBHOOK_BEARER_TOKEN:-}"
     depends_on:
       db:
         condition: service_healthy
