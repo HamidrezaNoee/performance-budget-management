@@ -85,6 +85,8 @@ export default function App() {
     localStorage.setItem('pbm_display_name', response.displayName)
     localStorage.setItem('pbm_roles', JSON.stringify(response.roles))
     localStorage.setItem('pbm_writable_company_ids', JSON.stringify(response.writableCompanyIds))
+    // Apply the token before Workspace mounts and starts protected API calls.
+    setAccessToken(response.accessToken)
     setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles); setWritableCompanyIds(response.writableCompanyIds)
   }} />
 
@@ -204,45 +206,40 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
           <Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box>
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
-            <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.jalaliYear}</MenuItem>)}</Select></FormControl>
           </Stack>
         </Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!canWriteCompany && writeSensitiveView && <Alert severity="info" sx={{ mb: 2 }}>دسترسی شما برای شرکت انتخاب‌شده فقط خواندنی است. عملیات ثبت، بررسی و تغییر از سمت سرور نیز مطابق سطح دسترسی محدود می‌شود.</Alert>}
-        {activeView === 0 && <DashboardContent loading={loading} summary={summary} />}
-        {activeView === 1 && companyId && <BudgetInbox companyId={companyId} />}
-        {activeView === 2 && companyId && yearId && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 3 && companyId && yearId && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {activeView === 4 && companyId && yearId && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {activeView === 5 && companyId && yearId && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 6 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 7 && companyId && yearId && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 8 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 9 && companyId && yearId && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {activeView === 10 && companyId && yearId && <CapexProjects companyId={companyId} fiscalYearId={yearId} roles={roles} canWrite={canWriteCompany} />}
-        {activeView === 11 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {activeView === 12 && companyId && yearId && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} roles={roles} canWrite={canWriteCompany} />}
-        {activeView === 13 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
+        {writeSensitiveView && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
+        {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
+        {!loading && activeView === 0 && <DashboardView summary={summary} />}
+        {!loading && activeView === 1 && <BudgetInbox companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 3 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 4 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 5 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 6 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 7 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 8 && <Forecasting companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 9 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 10 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 11 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 12 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 13 && <ReferenceAdmin companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
       </Container></Box>
     </Box>
-    <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
+    <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} onPasswordChanged={logout} />
   </>
 }
 
-function DashboardContent({ loading, summary }: { loading: boolean; summary: DashboardSummary | null }) {
-  if (loading) return <Box py={8} textAlign="center"><CircularProgress /></Box>
-  if (!summary) return null
+function DashboardView({ summary }: { summary: DashboardSummary | null }) {
+  if (!summary) return <Alert severity="info">برای شرکت و سال مالی انتخاب‌شده داده داشبورد وجود ندارد.</Alert>
+  const cards = [
+    ['بودجه مصوب', summary.budget], ['عملکرد واقعی', summary.actual], ['تعهدات', summary.commitment],
+    ['پیش‌بینی پایان سال', summary.forecast], ['مانده بودجه', summary.remaining], ['انحراف', summary.variance]
+  ] as const
   return <>
-    <Box className="kpi-grid">
-      <Kpi title="بودجه" value={formatAmount(summary.budget)} subtitle="کل بودجه ثبت‌شده" />
-      <Kpi title="عملکرد واقعی" value={formatAmount(summary.actual)} subtitle={`${money.format(summary.budgetUtilizationPercent)}٪ مصرف بودجه`} />
-      <Kpi title="بودجه در دسترس" value={formatAmount(summary.remaining)} subtitle={`تعهدات: ${formatAmount(summary.commitment)}`} />
-      <Kpi title="پیش‌بینی" value={formatAmount(summary.forecast)} subtitle={`انحراف: ${formatAmount(summary.variance)}`} />
-    </Box>
-    <Card elevation={0} sx={{ mt: 3 }}><CardContent sx={{ p: 3 }}><Typography variant="h6" fontWeight={800} mb={2}>روند ماهانه بودجه و عملکرد</Typography><Box sx={{ height: 390, direction: 'ltr' }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={summary.monthly}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodName" /><YAxis tickFormatter={value => `${Math.round(Number(value) / 1_000_000_000)}B`} /><Tooltip formatter={value => formatAmount(Number(value))} /><Legend /><Bar dataKey="budget" name="بودجه" fill="#0b5cad" radius={[6, 6, 0, 0]} /><Bar dataKey="actual" name="عملکرد" fill="#00a6a6" radius={[6, 6, 0, 0]} /><Line type="monotone" dataKey="forecast" name="پیش‌بینی" stroke="#ef8c22" strokeWidth={3} dot={false} /></ComposedChart></ResponsiveContainer></Box></CardContent></Card>
+    <Box className="kpi-grid">{cards.map(([label, value]) => <Card key={label} className="kpi-card" elevation={0}><CardContent><Typography color="text.secondary" variant="body2">{label}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{formatAmount(value)}</Typography></CardContent></Card>)}</Box>
+    <Card elevation={0} sx={{ mt: 3 }}><CardContent><Typography variant="h6" fontWeight={800} mb={2}>روند ماهانه بودجه، عملکرد و پیش‌بینی</Typography><Box height={360}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={summary.monthly}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="periodName" /><YAxis /><Tooltip formatter={(value: unknown) => money.format(Number(value ?? 0))} /><Legend /><Bar dataKey="budget" name="بودجه" fill="#1d4ed8" /><Bar dataKey="actual" name="عملکرد" fill="#0f766e" /><Line type="monotone" dataKey="forecast" name="پیش‌بینی" stroke="#b45309" strokeWidth={2} /></ComposedChart></ResponsiveContainer></Box></CardContent></Card>
   </>
-}
-
-function Kpi({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
-  return <Card elevation={0} className="kpi-card"><CardContent><Typography color="text.secondary" fontWeight={700}>{title}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{value}</Typography><Typography variant="caption" color="text.secondary">{subtitle}</Typography></CardContent></Card>
 }
