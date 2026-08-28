@@ -12,6 +12,12 @@ public static class ServiceRegistration
         services.AddScoped<IUserContext, HttpUserContext>();
         services.AddScoped<IIdempotencyService, SqlIdempotencyService>();
         services.AddScoped<IIdempotencyAdminService, IdempotencyAdminService>();
+        services.AddScoped<OutboxWriter>();
+        services.AddScoped<OutboxQueueService>();
+        services.AddScoped<IOutboxAdminService, OutboxAdminService>();
+        services.AddHttpClient<NotificationWebhookTransport>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddScoped<IOutboxTransport>(provider => provider.GetRequiredService<NotificationWebhookTransport>());
+        services.AddHostedService<OutboxDispatcherBackgroundService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<BudgetService>();
