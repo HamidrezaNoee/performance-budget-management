@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PBM.Domain.Tests/PBM.Domain.Tests.csproj" />
+    <Project Path="tests/PBM.Integration.Tests/PBM.Integration.Tests.csproj" />
   </Folder>
 </Solution>
