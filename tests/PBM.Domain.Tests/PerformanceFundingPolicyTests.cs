@@ -5,7 +5,7 @@ namespace PBM.Domain.Tests;
 public sealed class PerformanceFundingPolicyTests
 {
     [Fact]
-    public void Insufficient_data_wins_when_coverage_is_low()
+    public void Low_coverage_without_financial_data_is_insufficient()
     {
         var result = PerformanceFundingPolicy.Evaluate(40m, 120m, []);
 
@@ -21,6 +21,25 @@ public sealed class PerformanceFundingPolicyTests
             [new PerformanceFundingCurrencySignal("IRR", 1000m, 0m, 0m, 900m, 500m, 500m, 100m, 450m)]);
 
         Assert.Equal(PerformanceFundingRecommendation.CorrectiveAction, result.Recommendation);
+    }
+
+    [Fact]
+    public void Financial_overrun_overrides_low_kpi_coverage()
+    {
+        var result = PerformanceFundingPolicy.Evaluate(
+            10m,
+            null,
+            [new PerformanceFundingCurrencySignal("IRR", 1000m, 0m, 0m, 900m, 500m, 500m, 100m, 450m)]);
+
+        Assert.Equal(PerformanceFundingRecommendation.CorrectiveAction, result.Recommendation);
+    }
+
+    [Fact]
+    public void High_kpi_score_without_financial_facts_does_not_recommend_increment()
+    {
+        var result = PerformanceFundingPolicy.Evaluate(100m, 130m, []);
+
+        Assert.Equal(PerformanceFundingRecommendation.InsufficientData, result.Recommendation);
     }
 
     [Fact]
