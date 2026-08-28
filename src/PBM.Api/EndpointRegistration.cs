@@ -5,6 +5,7 @@ public static class EndpointRegistration
     public static RouteGroupBuilder MapPbmModuleEndpoints(this RouteGroupBuilder api)
     {
         api.MapAccountEndpoints();
+        api.MapNotificationEndpoints();
         api.MapEnterpriseEndpoints();
         api.MapForecastEndpoints();
         api.MapBudgetWorkflowEndpoints();
