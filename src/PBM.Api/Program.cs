@@ -19,7 +19,7 @@ builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
 builder.Services.AddScoped<ICalculationService, CalculationService>();
-builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IDashboardService, ExecutiveDashboardService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
 builder.Services.AddScoped<ISecurityAdminService, SecurityAdminService>();
@@ -86,7 +86,7 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
     claims.AddRange(companyIds.Select(x => new Claim("company_id", x.ToString())));
     claims.AddRange(writableCompanyIds.Select(x => new Claim("company_write_id", x.ToString())));
     var token = new JwtSecurityToken(config["Jwt:Issuer"], config["Jwt:Audience"], claims, expires: DateTime.UtcNow.AddHours(8), signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
-    return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds));
+    return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds, writableCompanyIds));
 });
 
 var api = app.MapGroup("/api/v1").RequireAuthorization();
@@ -122,5 +122,5 @@ api.MapOrganizationAdminEndpoints();
 
 app.Run();
 public sealed record LoginRequest(string UserName, string Password);
-public sealed record LoginResponse(string AccessToken, string DisplayName, IReadOnlyList<string> Roles, IReadOnlyList<Guid> CompanyIds);
+public sealed record LoginResponse(string AccessToken, string DisplayName, IReadOnlyList<string> Roles, IReadOnlyList<Guid> CompanyIds, IReadOnlyList<Guid> WritableCompanyIds);
 public sealed record FormulaRequest(string Expression, IReadOnlyDictionary<string, decimal> Variables);
