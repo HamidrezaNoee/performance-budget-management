@@ -7,7 +7,7 @@ using PBM.Domain;
 
 namespace PBM.Infrastructure;
 
-public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext user, IWorkbookNormalizationService normalizer) : IWorkbookImportExecutionService
+public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext user, IWorkbookNormalizationService normalizer, ICalculationService calculation) : IWorkbookImportExecutionService
 {
     public async Task<WorkbookImportExecutionDto> ImportAsync(Stream stream, string fileName, WorkbookImportExecutionRequest request, CancellationToken ct = default)
     {
@@ -36,6 +36,7 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
 
         var warnings = normalized.Warnings.ToList();
         var createdFacts = 0; var updatedFacts = 0; var createdMembers = 0; var skipped = 0;
+        var touchedCoordinates = new Dictionary<(Guid PeriodId, ValueKind Kind, string Hash), IReadOnlyList<DimensionSelection>>();
 
         foreach (var source in normalized.Facts)
         {
@@ -46,6 +47,8 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
             { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: دوره '{period.Name}' بسته است و داده آن وارد نشد."); continue; }
             if (!measures.TryGetValue(source.MeasureCode, out var measure))
             { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: مژر '{source.MeasureCode}' در مدل {model.Code} تعریف نشده است."); continue; }
+            if (measure.IsCalculated)
+            { skipped++; Warn(warnings, $"ردیف {source.SourceRow}: مژر محاسباتی '{measure.Code}' از اکسل نوشته نشد و توسط موتور فرمول محاسبه می‌شود."); continue; }
 
             var selections = new List<DimensionSelection>();
             foreach (var pair in source.DimensionMembers)
@@ -76,12 +79,21 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
                 foreach (var s in selections) fact.Dimensions.Add(new BudgetFactDimension { BudgetFactId = fact.Id, DimensionId = s.DimensionId, MemberId = s.MemberId });
                 db.BudgetFacts.Add(fact); existing[key] = fact; createdFacts++;
             }
+            touchedCoordinates[(period.Id, kind, hash)] = selections;
         }
 
         db.AuditLogs.Add(new AuditLog { TenantId = user.TenantId, UserId = user.UserId == Guid.Empty ? null : user.UserId,
             EntityType = "WorkbookImport", EntityId = version.Id.ToString(), Action = "IMPORT",
-            NewValueJson = JsonSerializer.Serialize(new { fileName, request.SheetName, request.Profile, normalized.ModelCode, createdFacts, updatedFacts, createdMembers, skipped }) });
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+            NewValueJson = JsonSerializer.Serialize(new { fileName, request.SheetName, request.Profile, normalized.ModelCode, createdFacts, updatedFacts, createdMembers, skipped, Coordinates = touchedCoordinates.Count }) });
+        await db.SaveChangesAsync(ct);
+
+        foreach (var coordinate in touchedCoordinates)
+        {
+            var result = await calculation.RecalculateCoordinateAsync(version.Id, coordinate.Key.PeriodId, coordinate.Key.Kind, coordinate.Value, ct);
+            foreach (var formulaError in result.Errors) Warn(warnings, $"فرمول: {formulaError}");
+        }
+
+        await tx.CommitAsync(ct);
         return new WorkbookImportExecutionDto(request.SheetName, model.Code, plan.Id, version.Id, createdFacts, updatedFacts, createdMembers, skipped, warnings);
     }
 
