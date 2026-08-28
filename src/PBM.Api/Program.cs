@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PBM.Api;
@@ -44,6 +46,17 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
             .AllowCredentials();
     }
 }));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("login", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+});
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
@@ -67,6 +80,7 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 app.UseExceptionHandler();
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
@@ -80,6 +94,7 @@ using (var scope = app.Services.CreateScope())
     var useDemoSeed = builder.Configuration.GetValue<bool>("Bootstrap:UseDemoSeed");
     var provisionInitialTenant = builder.Configuration.GetValue<bool>("Bootstrap:ProvisionInitialTenant");
     var hasTenant = await db.Tenants.AnyAsync();
+    var demoSeedApplied = false;
 
     if (!hasTenant)
     {
@@ -88,6 +103,7 @@ using (var scope = app.Services.CreateScope())
             if (!app.Environment.IsDevelopment() && !builder.Configuration.GetValue<bool>("Bootstrap:AllowDemoSeedOutsideDevelopment"))
                 throw new InvalidOperationException("Demo seed is blocked outside Development. Set Bootstrap:AllowDemoSeedOutsideDevelopment=true only for a disposable non-production environment.");
             await SeedData.InitializeAsync(db);
+            demoSeedApplied = true;
         }
         else if (provisionInitialTenant)
         {
@@ -112,7 +128,7 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
-    await EnterpriseSeedData.InitializeAsync(db, includeWorkbookReferenceMembers: useDemoSeed);
+    await EnterpriseSeedData.InitializeAsync(db, includeWorkbookReferenceMembers: demoSeedApplied);
     await PlanningSeedData.InitializeAsync(db);
     await SecuritySeedData.InitializeAsync(db);
 
@@ -123,6 +139,7 @@ using (var scope = app.Services.CreateScope())
         var role = await db.Roles.SingleAsync(x => x.TenantId == tenantId && x.Code == "SUPERADMIN");
         var bootstrapUserName = RequiredSetting(builder.Configuration, "BootstrapAdmin:UserName");
         var bootstrapPassword = RequiredSetting(builder.Configuration, "BootstrapAdmin:Password");
+        ValidateBootstrapPassword(bootstrapPassword);
         var bootstrapDisplayName = builder.Configuration["BootstrapAdmin:DisplayName"]?.Trim();
         if (string.IsNullOrWhiteSpace(bootstrapDisplayName)) bootstrapDisplayName = "مدیر کل سامانه";
         var user = new AppUser
@@ -169,7 +186,7 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
         expires: DateTime.UtcNow.AddHours(8),
         signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
     return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds, writableCompanyIds));
-});
+}).RequireRateLimiting("login");
 
 var api = app.MapGroup("/api/v1").RequireAuthorization();
 api.MapGet("/companies", (ICompanyService service, CancellationToken ct) => service.GetCompaniesAsync(ct));
@@ -206,6 +223,12 @@ static string RequiredSetting(IConfiguration configuration, string key)
     return string.IsNullOrWhiteSpace(value)
         ? throw new InvalidOperationException($"Configuration value '{key}' is required for initial provisioning.")
         : value;
+}
+
+static void ValidateBootstrapPassword(string password)
+{
+    if (password.Length < 12 || !password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
+        throw new InvalidOperationException("BootstrapAdmin:Password must be at least 12 characters and contain uppercase, lowercase and numeric characters.");
 }
 
 public sealed record LoginRequest(string UserName, string Password);
