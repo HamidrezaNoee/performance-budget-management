@@ -48,6 +48,8 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<BudgetModel>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<MeasureDefinition>().HasIndex(x => new { x.BudgetModelId, x.Code }).IsUnique();
         modelBuilder.Entity<BudgetScenario>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        modelBuilder.Entity<BudgetPlan>().HasIndex(x => new { x.CompanyId, x.FiscalYearId, x.BudgetModelId }).IsUnique();
+        modelBuilder.Entity<BudgetVersion>().HasIndex(x => new { x.BudgetPlanId, x.VersionNumber }).IsUnique();
         modelBuilder.Entity<AppUser>().HasIndex(x => new { x.TenantId, x.UserName }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<CurrencyDefinition>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
