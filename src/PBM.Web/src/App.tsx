@@ -73,7 +73,7 @@ export default function App() {
 
 function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }) {
   const [userName, setUserName] = useState(isLocalDevelopment ? 'admin' : '')
-  const [password, setPassword] = useState(isLocalDevelopment ? 'ChangeMe123!' : '')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -95,7 +95,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }
       <TextField label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" fullWidth onKeyDown={e => e.key === 'Enter' && submit()} />
       <Button variant="contained" size="large" onClick={submit} disabled={busy}>{busy ? <CircularProgress size={24} color="inherit" /> : 'ورود به سامانه'}</Button>
     </Stack>
-    {isLocalDevelopment && <Typography variant="caption" color="text.secondary" display="block" mt={2}>حساب bootstrap فقط در اجرای محلی برای توسعه از تنظیمات سرور مقداردهی می‌شود.</Typography>}
+    {isLocalDevelopment && <Typography variant="caption" color="text.secondary" display="block" mt={2}>رمز حساب bootstrap از متغیر محیطی یا تنظیمات امن سرور خوانده می‌شود و در رابط کاربری نگهداری نمی‌شود.</Typography>}
   </CardContent></Card></Box>
 }
 
