@@ -20,7 +20,7 @@ public static class SystemInfoEndpoints
                 && !user.IsInRole("AUDITOR"))
                 throw new UnauthorizedAccessException("Administrator or auditor role is required to view system diagnostics.");
 
-            var assembly = typeof(Program).Assembly;
+            var assembly = Assembly.GetExecutingAssembly();
             var informationalVersion = assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
                 .InformationalVersion;
