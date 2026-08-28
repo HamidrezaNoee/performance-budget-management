@@ -12,6 +12,13 @@ public sealed record IntegrationCredentialDto(
     string? RevocationReason,
     bool IsActive);
 
+public sealed record CreateIntegrationServiceAccountRequest(
+    string UserName,
+    string DisplayName,
+    string CredentialName,
+    IReadOnlyList<UserCompanyAccessInput> CompanyAccess,
+    DateTime? ExpiresAtUtc);
+
 public sealed record CreateIntegrationCredentialRequest(
     Guid UserId,
     string Name,
@@ -46,6 +53,7 @@ public sealed record IntegrationTokenResponse(
 public interface IIntegrationCredentialService
 {
     Task<IReadOnlyList<IntegrationCredentialDto>> GetCredentialsAsync(CancellationToken cancellationToken = default);
+    Task<IntegrationCredentialSecretDto> CreateServiceAccountAsync(CreateIntegrationServiceAccountRequest request, CancellationToken cancellationToken = default);
     Task<IntegrationCredentialSecretDto> CreateAsync(CreateIntegrationCredentialRequest request, CancellationToken cancellationToken = default);
     Task<IntegrationCredentialSecretDto> RotateAsync(Guid credentialId, RotateIntegrationCredentialRequest request, CancellationToken cancellationToken = default);
     Task RevokeAsync(Guid credentialId, RevokeIntegrationCredentialRequest request, CancellationToken cancellationToken = default);
