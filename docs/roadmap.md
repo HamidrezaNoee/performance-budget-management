@@ -23,6 +23,7 @@
 - Manual full-version recalculation
 - Currency definitions, multiple FX-rate sources and dated rates
 - Closed fiscal year/period enforcement for direct entry and imports
+- Scenario-aware initial plan API and scenario-aware revisions
 
 ## Slice 3 — financial and performance modules (in progress)
 - Personnel/headcount model
@@ -34,31 +35,40 @@
 - P&L, balance-sheet and cash-flow import/reporting model
 - KPI targets, actuals and scoring
 - Multidimensional Budget-vs-Actual variance analysis workspace
-- Next: dedicated CAPEX project lifecycle, cash planning and driver-based budgeting
-- Next: configurable dashboard metric roles instead of generic amount aggregation
+- Rule-based variance anomaly baseline with configurable warning threshold in the UI
+- Executive dashboard semantic metric priority instead of summing unrelated amount measures
+- Next: dedicated CAPEX project lifecycle and cash planning
+- Next: richer driver-based budgeting templates and assumptions workspace
+- Next: selectable executive dashboard metric and dimensional drill-down
 
 ## Slice 4 — governance and enterprise integration
 - Budget approval state machine, revisions and review comments
 - Company/organization administration and data-level access enforcement
 - Audit trail for sensitive operations
+- Scenario selection for revised budget versions
+- Readiness/liveness endpoints and configurable per-client login throttling
+- Migration-aware schema startup policy; production no longer silently uses `EnsureCreated`
+- Database uniqueness rules for one plan per company/year/model and version numbers per plan
+- Next: generate and commit the initial EF Core migration and schema upgrade scripts
 - Next: file attachments and supporting evidence on budget versions/comments
 - Next: notification rules and in-app/email/SMS/Teams adapters
 - Next: BPMN/workflow engine adapter
 - Next: AD/LDAP/Entra/SSO adapters
 - Next: ERP/accounting/SQL/API actual-data connectors
-- Next: EF Core production migrations and schema upgrade pipeline
 
 ## Slice 5 — analytics and AI
 - Forecasting service (trend/statistical baseline)
 - Variance ranking and drill-down
-- Next: anomaly detection and driver/root-cause analysis
+- Rule-based anomaly identification baseline
+- Next: statistical anomaly detection and driver/root-cause analysis
 - Next: management narrative generation
 - Next: governed AI assistant over PBM data
 - Next: SSAS Tabular/Power BI semantic model and reporting integration
 
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
-- Replace development `EnsureCreated` database bootstrap with versioned EF Core migrations
+- Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
 - Add SQL Server integration tests for transactions, authorization and workbook imports
 - Add API idempotency/concurrency protection for bulk writes
-- Add structured observability, readiness checks and production CORS/security configuration
+- Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
+- Expand structured observability with correlation IDs, request tracing and metrics
