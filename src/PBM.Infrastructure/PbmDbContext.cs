@@ -241,7 +241,7 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<Notification>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StrategicObjective>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Kpi).WithMany().HasForeignKey(x => x.KpiId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Objective).WithMany().HasForeignKey(x => x.ObjectiveId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<KpiObjectiveLink>().HasOne(x => x.Objective).WithMany().HasForeignKey(x => x.ObjectiveId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<FxRate>().HasOne(x => x.Source).WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<FxRate>().HasOne(x => x.FromCurrency).WithMany().HasForeignKey(x => x.FromCurrencyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<FxRate>().HasOne(x => x.ToCurrency).WithMany().HasForeignKey(x => x.ToCurrencyId).OnDelete(DeleteBehavior.Restrict);
