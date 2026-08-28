@@ -44,6 +44,7 @@ export default function KpiPerformance({ companyId, fiscalYearId }: { companyId:
   const [error, setError] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [draft, setDraft] = useState<DraftKpi>(emptyKpi)
+  const [scorecardRevision, setScorecardRevision] = useState(0)
 
   const reload = async () => {
     setError('')
@@ -64,6 +65,7 @@ export default function KpiPerformance({ companyId, fiscalYearId }: { companyId:
     try {
       const { data } = await api.post<KpiValue>('/performance/kpi-values', { kpiId, companyId, periodId, target, actual })
       setValues(current => [...current.filter(x => !(x.kpiId === kpiId && x.periodId === periodId)), data])
+      setScorecardRevision(value => value + 1)
     } catch { setError('ذخیره مقدار KPI ناموفق بود.') }
   }
 
@@ -86,6 +88,7 @@ export default function KpiPerformance({ companyId, fiscalYearId }: { companyId:
         maximum
       })
       setKpis(current => [...current, data]); setDraft(emptyKpi); setDialogOpen(false)
+      setScorecardRevision(value => value + 1)
     } catch { setError('ایجاد KPI ناموفق بود. کد باید یکتا، بازه معتبر و وزن بین صفر تا صد باشد.') }
   }
 
@@ -98,7 +101,7 @@ export default function KpiPerformance({ companyId, fiscalYearId }: { companyId:
     </CardContent></Card>
     {error && <Alert severity="error">{error}</Alert>}
 
-    <PerformanceBudgetScorecard companyId={companyId} fiscalYearId={fiscalYearId} />
+    <PerformanceBudgetScorecard companyId={companyId} fiscalYearId={fiscalYearId} refreshToken={scorecardRevision} />
 
     <Card elevation={0}><CardContent sx={{ p: 0 }}>
       <TableContainer sx={{ maxHeight: '68vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell sx={{ minWidth: 245, right: 0, zIndex: 4 }}>شاخص</TableCell>{periods.map(p => <TableCell key={p.id} align="center" sx={{ minWidth: 205 }}>{p.name}<Typography variant="caption" display="block" color="text.secondary">هدف / واقعی / امتیاز</Typography></TableCell>)}</TableRow></TableHead><TableBody>{kpis.map(kpi => <TableRow key={kpi.id} hover><TableCell sx={{ position: 'sticky', right: 0, bgcolor: '#fff', zIndex: 2 }}><Typography fontWeight={900} variant="body2">{kpi.name}</Typography><Typography variant="caption" color="text.secondary">{kpi.code} | وزن {kpi.weight}٪ | {kpi.unit ?? '-'} | {scoreMode(kpi)}</Typography>{kpi.minimum != null && <Typography variant="caption" display="block" color="text.secondary">حداقل: {kpi.minimum.toLocaleString('fa-IR')}</Typography>}{kpi.maximum != null && <Typography variant="caption" display="block" color="text.secondary">حداکثر: {kpi.maximum.toLocaleString('fa-IR')}</Typography>}</TableCell>{periods.map(period => <KpiCell key={period.id} kpi={kpi} value={valueMap.get(`${kpi.id}|${period.id}`)} onSave={(target, actual) => save(kpi.id, period.id, target, actual)} />)}</TableRow>)}</TableBody></Table></TableContainer>
