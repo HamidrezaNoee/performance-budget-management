@@ -52,7 +52,17 @@ public static class EnterpriseSeedData
             Measure(trade, "PURCHASE_FX", "مبلغ ارزی خرید", "ارز", MeasureValueType.Amount, 19),
             Measure(trade, "PURCHASE_IRR", "مبلغ ریالی خرید", "ریال", MeasureValueType.Amount, 20)
         };
-        foreach (var measure in additions) if (!existing.Contains(measure.Code)) trade.Measures.Add(measure);
+        foreach (var measure in additions)
+        {
+            if (!existing.Contains(measure.Code))
+            {
+                // These entities already have application-assigned Guid keys. Adding them only through
+                // the navigation collection of an already tracked BudgetModel can make EF infer an
+                // existing row and issue UPDATE statements. Register them explicitly as Added so the
+                // first-production bootstrap always emits INSERTs and remains restart-safe.
+                db.Measures.Add(measure);
+            }
+        }
     }
 
     private static async Task EnsureEnterpriseBudgetModelsAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
