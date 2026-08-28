@@ -165,10 +165,11 @@ public sealed class CashPlanningService(
         if (request.ValueKind == ValueKind.Commitment && measureCode is "OPENING_CASH" or "MINIMUM_CASH_BUFFER")
             throw new ArgumentException("Commitment is only valid for cash inflow/outflow measures.");
 
-        var measure = infrastructure.Measures.Single(x => x.Code == measureCode);
+        var measure = infrastructure.Measures.Single(x => string.Equals(x.Code, measureCode, StringComparison.OrdinalIgnoreCase));
         var item = await db.DimensionMembers.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == request.ItemMemberId && x.DimensionId == infrastructure.ItemDimension.Id && x.IsActive, cancellationToken)
             ?? throw new ArgumentException("Cash flow item is invalid.");
+        ValidateReservedItem(measureCode, item.Code);
         if (!await db.FiscalPeriods.AnyAsync(x => x.Id == request.PeriodId && x.FiscalYearId == context.FiscalYearId, cancellationToken))
             throw new ArgumentException("Period does not belong to the cash plan fiscal year.");
         var currency = (request.CurrencyCode ?? string.Empty).Trim().ToUpperInvariant();
@@ -309,85 +310,59 @@ public sealed class CashPlanningService(
             items);
     }
 
-    private CashPlanCurrencySummaryDto BuildCurrencySummary(
+    private static CashPlanCurrencySummaryDto BuildCurrencySummary(
         string currencyCode,
         string baseCurrency,
         IReadOnlyList<FiscalPeriod> periods,
         IReadOnlyList<BudgetFact> facts,
         IReadOnlyDictionary<string, Guid> measureIds)
     {
-        var currencyFacts = facts.Where(x => string.Equals(string.IsNullOrWhiteSpace(x.CurrencyCode) ? baseCurrency : x.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase)).ToList();
-        decimal previousBudgetClosing = 0m;
-        decimal previousActualClosing = 0m;
-        decimal previousForecastClosing = 0m;
-        var monthly = new List<CashPlanMonthlyDto>(periods.Count);
-
-        foreach (var period in periods)
-        {
-            var budgetOpening = Read(period.Id, measureIds["OPENING_CASH"], ValueKind.Budget);
-            var actualOpening = Read(period.Id, measureIds["OPENING_CASH"], ValueKind.Actual);
-            var forecastOpening = Read(period.Id, measureIds["OPENING_CASH"], ValueKind.Forecast);
-            var budgetIn = Read(period.Id, measureIds["CASH_INFLOW"], ValueKind.Budget);
-            var budgetOut = Read(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Budget);
-            var actualIn = Read(period.Id, measureIds["CASH_INFLOW"], ValueKind.Actual);
-            var actualOut = Read(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Actual);
-            var forecastIn = Read(period.Id, measureIds["CASH_INFLOW"], ValueKind.Forecast);
-            var forecastOut = Read(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Forecast);
-            var commitmentOut = Read(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Commitment);
-            var buffer = Read(period.Id, measureIds["MINIMUM_CASH_BUFFER"], ValueKind.Budget);
-
-            var openingBudget = budgetOpening.HasValue ? budgetOpening.Value : previousBudgetClosing;
-            var closingBudget = openingBudget + budgetIn.Value - budgetOut.Value;
-            var openingActual = actualOpening.HasValue ? actualOpening.Value : previousActualClosing;
-            var closingActual = openingActual + actualIn.Value - actualOut.Value;
-            var openingForecast = forecastOpening.HasValue ? forecastOpening.Value : previousForecastClosing;
-            if (!forecastOpening.HasValue && monthly.Count == 0 && actualOpening.HasValue) openingForecast = actualOpening.Value;
-            if (!forecastOpening.HasValue && monthly.Count == 0 && !actualOpening.HasValue && budgetOpening.HasValue) openingForecast = budgetOpening.Value;
-            var inflowForecast = forecastIn.HasValue ? forecastIn.Value : budgetIn.Value;
-            var outflowForecast = forecastOut.HasValue ? forecastOut.Value : budgetOut.Value;
-            var closingForecast = openingForecast + inflowForecast - outflowForecast;
-            var projectedAvailable = closingForecast - commitmentOut.Value;
-            var minimumBuffer = buffer.HasValue ? buffer.Value : 0m;
-            var liquidityGap = projectedAvailable - minimumBuffer;
-
-            monthly.Add(new CashPlanMonthlyDto(
-                period.Id, period.Name, period.Sequence,
-                openingBudget, budgetIn.Value, budgetOut.Value, closingBudget,
-                openingActual, actualIn.Value, actualOut.Value, closingActual,
-                openingForecast, inflowForecast, outflowForecast, closingForecast,
-                commitmentOut.Value, projectedAvailable, minimumBuffer, liquidityGap));
-            previousBudgetClosing = closingBudget;
-            previousActualClosing = closingActual;
-            previousForecastClosing = closingForecast;
-        }
-
-        var ending = monthly.LastOrDefault();
-        var minimumProjected = monthly.Count == 0 ? 0m : monthly.Min(x => x.ProjectedAvailable);
-        var maximumShortfall = monthly.Count == 0 ? 0m : Math.Max(0m, -monthly.Min(x => x.LiquidityGap));
-        return new CashPlanCurrencySummaryDto(
+        var currencyFacts = facts.Where(x => string.Equals(
+            string.IsNullOrWhiteSpace(x.CurrencyCode) ? baseCurrency : x.CurrencyCode,
             currencyCode,
-            monthly.Sum(x => x.BudgetInflow), monthly.Sum(x => x.BudgetOutflow),
-            monthly.Sum(x => x.ActualInflow), monthly.Sum(x => x.ActualOutflow),
-            monthly.Sum(x => x.ForecastInflow), monthly.Sum(x => x.ForecastOutflow),
-            monthly.Sum(x => x.CommitmentOutflow),
-            ending?.BudgetClosing ?? 0m, ending?.ActualClosing ?? 0m, ending?.ForecastClosing ?? 0m,
-            ending?.ProjectedAvailable ?? 0m, minimumProjected, maximumShortfall,
-            monthly.Count(x => x.LiquidityGap < 0m), monthly);
+            StringComparison.OrdinalIgnoreCase)).ToList();
 
-        MeasureRead Read(Guid periodId, Guid measureId, ValueKind kind)
+        var inputs = periods.Select(period => new CashRollForwardPeriodInput(
+            period.Id,
+            period.Name,
+            period.Sequence,
+            ReadNullable(period.Id, measureIds["OPENING_CASH"], ValueKind.Budget),
+            ReadSum(period.Id, measureIds["CASH_INFLOW"], ValueKind.Budget),
+            ReadSum(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Budget),
+            ReadNullable(period.Id, measureIds["OPENING_CASH"], ValueKind.Actual),
+            ReadSum(period.Id, measureIds["CASH_INFLOW"], ValueKind.Actual),
+            ReadSum(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Actual),
+            ReadNullable(period.Id, measureIds["OPENING_CASH"], ValueKind.Forecast),
+            ReadNullable(period.Id, measureIds["CASH_INFLOW"], ValueKind.Forecast),
+            ReadNullable(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Forecast),
+            ReadSum(period.Id, measureIds["CASH_OUTFLOW"], ValueKind.Commitment),
+            ReadNullable(period.Id, measureIds["MINIMUM_CASH_BUFFER"], ValueKind.Budget))).ToList();
+
+        return CashRollForwardCalculator.Calculate(currencyCode, inputs);
+
+        decimal ReadSum(Guid periodId, Guid measureId, ValueKind kind) =>
+            currencyFacts.Where(x => x.PeriodId == periodId && x.MeasureId == measureId && x.ValueKind == kind).Sum(x => x.Value);
+
+        decimal? ReadNullable(Guid periodId, Guid measureId, ValueKind kind)
         {
             var matching = currencyFacts.Where(x => x.PeriodId == periodId && x.MeasureId == measureId && x.ValueKind == kind).ToList();
-            return new MeasureRead(matching.Count > 0, matching.Sum(x => x.Value));
+            return matching.Count == 0 ? null : matching.Sum(x => x.Value);
         }
     }
 
     private async Task<(Guid CompanyId, Guid FiscalYearId, Guid ModelId)> GetVersionContextAsync(Guid versionId, CancellationToken ct)
     {
-        return await db.BudgetVersions.AsNoTracking().Where(x => x.Id == versionId)
-            .Select(x => new ValueTuple<Guid, Guid, Guid>(x.BudgetPlan!.CompanyId, x.BudgetPlan.FiscalYearId, x.BudgetPlan.BudgetModelId))
-            .SingleOrDefaultAsync(ct) is var value && value != default
-            ? value
-            : throw new KeyNotFoundException("Budget version was not found.");
+        var context = await db.BudgetVersions.AsNoTracking()
+            .Where(x => x.Id == versionId)
+            .Select(x => new
+            {
+                CompanyId = x.BudgetPlan!.CompanyId,
+                FiscalYearId = x.BudgetPlan.FiscalYearId,
+                ModelId = x.BudgetPlan.BudgetModelId
+            })
+            .SingleOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException("Budget version was not found.");
+        return (context.CompanyId, context.FiscalYearId, context.ModelId);
     }
 
     private async Task EnsureFiscalYearAsync(Guid companyId, Guid fiscalYearId, bool requireOpen, CancellationToken ct)
@@ -397,9 +372,15 @@ public sealed class CashPlanningService(
         if (requireOpen && year.IsClosed) throw new InvalidOperationException("Closed fiscal years cannot accept a cash plan.");
     }
 
+    private static void ValidateReservedItem(string measureCode, string itemCode)
+    {
+        if (measureCode == "OPENING_CASH" && !string.Equals(itemCode, "OPENING_BALANCE", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("OPENING_CASH must use the OPENING_BALANCE cash-flow item.");
+        if (measureCode == "MINIMUM_CASH_BUFFER" && !string.Equals(itemCode, "LIQUIDITY_BUFFER", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("MINIMUM_CASH_BUFFER must use the LIQUIDITY_BUFFER cash-flow item.");
+    }
+
     private bool CanWriteCompany(Guid companyId) => user.IsInRole("SUPERADMIN") || user.CanWriteCompany(companyId);
     private void EnsureCompanyRead(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
     private void EnsureCompanyWrite(Guid companyId) { if (!CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
-
-    private readonly record struct MeasureRead(bool HasValue, decimal Value);
 }
