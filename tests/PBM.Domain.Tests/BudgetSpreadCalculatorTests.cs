@@ -1,4 +1,5 @@
 using PBM.Application;
+using Xunit;
 
 namespace PBM.Domain.Tests;
 
