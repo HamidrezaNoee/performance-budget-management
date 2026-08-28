@@ -15,6 +15,13 @@ public static class CapexEndpoints
             CancellationToken ct) =>
             service.GetOwnerUnitsAsync(companyId, ct));
 
+        capex.MapGet("/portfolio", (
+            Guid companyId,
+            Guid fiscalYearId,
+            ICapexService service,
+            CancellationToken ct) =>
+            service.GetPortfolioAsync(companyId, fiscalYearId, ct));
+
         capex.MapGet("/projects", (
             Guid companyId,
             CapexProjectStatus? status,
