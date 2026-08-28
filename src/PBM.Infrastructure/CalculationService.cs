@@ -20,9 +20,11 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
             .Select(x => new
             {
                 x.Id,
+                x.ScenarioId,
                 CompanyId = x.BudgetPlan!.CompanyId,
                 FiscalYearId = x.BudgetPlan.FiscalYearId,
-                ModelId = x.BudgetPlan.BudgetModelId
+                ModelId = x.BudgetPlan.BudgetModelId,
+                TenantId = x.BudgetPlan.Company!.TenantId
             })
             .SingleAsync(cancellationToken);
         EnsureCompanyWrite(context.CompanyId);
@@ -45,6 +47,15 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
         var variables = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         foreach (var fact in facts.Where(x => !calculatedIds.Contains(x.MeasureId)))
             if (measureById.TryGetValue(fact.MeasureId, out var definition)) variables[definition.Code] = fact.Value;
+
+        await AddResolvedAssumptionVariablesAsync(
+            variables,
+            context.TenantId,
+            context.CompanyId,
+            context.FiscalYearId,
+            context.ScenarioId,
+            periodId,
+            cancellationToken);
 
         var existingCalculated = facts.Where(x => calculatedIds.Contains(x.MeasureId)).ToDictionary(x => x.MeasureId);
         var pending = calculated.ToList();
@@ -170,6 +181,42 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
             }
         }
         return new CalculationResultDto(coordinates.Count, created, updated, skipped, errors.Distinct().Take(200).ToList());
+    }
+
+    private async Task AddResolvedAssumptionVariablesAsync(
+        IDictionary<string, decimal> variables,
+        Guid tenantId,
+        Guid companyId,
+        Guid fiscalYearId,
+        Guid scenarioId,
+        Guid periodId,
+        CancellationToken ct)
+    {
+        var definitions = await db.AssumptionDefinitions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive)
+            .Select(x => new { x.Id, x.Code })
+            .ToListAsync(ct);
+        if (definitions.Count == 0) return;
+
+        var definitionIds = definitions.Select(x => x.Id).ToArray();
+        var values = await db.AssumptionValues.AsNoTracking()
+            .Where(x => definitionIds.Contains(x.DefinitionId)
+                && x.CompanyId == companyId
+                && x.FiscalYearId == fiscalYearId
+                && (x.ScenarioId == null || x.ScenarioId == scenarioId)
+                && (x.PeriodId == null || x.PeriodId == periodId))
+            .ToListAsync(ct);
+
+        foreach (var definition in definitions)
+        {
+            var selected = values.Where(x => x.DefinitionId == definition.Id)
+                .OrderByDescending(x => x.ScenarioId == scenarioId ? 2 : 0)
+                .ThenByDescending(x => x.PeriodId == periodId ? 1 : 0)
+                .ThenByDescending(x => x.UpdatedAtUtc)
+                .FirstOrDefault();
+            if (selected is not null)
+                variables[$"ASSUMP:{definition.Code}"] = selected.Value;
+        }
     }
 
     private void EnsureCompanyWrite(Guid companyId)
