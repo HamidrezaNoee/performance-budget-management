@@ -16,6 +16,9 @@ public static class ServiceRegistration
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<BudgetService>();
         services.AddScoped<IBudgetService, GovernedBudgetService>();
+        services.AddScoped<SqlApplicationLock>();
+        services.AddScoped<ActualLedgerValidationService>();
+        services.AddScoped<ActualLedgerProjectionService>();
         services.AddScoped<IActualLedgerService, ActualLedgerService>();
         services.AddScoped<IActualLedgerKeyPostingService, ActualLedgerKeyPostingService>();
         services.AddScoped<IActualLedgerBatchService, ActualLedgerBatchService>();
