@@ -36,6 +36,12 @@ public static class ActualLedgerEndpoints
             CancellationToken ct) =>
             service.PostAsync(request, ct));
 
+        ledger.MapPost("/batch", (
+            PostActualLedgerBatchRequest request,
+            IActualLedgerBatchService service,
+            CancellationToken ct) =>
+            service.PostAsync(request, ct));
+
         ledger.MapPost("/{entryId:guid}/reverse", (
             Guid entryId,
             ReverseActualLedgerRequest request,
