@@ -66,12 +66,12 @@ public sealed class BudgetInboxService(PbmDbContext db, IUserContext user) : IBu
 
     private bool CanStartReview(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.Submitted && IsReviewManager;
     private bool CanApprove(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.UnderReview && IsApprover;
-    private bool CanReturn(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status switch
+    private bool CanReturn(BudgetStatus status, Guid companyId) => CanWrite(companyId) && (status switch
     {
         BudgetStatus.Submitted => IsReviewManager,
         BudgetStatus.UnderReview => IsSeniorReviewer,
         _ => false
-    };
+    });
     private bool CanReject(BudgetStatus status, Guid companyId) => CanReturn(status, companyId);
 
     private void EnsureCompanyRead(Guid companyId)
