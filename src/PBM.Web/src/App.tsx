@@ -39,6 +39,13 @@ type LoginResponse = { accessToken: string; displayName: string; roles: string[]
 const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+const viewHashes = ['dashboard', 'inbox', 'budget', 'reservations', 'imports', 'kpi', 'variance', 'forecast', 'reports', 'settings'] as const
+
+function viewIndexFromHash() {
+  const hash = window.location.hash.replace(/^#/, '').toLowerCase()
+  const index = viewHashes.findIndex(x => x === hash)
+  return index >= 0 ? index : 0
+}
 
 function readStoredArray(key: string): string[] {
   try { return JSON.parse(localStorage.getItem(key) ?? '[]') as string[] }
@@ -112,8 +119,20 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeView, setActiveView] = useState(0)
+  const [activeView, setActiveView] = useState(viewIndexFromHash)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+
+  useEffect(() => {
+    const onHashChange = () => setActiveView(viewIndexFromHash())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  const selectView = (index: number) => {
+    setActiveView(index)
+    const hash = viewHashes[index] ?? viewHashes[0]
+    if (window.location.hash !== `#${hash}`) window.location.hash = hash
+  }
 
   useEffect(() => {
     api.get<Company[]>('/companies').then(response => {
@@ -157,7 +176,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
       <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
         <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
-        <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => setActiveView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
+        <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => selectView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
         <Box flexGrow={1} />
         <List sx={{ p: 1 }}>
           <ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton>
