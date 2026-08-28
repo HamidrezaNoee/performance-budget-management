@@ -32,6 +32,7 @@ public sealed class OutboxMessage : Entity
     public int Attempts { get; set; }
     public DateTime NextAttemptAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? LockedUntilUtc { get; set; }
+    public Guid? LockToken { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
 
     [MaxLength(2000)]
