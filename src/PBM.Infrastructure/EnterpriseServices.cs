@@ -27,10 +27,11 @@ public sealed class ReferenceDataService(PbmDbContext db, IUserContext user) : I
 
     public async Task<FxRateDto> UpsertFxRateAsync(UpsertFxRateRequest request, CancellationToken cancellationToken = default)
     {
+        EnsureFinanceEditor();
         if (request.Rate <= 0) throw new ArgumentException("FX rate must be greater than zero.");
         if (request.FromCurrencyId == request.ToCurrencyId) throw new ArgumentException("Source and destination currencies must be different.");
-        var source = await db.FxRateSources.SingleAsync(x => x.Id == request.SourceId && x.TenantId == user.TenantId, cancellationToken);
-        var currencies = await db.Currencies.Where(x => x.TenantId == user.TenantId && (x.Id == request.FromCurrencyId || x.Id == request.ToCurrencyId)).ToListAsync(cancellationToken);
+        var source = await db.FxRateSources.SingleAsync(x => x.Id == request.SourceId && x.TenantId == user.TenantId && x.IsActive, cancellationToken);
+        var currencies = await db.Currencies.Where(x => x.TenantId == user.TenantId && x.IsActive && (x.Id == request.FromCurrencyId || x.Id == request.ToCurrencyId)).ToListAsync(cancellationToken);
         if (currencies.Count != 2) throw new ArgumentException("One or more currencies are invalid.");
         var from = currencies.Single(x => x.Id == request.FromCurrencyId); var to = currencies.Single(x => x.Id == request.ToCurrencyId);
         FxRate rate;
@@ -58,6 +59,12 @@ public sealed class ReferenceDataService(PbmDbContext db, IUserContext user) : I
         if (!rate.HasValue) throw new KeyNotFoundException($"No FX rate found for {fromCurrency}/{toCurrency} on or before {rateDate:yyyy-MM-dd}.");
         return amount * rate.Value;
     }
+
+    private void EnsureFinanceEditor()
+    {
+        if (!user.IsInRole("SUPERADMIN") && !user.IsInRole("ADMIN") && !user.IsInRole("CFO") && !user.IsInRole("BUDGET_MANAGER"))
+            throw new UnauthorizedAccessException("CFO, budget manager or administrator role is required to maintain FX rates.");
+    }
 }
 
 public sealed class KpiService(PbmDbContext db, IUserContext user) : IKpiService
@@ -68,10 +75,12 @@ public sealed class KpiService(PbmDbContext db, IUserContext user) : IKpiService
 
     public async Task<KpiDto> CreateKpiAsync(CreateKpiRequest request, CancellationToken cancellationToken = default)
     {
+        EnsureKpiDefinitionEditor();
         if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("KPI code and name are required.");
         if (request.Weight < 0 || request.Weight > 100) throw new ArgumentException("KPI weight must be between 0 and 100.");
-        if (await db.Kpis.AnyAsync(x => x.TenantId == user.TenantId && x.Code == request.Code, cancellationToken)) throw new InvalidOperationException("A KPI with this code already exists.");
-        var kpi = new KpiDefinition { TenantId = user.TenantId, Code = request.Code.Trim().ToUpperInvariant(), Name = request.Name.Trim(), Description = request.Description, Unit = request.Unit, Weight = request.Weight, Minimum = request.Minimum, Maximum = request.Maximum, Frequency = string.IsNullOrWhiteSpace(request.Frequency) ? "Monthly" : request.Frequency, FormulaExpression = request.FormulaExpression };
+        var code = request.Code.Trim().ToUpperInvariant();
+        if (await db.Kpis.AnyAsync(x => x.TenantId == user.TenantId && x.Code == code, cancellationToken)) throw new InvalidOperationException("A KPI with this code already exists.");
+        var kpi = new KpiDefinition { TenantId = user.TenantId, Code = code, Name = request.Name.Trim(), Description = request.Description, Unit = request.Unit, Weight = request.Weight, Minimum = request.Minimum, Maximum = request.Maximum, Frequency = string.IsNullOrWhiteSpace(request.Frequency) ? "Monthly" : request.Frequency, FormulaExpression = request.FormulaExpression };
         db.Kpis.Add(kpi); db.AuditLogs.Add(new AuditLog { TenantId = user.TenantId, UserId = user.UserId == Guid.Empty ? null : user.UserId, EntityType = "KpiDefinition", EntityId = kpi.Id.ToString(), Action = "CREATE", NewValueJson = JsonSerializer.Serialize(new { kpi.Code, kpi.Name, kpi.Weight }) });
         await db.SaveChangesAsync(cancellationToken);
         return new KpiDto(kpi.Id, kpi.Code, kpi.Name, kpi.Description, kpi.Unit, kpi.Weight, kpi.Minimum, kpi.Maximum, kpi.Frequency, kpi.FormulaExpression);
@@ -79,7 +88,8 @@ public sealed class KpiService(PbmDbContext db, IUserContext user) : IKpiService
 
     public async Task<IReadOnlyList<KpiValueDto>> GetValuesAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default)
     {
-        await EnsureCompanyAsync(companyId, cancellationToken);
+        await EnsureCompanyAsync(companyId, false, cancellationToken);
+        if (!await db.FiscalYears.AnyAsync(x => x.Id == fiscalYearId && x.CompanyId == companyId, cancellationToken)) throw new ArgumentException("Fiscal year does not belong to the company.");
         return await db.KpiValues.AsNoTracking().Where(x => x.CompanyId == companyId && x.Period!.FiscalYearId == fiscalYearId && x.Kpi!.TenantId == user.TenantId).OrderBy(x => x.Kpi!.Code).ThenBy(x => x.Period!.Sequence)
             .Select(x => new KpiValueDto(x.Id, x.KpiId, x.CompanyId, x.PeriodId, x.Target, x.Actual, x.Score, x.Target == 0 ? 0 : Math.Round(x.Actual / x.Target * 100, 2)))
             .ToListAsync(cancellationToken);
@@ -87,10 +97,11 @@ public sealed class KpiService(PbmDbContext db, IUserContext user) : IKpiService
 
     public async Task<KpiValueDto> UpsertValueAsync(UpsertKpiValueRequest request, CancellationToken cancellationToken = default)
     {
-        await EnsureCompanyAsync(request.CompanyId, cancellationToken);
+        await EnsureCompanyAsync(request.CompanyId, true, cancellationToken);
         if (!await db.Kpis.AnyAsync(x => x.Id == request.KpiId && x.TenantId == user.TenantId, cancellationToken)) throw new ArgumentException("KPI is invalid.");
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleAsync(x => x.Id == request.PeriodId, cancellationToken);
         if (period.FiscalYear!.CompanyId != request.CompanyId) throw new ArgumentException("Period does not belong to the company.");
+        if (period.IsClosed || period.FiscalYear.IsClosed) throw new InvalidOperationException("Fiscal period is closed and KPI values cannot be changed.");
         var value = await db.KpiValues.SingleOrDefaultAsync(x => x.KpiId == request.KpiId && x.CompanyId == request.CompanyId && x.PeriodId == request.PeriodId, cancellationToken);
         var old = value is null ? null : JsonSerializer.Serialize(new { value.Target, value.Actual, value.Score });
         if (value is null) { value = new KpiValue { KpiId = request.KpiId, CompanyId = request.CompanyId, PeriodId = request.PeriodId }; db.KpiValues.Add(value); }
@@ -100,10 +111,18 @@ public sealed class KpiService(PbmDbContext db, IUserContext user) : IKpiService
         return new KpiValueDto(value.Id, value.KpiId, value.CompanyId, value.PeriodId, value.Target, value.Actual, value.Score, value.Target == 0 ? 0 : Math.Round(value.Actual / value.Target * 100, 2));
     }
 
-    private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
+    private async Task EnsureCompanyAsync(Guid companyId, bool write, CancellationToken ct)
     {
-        if (!await db.Companies.AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId, ct)) throw new UnauthorizedAccessException("Company is outside the current tenant.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        if (!await db.Companies.AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive, ct)) throw new UnauthorizedAccessException("Company is outside the current tenant.");
+        if (user.IsInRole("SUPERADMIN")) return;
+        if (!user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        if (write && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company.");
+    }
+
+    private void EnsureKpiDefinitionEditor()
+    {
+        if (!user.IsInRole("SUPERADMIN") && !user.IsInRole("ADMIN") && !user.IsInRole("BUDGET_MANAGER"))
+            throw new UnauthorizedAccessException("Budget manager or administrator role is required to create KPI definitions.");
     }
 }
 
@@ -111,6 +130,8 @@ public sealed class AuditService(PbmDbContext db, IUserContext user) : IAuditSer
 {
     public async Task<IReadOnlyList<AuditLogDto>> GetRecentAsync(int take = 100, CancellationToken cancellationToken = default)
     {
+        if (!user.IsInRole("SUPERADMIN") && !user.IsInRole("ADMIN") && !user.IsInRole("AUDITOR") && !user.IsInRole("CFO") && !user.IsInRole("BUDGET_MANAGER"))
+            throw new UnauthorizedAccessException("Audit access requires auditor, finance, budget manager or administrator role.");
         take = Math.Clamp(take, 1, 500);
         return await db.AuditLogs.AsNoTracking().Where(x => x.TenantId == user.TenantId).OrderByDescending(x => x.CreatedAtUtc).Take(take)
             .Select(x => new AuditLogDto(x.Id, x.UserId, x.EntityType, x.EntityId, x.Action, x.OldValueJson, x.NewValueJson, x.IpAddress, x.CreatedAtUtc)).ToListAsync(cancellationToken);
