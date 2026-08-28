@@ -54,12 +54,20 @@ using (var scope = app.Services.CreateScope())
     await db.Database.EnsureCreatedAsync();
     await SeedData.InitializeAsync(db);
     await EnterpriseSeedData.InitializeAsync(db);
+    await SecuritySeedData.InitializeAsync(db);
     if (app.Environment.IsDevelopment() && !await db.Users.AnyAsync())
     {
-        var tenantId = await db.Tenants.Select(x => x.Id).FirstAsync(); var companyId = await db.Companies.Select(x => x.Id).FirstAsync();
-        var role = new Role { TenantId = tenantId, Code = "SUPERADMIN", Name = "مدیر سیستم" }; var user = new AppUser { TenantId = tenantId, UserName = "admin", DisplayName = "مدیر سیستم", PasswordHash = "pending" };
-        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>(); user.PasswordHash = hasher.HashPassword(user, "ChangeMe123!"); db.AddRange(role, user);
-        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id }); db.UserCompanyAccess.Add(new UserCompanyAccess { UserId = user.Id, CompanyId = companyId, CanRead = true, CanWrite = true }); await db.SaveChangesAsync();
+        var tenantId = await db.Tenants.Select(x => x.Id).FirstAsync();
+        var companyId = await db.Companies.Select(x => x.Id).FirstAsync();
+        var role = await db.Roles.SingleAsync(x => x.TenantId == tenantId && x.Code == "SUPERADMIN");
+        var user = new AppUser { TenantId = tenantId, UserName = "admin", DisplayName = "مدیر سیستم", PasswordHash = "pending" };
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<AppUser>>();
+        var bootstrapPassword = builder.Configuration["BootstrapAdmin:Password"] ?? "ChangeMe123!";
+        user.PasswordHash = hasher.HashPassword(user, bootstrapPassword);
+        db.Users.Add(user);
+        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+        db.UserCompanyAccess.Add(new UserCompanyAccess { UserId = user.Id, CompanyId = companyId, CanRead = true, CanWrite = true });
+        await db.SaveChangesAsync();
     }
 }
 
