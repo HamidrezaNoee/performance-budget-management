@@ -184,6 +184,23 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
 
         modelBuilder.Entity<UserRole>().HasOne(x => x.User).WithMany(x => x.UserRoles).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UserRole>().HasOne(x => x.Role).WithMany(x => x.UserRoles).HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany(x => x.CompanyAccess).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<BudgetPlan>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetPlan>().HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetPlan>().HasOne(x => x.BudgetModel).WithMany().HasForeignKey(x => x.BudgetModelId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetVersion>().HasOne(x => x.BudgetPlan).WithMany(x => x.Versions).HasForeignKey(x => x.BudgetPlanId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BudgetVersion>().HasOne(x => x.Scenario).WithMany().HasForeignKey(x => x.ScenarioId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetFact>().HasOne(x => x.Version).WithMany(x => x.Facts).HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BudgetFact>().HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetFact>().HasOne(x => x.Measure).WithMany().HasForeignKey(x => x.MeasureId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetComment>().HasOne(x => x.Version).WithMany().HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BudgetComment>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<KpiValue>().HasOne(x => x.Kpi).WithMany().HasForeignKey(x => x.KpiId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<KpiValue>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<KpiValue>().HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<OrganizationUnit>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DimensionMember>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
@@ -227,7 +244,6 @@ public sealed class PbmDbContext(DbContextOptions<PbmDbContext> options) : DbCon
         modelBuilder.Entity<CapexProject>().HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<CapexProject>().HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<CapexMilestone>().HasOne(x => x.Project).WithMany(x => x.Milestones).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<IdempotencyRecord>().HasOne(x => x.User).WithMany(x => x.IdempotencyRecords).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<IntegrationCredential>().HasOne(x => x.User).WithMany(x => x.IntegrationCredentials).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ActualLedgerEntry>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
