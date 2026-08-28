@@ -7,12 +7,13 @@ type FiscalYear = { id: string; companyId: string; code: string; name: string; j
 
 const months = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
 const faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' })
+const currentJalaliYear = () => new Intl.DateTimeFormat('fa-IR-u-ca-persian-nu-latn', { year: 'numeric' }).format(new Date())
 
 export default function FiscalCalendarAdmin({ companyId }: { companyId: string }) {
   const [years, setYears] = useState<FiscalYear[]>([])
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [jalaliYear, setJalaliYear] = useState(new Intl.DateTimeFormat('en-US-u-ca-persian', { year: 'numeric' }).format(new Date()))
+  const [jalaliYear, setJalaliYear] = useState(currentJalaliYear())
   const [startMonth, setStartMonth] = useState(1)
   const [monthCount, setMonthCount] = useState(12)
   const [busy, setBusy] = useState(false)
