@@ -16,7 +16,7 @@ public sealed class IntegrationCredentialModelTests
     }
 
     [Fact]
-    public void Credential_is_discovered_through_service_account_navigation()
+    public void Credential_has_safe_storage_unique_client_id_and_restricted_user_fk()
     {
         using var db = CreateContext();
         var entity = db.Model.FindEntityType(typeof(IntegrationCredential));
@@ -27,6 +27,14 @@ public sealed class IntegrationCredentialModelTests
         Assert.Equal(64, entity.FindProperty(nameof(IntegrationCredential.SecretHash))!.GetMaxLength());
         Assert.Equal(32, entity.FindProperty(nameof(IntegrationCredential.SecretSalt))!.GetMaxLength());
         Assert.Equal(500, entity.FindProperty(nameof(IntegrationCredential.RevocationReason))!.GetMaxLength());
+
+        var clientIdIndex = entity.GetIndexes().Single(x =>
+            x.Properties.Select(p => p.Name).SequenceEqual([nameof(IntegrationCredential.ClientId)]));
+        Assert.True(clientIdIndex.IsUnique);
+
+        var userFk = entity.GetForeignKeys().Single(x => x.PrincipalEntityType.ClrType == typeof(AppUser));
+        Assert.Equal(DeleteBehavior.Restrict, userFk.DeleteBehavior);
+        Assert.Equal([nameof(IntegrationCredential.UserId)], userFk.Properties.Select(x => x.Name));
     }
 
     [Fact]
