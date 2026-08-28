@@ -35,6 +35,16 @@ public sealed record PerformanceKpiComponentDto(
     decimal LatestScore,
     bool LatestIsOnTarget);
 
+public sealed record PerformanceObjectiveComponentDto(
+    Guid ObjectiveId,
+    string Code,
+    string Name,
+    decimal StrategicWeight,
+    int LinkedKpiCount,
+    int ObservedKpiCount,
+    decimal DataCoveragePercent,
+    decimal? Score);
+
 public sealed record PerformanceBudgetScorecardDto(
     Guid VersionId,
     Guid CompanyId,
@@ -50,10 +60,14 @@ public sealed record PerformanceBudgetScorecardDto(
     int TotalPeriods,
     decimal DataCoveragePercent,
     decimal? WeightedKpiScore,
+    decimal StrategyCoveragePercent,
+    decimal? StrategyWeightedScore,
+    decimal? RecommendationScore,
     PerformanceFundingRecommendation Recommendation,
     IReadOnlyList<string> Reasons,
     IReadOnlyList<PerformanceBudgetCurrencyDto> Currencies,
-    IReadOnlyList<PerformanceKpiComponentDto> Kpis);
+    IReadOnlyList<PerformanceKpiComponentDto> Kpis,
+    IReadOnlyList<PerformanceObjectiveComponentDto> Objectives);
 
 public interface IPerformanceBudgetingService
 {
