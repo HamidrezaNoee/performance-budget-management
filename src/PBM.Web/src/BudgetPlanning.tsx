@@ -3,6 +3,7 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, FormCont
 import { api } from './api'
 
 type Model = { id: string; code: string; name: string; description?: string }
+type Scenario = { id: string; code: string; name: string; isActive: boolean }
 type Version = { id: string; scenarioId: string; versionNumber: number; name: string; status: number; isLocked: boolean }
 type Plan = { id: string; budgetModelId: string; name: string; status: number; versions: Version[] }
 type Dimension = { id: string; code: string; name: string; sequence: number; isRequired: boolean }
@@ -31,10 +32,12 @@ function apiError(error: unknown, fallback: string) {
 
 export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId: string; fiscalYearId: string }) {
   const [models, setModels] = useState<Model[]>([])
+  const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [modelId, setModelId] = useState('')
   const [planId, setPlanId] = useState('')
   const [versionId, setVersionId] = useState('')
+  const [revisionScenarioId, setRevisionScenarioId] = useState('')
   const [dimensions, setDimensions] = useState<Dimension[]>([])
   const [members, setMembers] = useState<Record<string, Member[]>>({})
   const [measures, setMeasures] = useState<Measure[]>([])
@@ -54,6 +57,8 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
   const version = sortedVersions.find(x => x.id === versionId) ?? sortedVersions[0]
   const editable = !!version && version.status === 0 && !version.isLocked
   const selectedMeasure = measures.find(x => x.id === measureId)
+  const currentScenario = scenarios.find(x => x.id === version?.scenarioId)
+  const activeScenarios = useMemo(() => scenarios.filter(x => x.isActive), [scenarios])
 
   const fixedFilters = () => Object.entries(filters)
     .filter(([, memberId]) => memberId)
@@ -80,15 +85,17 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
     setBusy(true); setError(''); setMessage(''); setGrid(null); setComparison(null)
     Promise.all([
       api.get<Model[]>('/reference/models', { params: { companyId } }),
-      api.get<Plan[]>('/budget/plans', { params: { companyId, fiscalYearId } })
-    ]).then(([modelResponse, planResponse]) => {
-      setModels(modelResponse.data); setPlans(planResponse.data)
+      api.get<Plan[]>('/budget/plans', { params: { companyId, fiscalYearId } }),
+      api.get<Scenario[]>('/scenarios/')
+    ]).then(([modelResponse, planResponse, scenarioResponse]) => {
+      setModels(modelResponse.data); setPlans(planResponse.data); setScenarios(scenarioResponse.data)
       const firstModel = planResponse.data[0]?.budgetModelId ?? modelResponse.data[0]?.id ?? ''
       setModelId(firstModel)
       const firstPlan = planResponse.data.find(x => x.budgetModelId === firstModel) ?? planResponse.data[0]
       setPlanId(firstPlan?.id ?? '')
       const latest = [...(firstPlan?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)[0]
       setVersionId(latest?.id ?? '')
+      setRevisionScenarioId(latest?.scenarioId ?? scenarioResponse.data.find(x => x.isActive && x.code === 'BASE')?.id ?? scenarioResponse.data.find(x => x.isActive)?.id ?? '')
     }).catch(error => setError(apiError(error, 'دریافت اطلاعات برنامه بودجه ناموفق بود.'))).finally(() => setBusy(false))
   }, [companyId, fiscalYearId])
 
@@ -128,6 +135,12 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
     setCompareVersionId(candidate?.id ?? '')
     setComparison(null)
   }, [version?.id, planId, sortedVersions.length])
+
+  useEffect(() => {
+    if (!version) { setRevisionScenarioId(''); return }
+    const currentIsActive = scenarios.some(x => x.id === version.scenarioId && x.isActive)
+    setRevisionScenarioId(currentIsActive ? version.scenarioId : activeScenarios[0]?.id ?? '')
+  }, [version?.id, version?.scenarioId, scenarios.length])
 
   const filterDimensions = useMemo(() => dimensions.filter(x => x.id !== rowDimensionId), [dimensions, rowDimensionId])
 
@@ -277,12 +290,19 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
 
   const createRevision = async () => {
     if (!version) return
+    if (!revisionScenarioId) { setError('برای نسخه اصلاحی یک سناریوی فعال انتخاب کنید.'); return }
     const name = window.prompt('نام نسخه اصلاحی جدید:', `اصلاحیه ${version.versionNumber + 1}`)
     if (!name?.trim()) return
     setBusy(true); setError(''); setMessage('')
     try {
-      const { data } = await api.post<VersionDetails>('/budget/versions/revision', { sourceVersionId: version.id, name: name.trim(), scenarioId: null })
-      await refreshPlans(data.id); setMessage('نسخه اصلاحی ایجاد شد.')
+      const { data } = await api.post<VersionDetails>('/budget/versions/revision', {
+        sourceVersionId: version.id,
+        name: name.trim(),
+        scenarioId: revisionScenarioId
+      })
+      await refreshPlans(data.id)
+      const scenarioName = scenarios.find(x => x.id === revisionScenarioId)?.name
+      setMessage(`نسخه اصلاحی ایجاد شد${scenarioName ? ` — سناریو: ${scenarioName}` : ''}.`)
     } catch (error) { setError(apiError(error, 'ایجاد نسخه اصلاحی ناموفق بود.')) }
     finally { setBusy(false) }
   }
@@ -303,15 +323,26 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
 
       {version && <Stack direction="row" spacing={1} mt={2} alignItems="center" flexWrap="wrap" useFlexGap>
         <Chip label={statusLabels[version.status] ?? 'نامشخص'} color={version.status === 4 ? 'success' : version.status === 5 ? 'error' : version.status === 3 ? 'warning' : 'default'} />
+        <Chip variant="outlined" label={`سناریو: ${currentScenario?.name ?? currentScenario?.code ?? 'نامشخص'}`} />
         {version.status === 0 && <Button size="small" variant="contained" onClick={() => changeStatus(1)}>ارسال برای بررسی</Button>}
         {version.status === 1 && <><Button size="small" onClick={() => changeStatus(2)}>شروع بررسی</Button><Button size="small" color="warning" onClick={() => changeStatus(3)}>برگشت</Button><Button size="small" color="error" onClick={() => changeStatus(5)}>رد</Button></>}
         {version.status === 2 && <><Button size="small" color="success" variant="contained" onClick={() => changeStatus(4)}>تأیید</Button><Button size="small" color="warning" onClick={() => changeStatus(3)}>برگشت</Button><Button size="small" color="error" onClick={() => changeStatus(5)}>رد</Button></>}
         {version.status === 3 && <Button size="small" onClick={() => changeStatus(0)}>بازگشت به پیش‌نویس</Button>}
-        {version.status === 4 && <><Button size="small" variant="outlined" onClick={createRevision}>ایجاد اصلاحیه</Button><Button size="small" onClick={() => changeStatus(7)}>بستن نسخه</Button></>}
-        {version.status === 5 && <Button size="small" variant="outlined" onClick={createRevision}>ایجاد نسخه جدید از ردشده</Button>}
+        {version.status === 4 && <><Button size="small" variant="outlined" onClick={createRevision} disabled={!revisionScenarioId}>ایجاد اصلاحیه</Button><Button size="small" onClick={() => changeStatus(7)}>بستن نسخه</Button></>}
+        {version.status === 5 && <Button size="small" variant="outlined" onClick={createRevision} disabled={!revisionScenarioId}>ایجاد نسخه جدید از ردشده</Button>}
         {editable && <Button size="small" variant="outlined" onClick={copyPriorYearActual}>خط پایه از عملکرد سال قبل</Button>}
         {editable && <Button size="small" variant="outlined" onClick={recalculate}>محاسبه مجدد فرمول‌ها</Button>}
         {editable && grid && !grid.measure.isCalculated && <Button size="small" variant="outlined" onClick={bulkPaste}>ورود گروهی</Button>}
+      </Stack>}
+
+      {version && (version.status === 4 || version.status === 5) && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2} alignItems={{ md: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 280 }}>
+          <InputLabel>سناریوی نسخه اصلاحی</InputLabel>
+          <Select value={revisionScenarioId} label="سناریوی نسخه اصلاحی" onChange={e => setRevisionScenarioId(e.target.value)}>
+            {activeScenarios.map(scenario => <MenuItem key={scenario.id} value={scenario.id}>{scenario.name} — {scenario.code}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <Typography variant="body2" color="text.secondary">نسخه جدید می‌تواند در همان سناریو یا یک سناریوی فعال دیگر ساخته شود؛ داده‌های نسخه مبنا کپی می‌شوند.</Typography>
       </Stack>}
 
       {filterDimensions.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2}>{filterDimensions.map(d => <FormControl size="small" sx={{ minWidth: 220 }} key={d.id}><InputLabel>{d.name}</InputLabel><Select value={filters[d.id] ?? ''} label={d.name} onChange={e => setFilters(x => ({ ...x, [d.id]: e.target.value }))}>{(members[d.id] ?? []).map(m => <MenuItem value={m.id} key={m.id}>{m.name}</MenuItem>)}</Select></FormControl>)}</Stack>}
