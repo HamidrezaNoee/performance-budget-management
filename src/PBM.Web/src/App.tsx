@@ -150,7 +150,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && <ReferenceAdmin />}
+      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} />}
     </Container></Box>
   </Box>
 }
