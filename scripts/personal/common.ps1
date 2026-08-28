@@ -41,7 +41,7 @@ function Get-PbmComposeArgs {
     $envFile = Join-Path $Root '.env.personal'
     $composeFile = Join-Path $Root 'docker-compose.personal.yml'
     if (-not (Test-Path $envFile)) {
-        throw "Missing .env.personal. Copy .env.personal.example to .env.personal and replace all CHANGE_ME values."
+        throw "Missing .env.personal. Copy .env.personal.example to .env.personal and replace all active CHANGE_ME values."
     }
     if (-not (Test-Path $composeFile)) { throw "Missing docker-compose.personal.yml." }
     return @('compose', '--env-file', $envFile, '-f', $composeFile)
@@ -87,9 +87,26 @@ function Assert-PbmSecretsConfigured {
     if (-not (Test-Path $envFile)) {
         throw 'Missing .env.personal. Copy .env.personal.example first.'
     }
-    $text = Get-Content $envFile -Raw
-    if ($text -match 'CHANGE_ME') {
-        throw '.env.personal still contains CHANGE_ME placeholders.'
+
+    $requiredSecrets = @(
+        'PBM_SA_PASSWORD',
+        'PBM_JWT_KEY',
+        'PBM_ADMIN_PASSWORD'
+    )
+
+    foreach ($name in $requiredSecrets) {
+        $value = Get-PbmEnvValue -Name $name
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw ".env.personal is missing a value for $name."
+        }
+        if ($value -match 'CHANGE_ME') {
+            throw ".env.personal still contains a placeholder value for $name."
+        }
+    }
+
+    $jwtKey = Get-PbmEnvValue -Name 'PBM_JWT_KEY'
+    if ($jwtKey.Length -lt 64) {
+        throw 'PBM_JWT_KEY must contain at least 64 characters.'
     }
 }
 
