@@ -29,6 +29,12 @@ type LoginResponse = { accessToken: string; displayName: string; roles: string[]
 
 const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const drawerWidth = 236
+const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+
+function readStoredRoles(): string[] {
+  try { return JSON.parse(localStorage.getItem('pbm_roles') ?? '[]') as string[] }
+  catch { return [] }
+}
 
 function formatAmount(value: number) {
   const abs = Math.abs(value)
@@ -41,29 +47,32 @@ function formatAmount(value: number) {
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('pbm_token'))
   const [displayName, setDisplayName] = useState(() => localStorage.getItem('pbm_display_name') ?? '')
+  const [roles, setRoles] = useState<string[]>(readStoredRoles)
   useEffect(() => { setAccessToken(token) }, [token])
 
   const logout = () => {
-    localStorage.removeItem('pbm_token'); localStorage.removeItem('pbm_display_name')
-    setAccessToken(null); setToken(null); setDisplayName('')
+    localStorage.removeItem('pbm_token'); localStorage.removeItem('pbm_display_name'); localStorage.removeItem('pbm_roles')
+    setAccessToken(null); setToken(null); setDisplayName(''); setRoles([])
   }
 
   if (!token) return <Login onLoggedIn={response => {
     localStorage.setItem('pbm_token', response.accessToken)
     localStorage.setItem('pbm_display_name', response.displayName)
-    setToken(response.accessToken); setDisplayName(response.displayName)
+    localStorage.setItem('pbm_roles', JSON.stringify(response.roles))
+    setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles)
   }} />
 
-  return <Workspace displayName={displayName} onLogout={logout} />
+  return <Workspace displayName={displayName} roles={roles} onLogout={logout} />
 }
 
 function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }) {
-  const [userName, setUserName] = useState('admin')
-  const [password, setPassword] = useState('ChangeMe123!')
+  const [userName, setUserName] = useState(isLocalDevelopment ? 'admin' : '')
+  const [password, setPassword] = useState(isLocalDevelopment ? 'ChangeMe123!' : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   const submit = async () => {
+    if (!userName.trim() || !password) { setError('نام کاربری و رمز عبور الزامی است.'); return }
     setBusy(true); setError('')
     try { const { data } = await api.post<LoginResponse>('/auth/login', { userName, password }); onLoggedIn(data) }
     catch { setError('ورود ناموفق بود. نام کاربری یا رمز عبور را بررسی کنید.') }
@@ -76,15 +85,15 @@ function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }
     <Typography color="text.secondary" mt={1} mb={3}>سامانه بودجه‌ریزی چندشرکتی و پایش عملکرد</Typography>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     <Stack spacing={2}>
-      <TextField label="نام کاربری" value={userName} onChange={e => setUserName(e.target.value)} fullWidth />
-      <TextField label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth onKeyDown={e => e.key === 'Enter' && submit()} />
+      <TextField label="نام کاربری" value={userName} onChange={e => setUserName(e.target.value)} autoComplete="username" fullWidth />
+      <TextField label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" fullWidth onKeyDown={e => e.key === 'Enter' && submit()} />
       <Button variant="contained" size="large" onClick={submit} disabled={busy}>{busy ? <CircularProgress size={24} color="inherit" /> : 'ورود به سامانه'}</Button>
     </Stack>
-    <Typography variant="caption" color="text.secondary" display="block" mt={2}>کاربر توسعه: admin / ChangeMe123!</Typography>
+    {isLocalDevelopment && <Typography variant="caption" color="text.secondary" display="block" mt={2}>حساب bootstrap فقط در اجرای محلی برای توسعه از تنظیمات سرور مقداردهی می‌شود.</Typography>}
   </CardContent></Card></Box>
 }
 
-function Workspace({ displayName, onLogout }: { displayName: string; onLogout: () => void }) {
+function Workspace({ displayName, roles, onLogout }: { displayName: string; roles: string[]; onLogout: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [years, setYears] = useState<FiscalYear[]>([])
   const [companyId, setCompanyId] = useState('')
@@ -126,7 +135,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
 
   return <Box sx={{ display: 'flex', minHeight: '100vh' }}>
     <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
-      <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Typography variant="body2">{displayName}</Typography></Toolbar>
+      <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
     </AppBar>
     <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
       <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
@@ -150,7 +159,7 @@ function Workspace({ displayName, onLogout }: { displayName: string; onLogout: (
       {activeView === 3 && companyId && yearId && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 4 && companyId && yearId && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
       {activeView === 5 && companyId && yearId && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} />}
+      {activeView === 6 && companyId && <ReferenceAdmin companyId={companyId} roles={roles} />}
     </Container></Box>
   </Box>
 }
