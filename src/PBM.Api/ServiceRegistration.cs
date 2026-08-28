@@ -16,6 +16,7 @@ public static class ServiceRegistration
         services.AddScoped<IBudgetOperationsService, BudgetOperationsService>();
         services.AddScoped<IBudgetWorkflowService, BudgetWorkflowService>();
         services.AddScoped<IBudgetInboxService, BudgetInboxService>();
+        services.AddScoped<IBudgetAttachmentService, BudgetAttachmentService>();
         services.AddScoped<ICalculationService, CalculationService>();
         services.AddSingleton<IDashboardMetricPolicy, ConfigurationDashboardMetricPolicy>();
         services.AddScoped<IDashboardService, ExecutiveDashboardService>();
