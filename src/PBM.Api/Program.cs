@@ -203,6 +203,7 @@ using (var scope = app.Services.CreateScope())
 
     await EnterpriseSeedData.InitializeAsync(db, includeWorkbookReferenceMembers: demoSeedApplied);
     await PlanningSeedData.InitializeAsync(db);
+    await AssumptionSeedData.InitializeAsync(db);
     await SecuritySeedData.InitializeAsync(db);
 
     if (!await db.Users.AnyAsync())
