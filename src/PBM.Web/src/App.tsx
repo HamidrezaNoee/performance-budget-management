@@ -23,7 +23,6 @@ import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded'
 import LoginRoundedIcon from '@mui/icons-material/LoginRounded'
-import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, clearClientSession, setAccessToken } from './api'
 import BudgetInbox from './BudgetInbox'
 import BudgetPlanning from './BudgetPlanning'
@@ -40,15 +39,13 @@ import ActualLedgerWorkspace from './ActualLedgerWorkspace'
 import ReferenceAdmin from './ReferenceAdmin'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import NotificationCenter from './NotificationCenter'
+import ExecutiveDashboard from './ExecutiveDashboard'
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
 type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
-type MonthlyPoint = { periodId: string; periodName: string; sequence: number; budget: number; actual: number; commitment: number; forecast: number }
-type DashboardSummary = { budget: number; actual: number; commitment: number; forecast: number; remaining: number; variance: number; budgetUtilizationPercent: number; monthly: MonthlyPoint[] }
 type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[]; writableCompanyIds: string[] }
 type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds: number }
 
-const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 })
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 const viewHashes = ['dashboard', 'inbox', 'budget', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
@@ -62,14 +59,6 @@ function viewIndexFromHash() {
 function readStoredArray(key: string): string[] {
   try { return JSON.parse(localStorage.getItem(key) ?? '[]') as string[] }
   catch { return [] }
-}
-
-function formatAmount(value: number) {
-  const abs = Math.abs(value)
-  if (abs >= 1_000_000_000_000) return `${money.format(value / 1_000_000_000_000)} همت`
-  if (abs >= 1_000_000_000) return `${money.format(value / 1_000_000_000)} میلیارد`
-  if (abs >= 1_000_000) return `${money.format(value / 1_000_000)} میلیون`
-  return money.format(value)
 }
 
 export default function App() {
@@ -89,7 +78,6 @@ export default function App() {
     localStorage.setItem('pbm_display_name', response.displayName)
     localStorage.setItem('pbm_roles', JSON.stringify(response.roles))
     localStorage.setItem('pbm_writable_company_ids', JSON.stringify(response.writableCompanyIds))
-    // Apply the token before Workspace mounts and starts protected API calls.
     setAccessToken(response.accessToken)
     setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles); setWritableCompanyIds(response.writableCompanyIds)
   }} />
@@ -206,7 +194,6 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [years, setYears] = useState<FiscalYear[]>([])
   const [companyId, setCompanyId] = useState('')
   const [yearId, setYearId] = useState('')
-  const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeView, setActiveView] = useState(viewIndexFromHash)
@@ -232,18 +219,11 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
 
   useEffect(() => {
     if (!companyId) return
-    setYearId(''); setSummary(null)
+    setYearId('')
     api.get<FiscalYear[]>('/reference/fiscal-years', { params: { companyId } }).then(response => {
       setYears(response.data); if (response.data.length) setYearId(response.data[0].id)
     }).catch(() => setError('دریافت سال مالی ناموفق بود.'))
   }, [companyId])
-
-  useEffect(() => {
-    if (!companyId || !yearId) return
-    setLoading(true)
-    api.get<DashboardSummary>('/dashboard/summary', { params: { companyId, fiscalYearId: yearId } })
-      .then(response => setSummary(response.data)).catch(() => setError('بارگذاری داشبورد ناموفق بود.')).finally(() => setLoading(false))
-  }, [companyId, yearId])
 
   const selectedCompany = useMemo(() => companies.find(x => x.id === companyId), [companies, companyId])
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
@@ -292,7 +272,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {writeSensitiveView && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
-        {!loading && activeView === 0 && <DashboardView summary={summary} />}
+        {!loading && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
         {!loading && activeView === 1 && <BudgetInbox companyId={companyId} />}
         {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
         {!loading && activeView === 3 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
@@ -309,17 +289,5 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
-  </>
-}
-
-function DashboardView({ summary }: { summary: DashboardSummary | null }) {
-  if (!summary) return <Alert severity="info">برای شرکت و سال مالی انتخاب‌شده داده داشبورد وجود ندارد.</Alert>
-  const cards = [
-    ['بودجه مصوب', summary.budget], ['عملکرد واقعی', summary.actual], ['تعهدات', summary.commitment],
-    ['پیش‌بینی پایان سال', summary.forecast], ['مانده بودجه', summary.remaining], ['انحراف', summary.variance]
-  ] as const
-  return <>
-    <Box className="kpi-grid">{cards.map(([label, value]) => <Card key={label} className="kpi-card" elevation={0}><CardContent><Typography color="text.secondary" variant="body2">{label}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{formatAmount(value)}</Typography></CardContent></Card>)}</Box>
-    <Card elevation={0} sx={{ mt: 3 }}><CardContent><Typography variant="h6" fontWeight={800} mb={2}>روند ماهانه بودجه، عملکرد و پیش‌بینی</Typography><Box height={360}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={summary.monthly}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="periodName" /><YAxis /><Tooltip formatter={(value: unknown) => money.format(Number(value ?? 0))} /><Legend /><Bar dataKey="budget" name="بودجه" fill="#1d4ed8" /><Bar dataKey="actual" name="عملکرد" fill="#0f766e" /><Line type="monotone" dataKey="forecast" name="پیش‌بینی" stroke="#b45309" strokeWidth={2} /></ComposedChart></ResponsiveContainer></Box></CardContent></Card>
   </>
 }
