@@ -49,6 +49,7 @@ public static class ServiceRegistration
         services.AddScoped<ICalculationService, CalculationService>();
         services.AddSingleton<IDashboardMetricPolicy, ConfigurationDashboardMetricPolicy>();
         services.AddScoped<IDashboardService, ExecutiveDashboardService>();
+        services.AddScoped<IDashboardAnalyticsService>(provider => (IDashboardAnalyticsService)provider.GetRequiredService<IDashboardService>());
         services.AddScoped<IVarianceAnalysisService, VarianceAnalysisService>();
         services.AddScoped<IFinancialReportService, FinancialReportService>();
         services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
