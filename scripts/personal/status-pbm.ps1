@@ -10,6 +10,14 @@ $backups = @(
     }
 )
 
+$fontDir = Join-Path $root 'src/PBM.Web/public/fonts'
+$requiredFonts = @(
+    'iranyekanwebregular.woff',
+    'iranyekanwebmedium.woff',
+    'iranyekanwebbold.woff'
+)
+$missingFonts = @($requiredFonts | Where-Object { -not (Test-Path (Join-Path $fontDir $_)) })
+
 $ready = $false
 $readyDetail = 'not checked'
 try {
@@ -22,6 +30,7 @@ catch { $readyDetail = $_.Exception.Message }
 Write-Host 'PBM Personal Deployment Status' -ForegroundColor Cyan
 Write-Host "Git commit       : $(Get-PbmCurrentGitRef)"
 Write-Host "EF migrations    : $(if ($snapshot) { 'available' } else { 'MISSING - real-data installation blocked' })"
+Write-Host "UI fonts         : $(if ($missingFonts.Count -eq 0) { 'IranYekan READY' } else { 'MISSING: ' + ($missingFonts -join ', ') })"
 Write-Host "Web URL          : $(Get-PbmWebUrl)"
 Write-Host "Readiness        : $(if ($ready) { 'READY' } else { 'NOT READY' })"
 Write-Host "Backup directory : $backupDir"
