@@ -4,6 +4,7 @@ import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import App from './App'
 import './styles.css'
 import './login-background.css'
+import './login-ai.css'
 
 document.documentElement.dir = 'rtl'
 document.documentElement.lang = 'fa'
