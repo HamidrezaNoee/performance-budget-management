@@ -1,0 +1,379 @@
+/*
+ * PBM AI login visual layer.
+ * Kept separate from the application-wide stylesheet so the login experience
+ * can evolve without changing the operational workspace theme.
+ */
+
+.login-shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  grid-template-columns: minmax(0, 1.08fr) minmax(520px, .92fr);
+  background:
+    radial-gradient(circle at 8% 88%, rgba(0, 196, 255, .16), transparent 28%),
+    radial-gradient(circle at 88% 10%, rgba(121, 54, 255, .18), transparent 32%),
+    linear-gradient(135deg, #020817 0%, #03142c 47%, #0a0a34 100%);
+}
+
+.login-shell::before,
+.login-shell::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.login-shell::before {
+  inset: 0;
+  opacity: .27;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, .065) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, .065) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .38) 48%, transparent 85%);
+}
+
+.login-shell::after {
+  width: 560px;
+  height: 560px;
+  left: -240px;
+  bottom: -300px;
+  border-radius: 50%;
+  background: rgba(0, 174, 255, .18);
+  filter: blur(88px);
+}
+
+.login-visual,
+.login-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.login-visual {
+  min-height: 100vh;
+  background-size: cover !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  border-left: 1px solid rgba(91, 196, 255, .12);
+}
+
+.login-visual::before {
+  background:
+    linear-gradient(90deg, rgba(2, 8, 23, .02) 0%, rgba(2, 8, 23, .1) 62%, rgba(2, 8, 23, .48) 100%),
+    linear-gradient(180deg, rgba(2, 8, 23, .05) 50%, rgba(2, 8, 23, .45) 100%) !important;
+}
+
+.login-visual::after {
+  width: 2px;
+  opacity: .8;
+  background: linear-gradient(180deg, transparent 4%, #2cd8ff 38%, #7c4dff 71%, transparent 97%);
+  box-shadow: 0 0 34px rgba(44, 216, 255, .65), 0 0 72px rgba(124, 77, 255, .26);
+}
+
+/* The generated dashboard artwork carries the storytelling; keep copy subtle. */
+.login-visual-copy {
+  right: clamp(26px, 4vw, 62px);
+  bottom: clamp(28px, 4.5vh, 52px);
+  max-width: 510px;
+  padding: 18px 22px;
+  border-color: rgba(115, 205, 255, .14);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(3, 18, 45, .63), rgba(11, 15, 55, .46));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .24);
+  backdrop-filter: blur(13px) saturate(125%);
+}
+
+.login-visual-kicker {
+  color: #54ddff !important;
+  font-size: 12px !important;
+  letter-spacing: 1.2px !important;
+}
+
+.login-panel {
+  min-height: 100vh;
+  padding: clamp(34px, 5vw, 82px) clamp(32px, 5vw, 78px);
+  background:
+    radial-gradient(circle at 96% 4%, rgba(123, 60, 255, .20), transparent 34%),
+    radial-gradient(circle at 4% 94%, rgba(0, 204, 255, .12), transparent 34%),
+    linear-gradient(135deg, rgba(3, 15, 40, .36), rgba(12, 7, 47, .34));
+}
+
+.login-card {
+  position: relative;
+  overflow: hidden;
+  width: min(650px, 100%);
+  border: 1px solid rgba(142, 210, 255, .72) !important;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(145deg, rgba(8, 35, 76, .78), rgba(10, 18, 62, .84) 58%, rgba(28, 12, 74, .78)) !important;
+  box-shadow:
+    0 35px 100px rgba(0, 0, 0, .50),
+    0 0 38px rgba(41, 190, 255, .19),
+    0 0 75px rgba(128, 65, 255, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .18) !important;
+  backdrop-filter: blur(26px) saturate(145%);
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, transparent 7%, rgba(103, 232, 249, .72) 48%, rgba(167, 139, 250, .58) 73%, transparent 96%) top / 100% 2px no-repeat,
+    radial-gradient(circle at 14% 26%, rgba(34, 211, 238, .11), transparent 28%);
+}
+
+.login-card > .MuiCardContent-root {
+  position: relative;
+  z-index: 1;
+  padding: clamp(28px, 4vw, 48px) !important;
+}
+
+.login-brand-row {
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.login-brand-row > div:last-child {
+  text-align: center;
+}
+
+.brand-mark {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  margin: 0 auto 3px;
+  border-radius: 0;
+  background: linear-gradient(92deg, #18d8ff 5%, #38a5ff 46%, #a855f7 94%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  box-shadow: none;
+  font-family: Arial, sans-serif;
+  font-size: clamp(52px, 5vw, 72px);
+  line-height: .98;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-shadow: 0 0 34px rgba(37, 185, 255, .22);
+}
+
+.login-brand-row .MuiTypography-h5 {
+  margin-top: 9px;
+  color: #f8fbff;
+  font-size: clamp(22px, 2vw, 29px);
+  line-height: 1.65;
+  font-weight: 900 !important;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, .25);
+}
+
+.login-subtitle {
+  color: rgba(218, 229, 249, .72) !important;
+  font-size: 14px !important;
+  line-height: 2 !important;
+}
+
+.login-alert {
+  border: 1px solid rgba(248, 113, 113, .28);
+  border-radius: 13px !important;
+  background: rgba(127, 29, 29, .2) !important;
+  color: #fee2e2 !important;
+}
+
+.login-field .MuiOutlinedInput-root {
+  min-height: 58px;
+  color: #f8fafc;
+  background: linear-gradient(180deg, rgba(14, 42, 82, .50), rgba(4, 20, 51, .48));
+  border-radius: 12px;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.login-field .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(142, 184, 239, .48) !important;
+}
+
+.login-field .MuiOutlinedInput-root:hover {
+  background: rgba(12, 42, 84, .62);
+}
+
+.login-field .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(89, 220, 255, .78) !important;
+}
+
+.login-field .MuiOutlinedInput-root.Mui-focused {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, .10), 0 0 26px rgba(34, 211, 238, .08);
+}
+
+.login-field .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: #39d5ff !important;
+}
+
+.login-field .MuiInputLabel-root {
+  color: rgba(231, 239, 255, .74);
+  font-weight: 500;
+}
+
+.login-field .MuiInputLabel-root.Mui-focused {
+  color: #77e5ff;
+}
+
+.captcha-section {
+  padding: 14px 15px 16px;
+  border: 1px solid rgba(134, 193, 255, .18);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(5, 20, 49, .35), rgba(12, 20, 62, .26));
+}
+
+.captcha-section > .MuiStack-root {
+  color: #eef7ff;
+}
+
+.captcha-expiry {
+  margin-right: auto !important;
+  color: rgba(189, 209, 238, .52) !important;
+}
+
+.captcha-row {
+  display: grid;
+  grid-template-columns: 56px 190px minmax(170px, 1fr);
+  gap: 11px;
+  direction: ltr;
+  align-items: stretch;
+}
+
+.captcha-refresh { grid-column: 1; grid-row: 1; }
+.captcha-challenge { grid-column: 2; grid-row: 1; }
+.captcha-answer { grid-column: 3; grid-row: 1; direction: rtl; }
+
+.captcha-challenge {
+  min-height: 58px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(213, 226, 246, .9);
+  border-radius: 11px;
+  background:
+    repeating-linear-gradient(163deg, transparent 0 13px, rgba(7, 54, 103, .08) 14px 15px),
+    radial-gradient(circle at 25% 30%, rgba(21, 94, 159, .13) 0 1px, transparent 1.5px),
+    #e7edf6;
+  background-size: auto, 11px 11px, auto;
+  color: #072c58;
+  font-family: Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, .75);
+}
+
+.captcha-challenge::after {
+  content: '';
+  position: absolute;
+  width: 115%;
+  height: 1px;
+  left: -8%;
+  top: 51%;
+  background: rgba(34, 71, 121, .23);
+  transform: rotate(-7deg);
+}
+
+.captcha-refresh {
+  min-width: 56px;
+  color: #dff7ff !important;
+  border: 1px solid rgba(127, 204, 255, .45) !important;
+  border-radius: 11px !important;
+  background: rgba(13, 52, 103, .50) !important;
+}
+
+.captcha-refresh:hover {
+  border-color: #48d9ff !important;
+  background: rgba(15, 77, 138, .65) !important;
+  box-shadow: 0 0 22px rgba(34, 211, 238, .13);
+}
+
+.login-submit {
+  min-height: 61px !important;
+  margin-top: 3px !important;
+  border: 1px solid rgba(128, 237, 255, .55) !important;
+  border-radius: 12px !important;
+  background: linear-gradient(92deg, #11c8ee 0%, #237cf5 48%, #aa31ed 100%) !important;
+  box-shadow: 0 17px 38px rgba(38, 108, 235, .28), 0 0 28px rgba(145, 63, 246, .14) !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease !important;
+}
+
+.login-submit:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 43px rgba(38, 108, 235, .35), 0 0 34px rgba(145, 63, 246, .19) !important;
+}
+
+.login-submit:active {
+  transform: translateY(0);
+}
+
+.login-security-note {
+  margin-top: 27px !important;
+  padding-top: 18px;
+  border-top: 1px solid rgba(151, 190, 236, .18);
+  color: rgba(144, 219, 255, .72) !important;
+}
+
+@media (max-width: 1180px) {
+  .login-shell { grid-template-columns: minmax(0, .96fr) minmax(500px, 1.04fr); }
+  .login-panel { padding-inline: 38px; }
+}
+
+@media (max-width: 980px) {
+  .login-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .login-visual { display: none; }
+
+  .login-panel {
+    min-height: 100vh;
+    padding: 28px;
+    background:
+      radial-gradient(circle at 12% 92%, rgba(0, 200, 255, .18), transparent 34%),
+      radial-gradient(circle at 90% 8%, rgba(143, 66, 255, .22), transparent 34%),
+      linear-gradient(145deg, #03132c, #09082f);
+  }
+
+  .login-card { width: min(620px, 100%); }
+}
+
+@media (max-width: 620px) {
+  .login-panel { padding: 15px; }
+  .login-card { border-radius: 21px !important; }
+  .login-card > .MuiCardContent-root { padding: 26px 20px !important; }
+  .brand-mark { font-size: 49px; }
+  .login-brand-row .MuiTypography-h5 { font-size: 21px; }
+
+  .captcha-row {
+    grid-template-columns: 54px minmax(0, 1fr);
+    grid-template-rows: 58px auto;
+  }
+  .captcha-refresh { grid-column: 1; grid-row: 1; }
+  .captcha-challenge { grid-column: 2; grid-row: 1; }
+  .captcha-answer { grid-column: 1 / -1; grid-row: 2; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-card {
+    animation: pbm-login-enter .45s ease-out both;
+  }
+
+  @keyframes pbm-login-enter {
+    from { opacity: 0; transform: translateY(9px) scale(.992); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+}
