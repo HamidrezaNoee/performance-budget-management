@@ -106,23 +106,43 @@ GO
 USE [PerformanceBudgetManagement];
 GO
 SET NOCOUNT ON;
-IF OBJECT_ID(N'dbo.Tenants', N'U') IS NULL THROW 51000, 'Tenants table is missing after restore.', 1;
-IF OBJECT_ID(N'dbo.Companies', N'U') IS NULL THROW 51000, 'Companies table is missing after restore.', 1;
-IF OBJECT_ID(N'dbo.Users', N'U') IS NULL THROW 51000, 'Users table is missing after restore.', 1;
-IF OBJECT_ID(N'dbo.__EFMigrationsHistory', N'U') IS NULL THROW 51000, '__EFMigrationsHistory table is missing after restore.', 1;
-DECLARE @TenantCount int = (SELECT COUNT(*) FROM dbo.Tenants);
-DECLARE @CompanyCount int = (SELECT COUNT(*) FROM dbo.Companies);
-DECLARE @UserCount int = (SELECT COUNT(*) FROM dbo.Users);
-DECLARE @MigrationCount int = (SELECT COUNT(*) FROM dbo.__EFMigrationsHistory);
+
+-- PBM uses the explicit 'pbm' schema for application tables.
+IF OBJECT_ID(N'pbm.Tenants', N'U') IS NULL THROW 51000, 'pbm.Tenants table is missing after restore.', 1;
+IF OBJECT_ID(N'pbm.Companies', N'U') IS NULL THROW 51000, 'pbm.Companies table is missing after restore.', 1;
+IF OBJECT_ID(N'pbm.Users', N'U') IS NULL THROW 51000, 'pbm.Users table is missing after restore.', 1;
+
+DECLARE @TenantCount int = (SELECT COUNT(*) FROM pbm.Tenants);
+DECLARE @CompanyCount int = (SELECT COUNT(*) FROM pbm.Companies);
+DECLARE @UserCount int = (SELECT COUNT(*) FROM pbm.Users);
+DECLARE @MigrationCount int;
+DECLARE @MigrationObject nvarchar(517);
+
+SELECT TOP (1)
+    @MigrationObject = QUOTENAME(s.name) + N'.' + QUOTENAME(t.name)
+FROM sys.tables t
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE t.name = N'__EFMigrationsHistory';
+
+IF @MigrationObject IS NULL THROW 51000, '__EFMigrationsHistory table is missing after restore.', 1;
+
+DECLARE @MigrationSql nvarchar(max) = N'SELECT @CountOut = COUNT(*) FROM ' + @MigrationObject + N';';
+EXEC sys.sp_executesql
+    @MigrationSql,
+    N'@CountOut int OUTPUT',
+    @CountOut = @MigrationCount OUTPUT;
+
 IF @TenantCount < 1 THROW 51001, 'Restored database contains no tenants.', 1;
 IF @CompanyCount < 1 THROW 51002, 'Restored database contains no companies.', 1;
 IF @UserCount < 1 THROW 51003, 'Restored database contains no users.', 1;
-IF @MigrationCount < 1 THROW 51004, 'Restored database contains no EF migration history.', 1;
+IF ISNULL(@MigrationCount, 0) < 1 THROW 51004, 'Restored database contains no EF migration history.', 1;
+
 SELECT
     @TenantCount AS TenantCount,
     @CompanyCount AS CompanyCount,
     @UserCount AS UserCount,
-    @MigrationCount AS MigrationCount;
+    @MigrationCount AS MigrationCount,
+    @MigrationObject AS MigrationHistoryTable;
 GO
 "@
 
