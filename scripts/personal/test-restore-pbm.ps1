@@ -67,12 +67,20 @@ try {
     Write-Host 'Waiting for isolated SQL Server...' -ForegroundColor Cyan
     $deadline = (Get-Date).AddSeconds(120)
     $ready = $false
+    # SQL Server can briefly accept connections before the sa login is ready. Keep
+    # probing without letting transient sqlcmd stderr become a terminating PowerShell error.
+    $probeCommand = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "SELECT 1;" >/dev/null 2>&1'
     do {
         Start-Sleep -Seconds 2
-        & docker exec $containerName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $saPassword -C -b -Q 'SELECT 1;' *> $null
-        if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+        & docker exec $containerName bash -lc $probeCommand
+        $probeExitCode = $LASTEXITCODE
+        if ($probeExitCode -eq 0) { $ready = $true; break }
     } while ((Get-Date) -lt $deadline)
-    if (-not $ready) { throw 'Isolated SQL Server did not become ready within 120 seconds.' }
+    if (-not $ready) {
+        Write-Host 'Isolated SQL Server did not become ready. Recent container logs:' -ForegroundColor Yellow
+        & docker logs --tail 40 $containerName
+        throw 'Isolated SQL Server did not become ready within 120 seconds.'
+    }
 
     $restoreSql = @"
 RESTORE VERIFYONLY
