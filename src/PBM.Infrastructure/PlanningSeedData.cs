@@ -97,19 +97,74 @@ public static class PlanningSeedData
 
     private static async Task EnsureTradeLandedCostMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
-        var trade = await db.BudgetModels.Include(x => x.Measures).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "TRADE", ct);
+        var trade = await db.BudgetModels.Include(x => x.Measures)
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "TRADE", ct);
         if (trade is null) return;
+
         var existing = trade.Measures.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var order = trade.Measures.Count == 0 ? 1 : trade.Measures.Max(x => x.DisplayOrder) + 1;
 
+        // Source/origin purchase fields reflected in the budget-manager workbook.
+        Add("CPT_UNIT_PRICE", "قیمت CPT هر واحد", "ارز", MeasureValueType.Rate, MeasureAggregation.Average);
+        Add("FX_RATE", "نرخ ارز", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
+        Add("BASE_UNIT_COST", "بهای اصلی یک واحد", "ریال", MeasureValueType.Rate, MeasureAggregation.Average,
+            "[CPT_UNIT_PRICE] * [FX_RATE]");
+        Add("PURCHASE_IRR_AMOUNT", "مبلغ ریالی خرید", "ریال", MeasureValueType.Amount,
+            formula: "[IMPORT_FX] * [FX_RATE]");
+
+        // Registration, banking, insurance, customs and tax drivers vary by product/month.
+        Add("ORDER_REG_RATE", "نرخ هزینه ثبت سفارش", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
+        Add("ORDER_REG_FEE_CALC", "هزینه ثبت سفارش محاسباتی", "ریال", MeasureValueType.Amount,
+            formula: "[PURCHASE_IRR_AMOUNT] * [ORDER_REG_RATE] / 100");
+        Add("BANK_FEE_RATE", "نرخ کارمزد بانکی", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
+        Add("BANK_FEE_CALC", "کارمزد بانکی محاسباتی", "ریال", MeasureValueType.Amount,
+            formula: "[PURCHASE_IRR_AMOUNT] * [BANK_FEE_RATE] / 100");
+        Add("INSURANCE_RATE", "نرخ بیمه", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
+        Add("INSURANCE_CALC", "بیمه محاسباتی", "ریال", MeasureValueType.Amount,
+            formula: "[PURCHASE_IRR_AMOUNT] * [INSURANCE_RATE] / 100");
+        Add("CUSTOMS_TARIFF_RATE", "نرخ تعرفه و حقوق گمرکی", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
+        Add("CUSTOMS_DUTY_CALC", "حقوق و عوارض گمرکی محاسباتی", "ریال", MeasureValueType.Amount,
+            formula: "[PURCHASE_IRR_AMOUNT] * [CUSTOMS_TARIFF_RATE] / 100");
+        Add("VAT_RATE", "نرخ ارزش افزوده", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
+        Add("VAT_AMOUNT", "مبلغ ارزش افزوده", "ریال", MeasureValueType.Amount);
+
+        // Origin-to-warehouse landed cost. Existing legacy measures remain available for backward compatibility.
         Add("FREIGHT_IRR", "هزینه حمل بین‌المللی", "ریال", MeasureValueType.Amount);
         Add("CLEARANCE_FEE", "هزینه ترخیص", "ریال", MeasureValueType.Amount);
-        Add("INLAND_TRANSPORT", "حمل داخلی", "ریال", MeasureValueType.Amount);
+        Add("INLAND_TRANSPORT", "حمل داخلی تا انبار", "ریال", MeasureValueType.Amount);
         Add("OTHER_IMPORT_COST", "سایر هزینه‌های واردات", "ریال", MeasureValueType.Amount);
+        Add("TRADE_LANDED_COST_TOTAL", "بهای تمام‌شده خرید تا تحویل انبار", "ریال", MeasureValueType.Amount,
+            formula: "[PURCHASE_IRR_AMOUNT] + [ORDER_REG_FEE_CALC] + [BANK_FEE_CALC] + [INSURANCE_CALC] + [CUSTOMS_DUTY_CALC] + [VAT_AMOUNT] + [FREIGHT_IRR] + [CLEARANCE_FEE] + [INLAND_TRANSPORT] + [OTHER_IMPORT_COST]");
+        Add("TRADE_LANDED_COST_PER_UNIT", "بهای تمام‌شده هر واحد تحویلی انبار", "ریال", MeasureValueType.Rate, MeasureAggregation.Average,
+            "[TRADE_LANDED_COST_TOTAL] / [IMPORT_QTY]");
+
         Add("LANDED_COST_TOTAL", "بهای تمام‌شده واردات", "ریال", MeasureValueType.Amount,
             formula: "[CUSTOMS_VALUE] + [CUSTOMS_TARIFF] + [BANK_FEE] + [INSURANCE] + [ORDER_REG_FEE] + [FREIGHT_IRR] + [CLEARANCE_FEE] + [INLAND_TRANSPORT] + [OTHER_IMPORT_COST]");
         Add("LANDED_COST_PER_UNIT", "بهای تمام‌شده واردات هر واحد", "ریال", MeasureValueType.Rate, MeasureAggregation.Average,
             "[LANDED_COST_TOTAL] / [IMPORT_QTY]");
+
+        // Warehouse/inventory movement required by the opening/purchase/sale/closing-stock workbook.
+        Add("OPENING_VALUE", "مبلغ ریالی موجودی اول دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
+        Add("FOC_QTY", "تعداد جایزه جنسی / FOC", "واحد", MeasureValueType.Quantity);
+        Add("AVAILABLE_QTY", "تعداد آماده برای فروش", "واحد", MeasureValueType.Quantity,
+            formula: "[OPENING_QTY] + [IMPORT_QTY] + [FOC_QTY]");
+        Add("COGS_QTY", "تعداد بهای تمام‌شده / خروج فروش", "واحد", MeasureValueType.Quantity);
+        Add("COGS_AMOUNT", "مبلغ بهای تمام‌شده کالای فروش‌رفته", "ریال", MeasureValueType.Amount);
+        Add("FOC_COST", "بهای تمام‌شده ریالی جایزه جنسی", "ریال", MeasureValueType.Amount);
+        Add("SAMPLE_AMOUNT", "مبلغ ریالی سمپل", "ریال", MeasureValueType.Amount);
+        Add("WASTE_AMOUNT", "مبلغ ریالی ضایعات", "ریال", MeasureValueType.Amount);
+        Add("CLOSING_VALUE", "مبلغ ریالی موجودی پایان دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
+
+        // Sales, discount and gross-margin fields from the detailed sales sheets.
+        Add("FOC_SALES_AMOUNT", "فروش ریالی جایزه جنسی", "ریال", MeasureValueType.Amount);
+        Add("SALES_DISCOUNT", "تخفیف ریالی فروش", "ریال", MeasureValueType.Amount);
+        Add("NET_SALES", "فروش خالص", "ریال", MeasureValueType.Amount,
+            formula: "[GROSS_SALES] - [SALES_DISCOUNT]");
+        Add("TRADE_GROSS_MARGIN", "حاشیه سود تجارت", "ریال", MeasureValueType.Amount,
+            formula: "[NET_SALES] - [COGS_AMOUNT]");
+        Add("TRADE_GROSS_MARGIN_PERCENT", "درصد حاشیه سود تجارت", "%", MeasureValueType.Percentage, MeasureAggregation.Average,
+            "[TRADE_GROSS_MARGIN] / [NET_SALES] * 100");
+
         Add("GROSS_MARGIN_AMOUNT", "حاشیه سود ناخالص", "ریال", MeasureValueType.Amount,
             formula: "[GROSS_SALES] - [LANDED_COST_TOTAL]");
         Add("GROSS_MARGIN_PERCENT_CALC", "درصد حاشیه سود محاسباتی", "%", MeasureValueType.Percentage, MeasureAggregation.Average,
@@ -118,7 +173,7 @@ public static class PlanningSeedData
         void Add(string code, string name, string unit, MeasureValueType valueType, MeasureAggregation aggregation = MeasureAggregation.Sum, string? formula = null)
         {
             if (existing.Contains(code)) return;
-            db.Measures.Add(new MeasureDefinition
+            var measure = new MeasureDefinition
             {
                 BudgetModelId = trade.Id,
                 Code = code,
@@ -129,7 +184,9 @@ public static class PlanningSeedData
                 IsCalculated = formula is not null,
                 FormulaExpression = formula,
                 DisplayOrder = order++
-            });
+            };
+            db.Measures.Add(measure);
+            trade.Measures.Add(measure);
             existing.Add(code);
         }
     }
