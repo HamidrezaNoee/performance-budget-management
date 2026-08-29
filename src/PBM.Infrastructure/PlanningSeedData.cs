@@ -104,7 +104,7 @@ public static class PlanningSeedData
         var existing = trade.Measures.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var order = trade.Measures.Count == 0 ? 1 : trade.Measures.Max(x => x.DisplayOrder) + 1;
 
-        // Source/origin purchase fields reflected in the budget-manager workbook.
+        // Purchase at origin: CPT, currency, quantity and local-currency purchase value.
         Add("CPT_UNIT_PRICE", "قیمت CPT هر واحد", "ارز", MeasureValueType.Rate, MeasureAggregation.Average);
         Add("FX_RATE", "نرخ ارز", "ریال", MeasureValueType.Rate, MeasureAggregation.Average);
         Add("BASE_UNIT_COST", "بهای اصلی یک واحد", "ریال", MeasureValueType.Rate, MeasureAggregation.Average,
@@ -112,7 +112,7 @@ public static class PlanningSeedData
         Add("PURCHASE_IRR_AMOUNT", "مبلغ ریالی خرید", "ریال", MeasureValueType.Amount,
             formula: "[IMPORT_FX] * [FX_RATE]");
 
-        // Registration, banking, insurance, customs and tax drivers vary by product/month.
+        // Workbook percentage inputs are normalized in PBM as percentage points: 5 means 5 percent.
         Add("ORDER_REG_RATE", "نرخ هزینه ثبت سفارش", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
         Add("ORDER_REG_FEE_CALC", "هزینه ثبت سفارش محاسباتی", "ریال", MeasureValueType.Amount,
             formula: "[PURCHASE_IRR_AMOUNT] * [ORDER_REG_RATE] / 100");
@@ -128,7 +128,7 @@ public static class PlanningSeedData
         Add("VAT_RATE", "نرخ ارزش افزوده", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
         Add("VAT_AMOUNT", "مبلغ ارزش افزوده", "ریال", MeasureValueType.Amount);
 
-        // Origin-to-warehouse landed cost. Existing legacy measures remain available for backward compatibility.
+        // Origin-to-warehouse landed cost. Legacy measures stay available for old plans/import mappings.
         Add("FREIGHT_IRR", "هزینه حمل بین‌المللی", "ریال", MeasureValueType.Amount);
         Add("CLEARANCE_FEE", "هزینه ترخیص", "ریال", MeasureValueType.Amount);
         Add("INLAND_TRANSPORT", "حمل داخلی تا انبار", "ریال", MeasureValueType.Amount);
@@ -143,25 +143,26 @@ public static class PlanningSeedData
         Add("LANDED_COST_PER_UNIT", "بهای تمام‌شده واردات هر واحد", "ریال", MeasureValueType.Rate, MeasureAggregation.Average,
             "[LANDED_COST_TOTAL] / [IMPORT_QTY]");
 
-        // Warehouse/inventory movement required by the opening/purchase/sale/closing-stock workbook.
+        // Inventory flow follows the workbook: opening + purchase -> available -> paid/free/sample/waste issue -> closing.
         Add("OPENING_VALUE", "مبلغ ریالی موجودی اول دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
-        Add("FOC_QTY", "تعداد جایزه جنسی / FOC", "واحد", MeasureValueType.Quantity);
         Add("AVAILABLE_QTY", "تعداد آماده برای فروش", "واحد", MeasureValueType.Quantity,
-            formula: "[OPENING_QTY] + [IMPORT_QTY] + [FOC_QTY]");
+            formula: "[OPENING_QTY] + [IMPORT_QTY]");
         Add("COGS_QTY", "تعداد بهای تمام‌شده / خروج فروش", "واحد", MeasureValueType.Quantity);
         Add("COGS_AMOUNT", "مبلغ بهای تمام‌شده کالای فروش‌رفته", "ریال", MeasureValueType.Amount);
         Add("FOC_COST", "بهای تمام‌شده ریالی جایزه جنسی", "ریال", MeasureValueType.Amount);
         Add("SAMPLE_AMOUNT", "مبلغ ریالی سمپل", "ریال", MeasureValueType.Amount);
         Add("WASTE_AMOUNT", "مبلغ ریالی ضایعات", "ریال", MeasureValueType.Amount);
+        Add("TOTAL_COGS_AMOUNT", "بهای تمام‌شده کل", "ریال", MeasureValueType.Amount,
+            formula: "[COGS_AMOUNT] + [FOC_COST] + [SAMPLE_AMOUNT] + [WASTE_AMOUNT]");
         Add("CLOSING_VALUE", "مبلغ ریالی موجودی پایان دوره", "ریال", MeasureValueType.Amount, MeasureAggregation.LastNonEmpty);
 
-        // Sales, discount and gross-margin fields from the detailed sales sheets.
+        // Sales: free issue is already represented by FREE_SALES_QTY in the core TRADE model.
         Add("FOC_SALES_AMOUNT", "فروش ریالی جایزه جنسی", "ریال", MeasureValueType.Amount);
         Add("SALES_DISCOUNT", "تخفیف ریالی فروش", "ریال", MeasureValueType.Amount);
         Add("NET_SALES", "فروش خالص", "ریال", MeasureValueType.Amount,
             formula: "[GROSS_SALES] - [SALES_DISCOUNT]");
         Add("TRADE_GROSS_MARGIN", "حاشیه سود تجارت", "ریال", MeasureValueType.Amount,
-            formula: "[NET_SALES] - [COGS_AMOUNT]");
+            formula: "[NET_SALES] - [TOTAL_COGS_AMOUNT]");
         Add("TRADE_GROSS_MARGIN_PERCENT", "درصد حاشیه سود تجارت", "%", MeasureValueType.Percentage, MeasureAggregation.Average,
             "[TRADE_GROSS_MARGIN] / [NET_SALES] * 100");
 
