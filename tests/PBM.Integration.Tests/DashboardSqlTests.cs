@@ -35,7 +35,7 @@ public sealed class DashboardSqlTests(PbmSqlFixture fixture)
             .Select(x => x.Code)
             .SingleAsync();
         var periodId = fixture.PeriodIds[1];
-        var coordinateHash = BudgetCoordinateKey.Create(fixture.Dimensions);
+        const string coordinateHash = "DASHBOARD_SQL_TEST_COORDINATE";
         var coordinatesJson = JsonSerializer.Serialize(fixture.Dimensions.OrderBy(x => x.DimensionId));
 
         AddFact(ValueKind.Budget, 1_000_000m);

@@ -30,7 +30,7 @@ type DashboardSummary = {
 type MetricOption = {
   code: string
   name: string
-  unit?: string
+  unit?: string | null
   currencyCode: string
   displayOrder: number
 }
@@ -38,7 +38,7 @@ type MetricOption = {
 type MeasureSummary = {
   measureCode: string
   measureName: string
-  unit?: string
+  unit?: string | null
   currencyCode: string
   summary: DashboardSummary
 }
@@ -69,7 +69,7 @@ type DrilldownResult = {
   dimensionName: string
   measureCode: string
   measureName: string
-  unit?: string
+  unit?: string | null
   currencyCode: string
   totalMemberCount: number
   rows: DrilldownRow[]
@@ -110,6 +110,8 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
     setDimensions([])
     setDimensionId('')
     setDrilldown(null)
+    setLoadingSummary(false)
+    setLoadingDrilldown(false)
     setError('')
     if (!companyId || !fiscalYearId) return () => { active = false }
 
@@ -134,6 +136,7 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
     setDimensions([])
     setDimensionId('')
     setDrilldown(null)
+    setLoadingDrilldown(false)
     setError('')
     if (!companyId || !fiscalYearId || !metricCode) return () => { active = false }
 
@@ -159,8 +162,10 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
   useEffect(() => {
     let active = true
     setDrilldown(null)
+    setLoadingDrilldown(false)
     if (!companyId || !fiscalYearId || !metricCode || !dimensionId) return () => { active = false }
 
+    setError('')
     setLoadingDrilldown(true)
     api.get<DrilldownResult>('/dashboard/drilldown', {
       params: { companyId, fiscalYearId, measureCode: metricCode, dimensionId, take: 50 }
@@ -178,6 +183,7 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
   const summary = measureSummary?.summary ?? null
 
   if (loadingMetrics) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>
+  if (error && !metrics.length) return <Alert severity="error">{error}</Alert>
   if (!metrics.length) return <Alert severity="info">برای شرکت و سال مالی انتخاب‌شده شاخص مبلغی قابل نمایش وجود ندارد.</Alert>
 
   return <Stack spacing={3}>
