@@ -138,6 +138,7 @@ if (app.Environment.IsDevelopment()) app.MapOpenApi();
 
 app.MapGet("/livez", () => Results.Ok(new { status = "live", service = "PBM.Api", utc = DateTime.UtcNow }));
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok", service = "PBM.Api", utc = DateTime.UtcNow }));
+app.MapPbmCaptchaEndpoint();
 app.MapGet("/readyz", async (PbmDbContext db, CancellationToken ct) =>
 {
     try
@@ -264,7 +265,7 @@ app.MapPost("/api/v1/auth/login", async (LoginRequest request, PbmDbContext db, 
         expires: DateTime.UtcNow.AddHours(8),
         signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
     return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token), user.DisplayName, roles, companyIds, writableCompanyIds));
-}).RequireRateLimiting("login");
+}).AddEndpointFilter<CaptchaLoginEndpointFilter>().RequireRateLimiting("login");
 
 var api = app.MapGroup("/api/v1").RequireAuthorization();
 api.MapGet("/companies", (ICompanyService service, CancellationToken ct) => service.GetCompaniesAsync(ct));
