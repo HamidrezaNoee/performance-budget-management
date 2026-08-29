@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
 import App from './App'
 import './styles.css'
+import './login-background.css'
 
 document.documentElement.dir = 'rtl'
 document.documentElement.lang = 'fa'
