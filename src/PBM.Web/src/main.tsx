@@ -7,6 +7,8 @@ import './styles.css'
 document.documentElement.dir = 'rtl'
 document.documentElement.lang = 'fa'
 
+const uiFont = '"IRANYekan", Tahoma, Arial, sans-serif'
+
 const theme = createTheme({
   direction: 'rtl',
   palette: {
@@ -16,7 +18,19 @@ const theme = createTheme({
     background: { default: '#f4f7fb', paper: '#ffffff' }
   },
   shape: { borderRadius: 14 },
-  typography: { fontFamily: 'Tahoma, Arial, sans-serif' }
+  typography: { fontFamily: uiFont },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: { fontFamily: uiFont }
+      }
+    },
+    MuiButton: { styleOverrides: { root: { fontFamily: uiFont } } },
+    MuiInputBase: { styleOverrides: { root: { fontFamily: uiFont } } },
+    MuiInputLabel: { styleOverrides: { root: { fontFamily: uiFont } } },
+    MuiMenuItem: { styleOverrides: { root: { fontFamily: uiFont } } },
+    MuiTableCell: { styleOverrides: { root: { fontFamily: uiFont } } }
+  }
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
