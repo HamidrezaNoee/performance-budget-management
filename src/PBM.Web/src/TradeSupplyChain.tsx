@@ -33,6 +33,8 @@ type Stage = {
   measures: string[]
 }
 
+const LAST_NON_EMPTY = 4
+
 const stages: Stage[] = [
   {
     code: 'origin',
@@ -56,12 +58,12 @@ const stages: Stage[] = [
   {
     code: 'warehouse',
     title: '۳. تحویل و گردش انبار',
-    subtitle: 'موجودی اول دوره، خرید، FOC، سمپل، ضایعات، COGS و موجودی پایان',
+    subtitle: 'موجودی اول دوره، خرید، جایزه، سمپل، ضایعات، بهای تمام‌شده و موجودی پایان',
     color: 'primary',
     measures: [
-      'OPENING_QTY', 'OPENING_VALUE', 'IMPORT_QTY', 'FOC_QTY', 'AVAILABLE_QTY',
-      'COGS_QTY', 'COGS_AMOUNT', 'FOC_COST', 'SAMPLE_QTY', 'SAMPLE_AMOUNT',
-      'WASTE_QTY', 'WASTE_AMOUNT', 'CLOSING_QTY', 'CLOSING_VALUE'
+      'OPENING_QTY', 'OPENING_VALUE', 'IMPORT_QTY', 'AVAILABLE_QTY', 'COGS_QTY', 'COGS_AMOUNT',
+      'FREE_SALES_QTY', 'FOC_COST', 'SAMPLE_QTY', 'SAMPLE_AMOUNT', 'WASTE_QTY', 'WASTE_AMOUNT',
+      'TOTAL_COGS_AMOUNT', 'CLOSING_QTY', 'CLOSING_VALUE'
     ]
   },
   {
@@ -71,7 +73,7 @@ const stages: Stage[] = [
     color: 'success',
     measures: [
       'SALES_QTY', 'FREE_SALES_QTY', 'SALES_PRICE', 'FOC_SALES_AMOUNT', 'GROSS_SALES',
-      'SALES_DISCOUNT', 'NET_SALES', 'COGS_AMOUNT', 'TRADE_GROSS_MARGIN', 'TRADE_GROSS_MARGIN_PERCENT'
+      'SALES_DISCOUNT', 'NET_SALES', 'TOTAL_COGS_AMOUNT', 'TRADE_GROSS_MARGIN', 'TRADE_GROSS_MARGIN_PERCENT'
     ]
   }
 ]
@@ -106,6 +108,10 @@ function lastPeriodValue(data?: LoadedMeasure) {
   return Number(data.cells.find(x => x.periodId === last.id)?.value ?? 0)
 }
 
+function aggregate(data: LoadedMeasure) {
+  return data.measure.aggregation === LAST_NON_EMPTY ? lastPeriodValue(data) : sum(data.cells)
+}
+
 export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: { companyId: string; fiscalYearId: string; canWrite: boolean }) {
   const [tradeModel, setTradeModel] = useState<Model | null>(null)
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -132,7 +138,7 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
   const versions = useMemo(() => [...(plan?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber), [plan])
   const version = versions.find(x => x.id === versionId) ?? versions[0]
   const editable = canWrite && !!version && version.status === 0 && !version.isLocked
-  const measureByCode = useMemo(() => Object.fromEntries(measures.map(x => [x.code.toUpperCase(), x])), [measures])
+  const measureByCode = useMemo(() => Object.fromEntries(measures.map(x => [x.code.toUpperCase(), x])) as Record<string, Measure>, [measures])
 
   const fixedFilters = () => supplierDimension && supplierId
     ? [{ dimensionId: supplierDimension.id, memberId: supplierId }]
@@ -173,9 +179,8 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
       const memberMap = Object.fromEntries(memberEntries) as Record<string, Member[]>
       setMembers(memberMap)
       const productDim = dimensionResponse.data.find(x => x.code.toUpperCase() === 'PRODUCT')
-      const supplierDim = dimensionResponse.data.find(x => x.code.toUpperCase() === 'SUPPLIER')
       setProductId(productDim ? memberMap[productDim.id]?.[0]?.id ?? '' : '')
-      setSupplierId(supplierDim ? '' : '')
+      setSupplierId('')
     } catch (requestError) {
       setError(apiError(requestError, 'دریافت اطلاعات زنجیره خرید و فروش ناموفق بود.'))
     } finally { setBusy(false) }
@@ -212,7 +217,11 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
       filters: fixedFilters()
     })
     const row = data.rows.find(x => x.memberId === productId)
-    return { measure: data.measure, periods: data.periods, cells: row?.cells ?? data.periods.map(p => ({ periodId: p.id, value: 0 })) }
+    return {
+      measure: data.measure,
+      periods: data.periods,
+      cells: row?.cells ?? data.periods.map(period => ({ periodId: period.id, value: 0 }))
+    }
   }
 
   const loadData = async () => {
@@ -376,7 +385,11 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
             <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={() => void loadData()} disabled={busy || !productId}>تازه‌سازی</Button>
             <Button variant="contained" startIcon={<CalculateRoundedIcon />} onClick={() => void recalculate()} disabled={busy || !editable || !productId}>محاسبه مجدد</Button>
           </Stack>
-          {!editable && version && <Typography variant="caption" color="text.secondary" display="block" mt={1.5}>این نسخه قفل است یا در وضعیت پیش‌نویس نیست؛ مقادیر فقط قابل مشاهده‌اند.</Typography>}
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1} mt={1.5}>
+            {!editable && version
+              ? <Typography variant="caption" color="text.secondary">این نسخه قفل است یا در وضعیت پیش‌نویس نیست؛ مقادیر فقط قابل مشاهده‌اند.</Typography>
+              : <Typography variant="caption" color="text.secondary">نرخ‌های درصدی در PBM به صورت درصد وارد می‌شوند؛ مثال ۵ برای ۵٪.</Typography>}
+          </Stack>
         </CardContent>
       </Card>
 
@@ -433,7 +446,7 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ minWidth: 260, fontWeight: 900, position: 'sticky', right: 0, zIndex: 4, bgcolor: 'background.paper' }}>شاخص / Measure</TableCell>
-                    {(Object.values(stageData)[0]?.periods ?? []).sort((a, b) => a.sequence - b.sequence).map(period =>
+                    {(Object.values(stageData)[0]?.periods ?? []).slice().sort((a, b) => a.sequence - b.sequence).map(period =>
                       <TableCell key={period.id} align="center" sx={{ minWidth: 130, fontWeight: 900 }}>{period.name}</TableCell>)}
                     <TableCell align="center" sx={{ minWidth: 145, fontWeight: 900 }}>جمع / پایان دوره</TableCell>
                   </TableRow>
@@ -443,7 +456,6 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
                     const loaded = stageData[code]
                     if (!loaded) return null
                     const orderedPeriods = [...loaded.periods].sort((a, b) => a.sequence - b.sequence)
-                    const total = loaded.measure.aggregation === 2 ? lastPeriodValue(loaded) : sum(loaded.cells)
                     return <TableRow key={code} hover>
                       <TableCell sx={{ position: 'sticky', right: 0, zIndex: 2, bgcolor: loaded.measure.isCalculated ? '#f2f7ff' : 'background.paper', borderLeft: '1px solid', borderColor: 'divider' }}>
                         <Typography fontWeight={800} fontSize={13.5}>{loaded.measure.name}</Typography>
@@ -470,7 +482,7 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
                               />}
                         </TableCell>
                       })}
-                      <TableCell align="center" sx={{ fontWeight: 900, bgcolor: 'action.hover' }}>{number.format(total)}</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 900, bgcolor: 'action.hover' }}>{number.format(aggregate(loaded))}</TableCell>
                     </TableRow>
                   })}
                 </TableBody>
@@ -478,7 +490,7 @@ export default function TradeSupplyChain({ companyId, fiscalYearId, canWrite }: 
             </TableContainer>}
 
           <Typography variant="caption" color="text.secondary" display="block" mt={1.5} sx={{ lineHeight: 1.9 }}>
-            فیلدهای آبی/محاسباتی از سایر ورودی‌ها محاسبه می‌شوند. پس از تغییر نرخ ارز، هزینه‌ها، خرید یا فروش، «محاسبه مجدد» را اجرا کنید. مقدارهای ریالی با واحد IRR در BudgetFact ذخیره می‌شوند و ساختار اصلی بودجه/Actual/Forecast مشترک باقی می‌ماند.
+            فیلدهای آبی/محاسباتی از سایر ورودی‌ها محاسبه می‌شوند. پس از تغییر نرخ ارز، هزینه‌ها، خرید یا فروش، «محاسبه مجدد» را اجرا کنید. مقدارهای ریالی با واحد IRR در BudgetFact ذخیره می‌شوند و Budget / Actual / Commitment / Forecast از یک مدل مشترک استفاده می‌کنند.
           </Typography>
         </CardContent>
       </Card>
