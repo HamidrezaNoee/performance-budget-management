@@ -54,9 +54,12 @@ $saPassword = Get-PbmEnvValue -Name 'PBM_SA_PASSWORD'
 $tempEnvFile = Join-Path ([System.IO.Path]::GetTempPath()) ("pbm-restore-test-" + [Guid]::NewGuid().ToString('N') + '.env')
 
 try {
+    # SQLCMDPASSWORD lets sqlcmd authenticate without putting -P and the password
+    # through Windows PowerShell -> docker -> bash quoting layers.
     @(
         'ACCEPT_EULA=Y',
-        "MSSQL_SA_PASSWORD=$saPassword"
+        "MSSQL_SA_PASSWORD=$saPassword",
+        "SQLCMDPASSWORD=$saPassword"
     ) | Set-Content -Path $tempEnvFile -Encoding ASCII
 
     Write-Host "Starting isolated SQL Server restore-test container: $containerName" -ForegroundColor Cyan
@@ -67,16 +70,22 @@ try {
     Write-Host 'Waiting for isolated SQL Server...' -ForegroundColor Cyan
     $deadline = (Get-Date).AddSeconds(120)
     $ready = $false
-    # SQL Server can briefly accept connections before the sa login is ready. Keep
-    # probing quietly until both the engine and the sa login are usable. The outer
-    # PowerShell string is single-quoted so Bash, not PowerShell, expands the password.
-    $probeCommand = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "SET NOCOUNT ON; SELECT 1;" >/dev/null 2>&1'
     do {
         Start-Sleep -Seconds 2
-        & docker exec $containerName bash -lc $probeCommand
-        $probeExitCode = $LASTEXITCODE
+        $probeExitCode = 1
+        try {
+            # Run sqlcmd directly (no bash and no -P) so SELECT 1 is passed as one
+            # native argument even under Windows PowerShell 5.1. Startup failures are
+            # expected briefly and are intentionally suppressed while we retry.
+            & docker exec $containerName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -Q 'SET NOCOUNT ON; SELECT 1;' *> $null
+            $probeExitCode = $LASTEXITCODE
+        }
+        catch {
+            $probeExitCode = 1
+        }
         if ($probeExitCode -eq 0) { $ready = $true; break }
     } while ((Get-Date) -lt $deadline)
+
     if (-not $ready) {
         Write-Host 'Isolated SQL Server did not become ready. Recent container logs:' -ForegroundColor Yellow
         & docker logs --tail 40 $containerName
@@ -117,8 +126,10 @@ SELECT
 GO
 "@
 
+    # Transport the T-SQL as Base64. sqlcmd reads SQLCMDPASSWORD from the container
+    # environment, so this command contains neither the password nor nested -P quotes.
     $restoreSqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($restoreSql))
-    $command = "printf '%s' '$restoreSqlBase64' | base64 -d | /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P `"`$MSSQL_SA_PASSWORD`" -C -b"
+    $command = "printf '%s' '$restoreSqlBase64' | base64 -d | /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b"
 
     Write-Host "Restoring and validating $backupName in the isolated container..." -ForegroundColor Cyan
     & docker exec $containerName bash -lc $command
