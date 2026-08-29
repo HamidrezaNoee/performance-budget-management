@@ -68,8 +68,9 @@ try {
     $deadline = (Get-Date).AddSeconds(120)
     $ready = $false
     # SQL Server can briefly accept connections before the sa login is ready. Keep
-    # probing without letting transient sqlcmd stderr become a terminating PowerShell error.
-    $probeCommand = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "SELECT 1;" >/dev/null 2>&1'
+    # probing quietly until both the engine and the sa login are usable. The outer
+    # PowerShell string is single-quoted so Bash, not PowerShell, expands the password.
+    $probeCommand = '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "SET NOCOUNT ON; SELECT 1;" >/dev/null 2>&1'
     do {
         Start-Sleep -Seconds 2
         & docker exec $containerName bash -lc $probeCommand
