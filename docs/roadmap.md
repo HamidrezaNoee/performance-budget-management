@@ -40,6 +40,8 @@
 - Multidimensional Budget-vs-Actual variance analysis workspace
 - Rule-based variance anomaly baseline with configurable warning threshold in the UI
 - Executive dashboard semantic metric priority instead of summing unrelated amount measures
+- Selectable executive dashboard amount metrics with consistent Budget / Actual / Commitment / Forecast aggregation
+- Dimension-aware executive drill-down with ranked member table and SQL Server integration coverage
 - Budget reservation lifecycle: request, availability control, approval, rejection, release and consume
 - Approved reservations post to Commitment with serializable approval-time availability recheck
 - Reservation-to-Actual reconciliation monitoring for consumed reservations
@@ -60,7 +62,6 @@
 - Dedicated RTL CAPEX workspace with project creation, review actions, milestones and Jalali display
 - Dedicated cash planning / treasury workspace with Opening / Inflow / Outflow / Liquidity Buffer and rolling closing cash
 - Cash planning keeps currency as an explicit required dimension and supports Budget / Actual / Commitment / Forecast
-- Next: selectable executive dashboard metric and dimensional drill-down
 - Next: portfolio performance ranking across companies / organization units / programs
 
 ## Slice 4 — governance and enterprise integration (implemented / hardening)
@@ -70,7 +71,7 @@
 - Scenario selection for revised budget versions
 - Readiness/liveness endpoints and configurable per-client login throttling
 - Migration-aware schema startup policy; production no longer silently uses `EnsureCreated`
-- EF migration helper script and CI model-drift check ready for the first committed migration
+- Initial EF Core migration committed; migration helper script and CI model-drift check included
 - Supporting file attachments on budget versions/comments with size/type/hash validation
 - Persistent in-app notification center with unread count and Jalali timestamps
 - Workflow, reservation, transfer and CAPEX notifications with role/company targeting and deep links
@@ -86,7 +87,6 @@
 - External-key posting API resolves PeriodCode, MeasureCode and DimensionMember ExternalKey/Code
 - Retry-safe batch Actual ingestion with per-row result and up to 1000 rows per request
 - Dedicated RTL Actual/ERP operations workspace with reversal and reconciliation controls
-- Next: generate and commit the initial EF Core migration and schema upgrade scripts
 - Next: add database indexes/constraints tuned for Actual Ledger volume after the initial migration is generated
 - Next: email/SMS/Teams notification delivery adapters and retry/outbox handling
 - Next: BPMN/workflow engine adapter
@@ -105,7 +105,7 @@
 
 ## Engineering hardening backlog
 - Get GitHub Actions build/test execution enabled and green for the feature branch
-- Generate and commit the initial EF Core migration using a .NET SDK + EF tooling environment
+- Keep EF migration drift checks green and add forward-only schema upgrade scripts for deployment
 - Add SQL Server integration tests for transactions, authorization, assumptions, CAPEX, reservation/transfer concurrency, workbook imports and Actual Ledger concurrency/reversal
 - Add explicit migration-time database indexes for high-volume Actual Ledger source identity and reconciliation queries
 - Add trusted-proxy/forwarded-header configuration before relying on client-IP throttling behind a reverse proxy
