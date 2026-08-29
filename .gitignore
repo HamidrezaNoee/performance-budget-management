@@ -2,6 +2,7 @@
 **/obj/
 **/node_modules/
 **/dist/
+src/PBM.Web/public/assets/
 .vs/
 .vscode/
 .idea/
