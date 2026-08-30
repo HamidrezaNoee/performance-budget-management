@@ -29,14 +29,8 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
                 && x.BudgetPlan.FiscalYearId == fiscalYearId
                 && x.BudgetPlan.BudgetModel!.Code == TradeModelCode
                 && x.Status != BudgetStatus.Rejected)
-            .OrderByDescending(x => x.VersionNumber)
-            .Select(x => new
-            {
-                x.Id,
-                x.VersionNumber,
-                x.Name,
-                ModelId = x.BudgetPlan!.BudgetModelId
-            })
+            .OrderByDescending(x => x.VersionNumber).ThenByDescending(x => x.CreatedAtUtc)
+            .Select(x => new { x.Id, x.VersionNumber, x.Name, ModelId = x.BudgetPlan!.BudgetModelId })
             .FirstOrDefaultAsync(cancellationToken);
         if (version is null) return null;
 
@@ -51,67 +45,47 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
         var quantityMeasureId = measures[QuantityMeasureCode].Id;
         var amountMeasureId = measures[AmountMeasureCode].Id;
         var costMeasureId = measures[CostAmountMeasureCode].Id;
+        var trackedMeasureIds = new[] { quantityMeasureId, amountMeasureId, costMeasureId };
         var currency = await GetBaseCurrencyAsync(cancellationToken);
-        var supportedKinds = new[] { ValueKind.Budget, ValueKind.Forecast };
+        var supportedKinds = new[] { ValueKind.Budget, ValueKind.Actual, ValueKind.Forecast };
 
-        var quantityFacts = await db.BudgetFacts.AsNoTracking()
+        var facts = await db.BudgetFacts.AsNoTracking().Include(x => x.Dimensions)
             .Where(x => x.VersionId == version.Id
-                && x.MeasureId == quantityMeasureId
-                && supportedKinds.Contains(x.ValueKind))
-            .Select(x => new PurchaseFact(x.Id, x.PeriodId, x.MeasureId, x.ValueKind, x.Value))
-            .ToListAsync(cancellationToken);
-
-        var amountMeasureIds = new[] { amountMeasureId, costMeasureId };
-        var amountFacts = await db.BudgetFacts.AsNoTracking()
-            .Where(x => x.VersionId == version.Id
-                && amountMeasureIds.Contains(x.MeasureId)
+                && trackedMeasureIds.Contains(x.MeasureId)
                 && supportedKinds.Contains(x.ValueKind)
-                && x.CurrencyCode == currency)
-            .Select(x => new PurchaseFact(x.Id, x.PeriodId, x.MeasureId, x.ValueKind, x.Value))
+                && (x.MeasureId == quantityMeasureId || x.CurrencyCode == currency))
             .ToListAsync(cancellationToken);
 
-        var allFacts = quantityFacts.Concat(amountFacts).ToList();
-        decimal Sum(Guid measureId, ValueKind kind) => allFacts
-            .Where(x => x.MeasureId == measureId && x.ValueKind == kind)
-            .Sum(x => x.Value);
+        PurchaseTotals Totals(ValueKind kind, IEnumerable<BudgetFact>? source = null)
+        {
+            var items = (source ?? facts).Where(x => x.ValueKind == kind).ToList();
+            var quantity = items.Where(x => x.MeasureId == quantityMeasureId).Sum(x => x.Value);
+            var purchase = items.Where(x => x.MeasureId == amountMeasureId).Sum(x => x.Value);
+            var cost = items.Where(x => x.MeasureId == costMeasureId).Sum(x => x.Value);
+            return new PurchaseTotals(quantity, purchase, cost, purchase + cost);
+        }
 
-        var budgetQuantity = Sum(quantityMeasureId, ValueKind.Budget);
-        var forecastQuantity = Sum(quantityMeasureId, ValueKind.Forecast);
-        var budgetPurchaseAmount = Sum(amountMeasureId, ValueKind.Budget);
-        var forecastPurchaseAmount = Sum(amountMeasureId, ValueKind.Forecast);
-        var budgetCostAmount = Sum(costMeasureId, ValueKind.Budget);
-        var forecastCostAmount = Sum(costMeasureId, ValueKind.Forecast);
-        var budgetTotalAmount = budgetPurchaseAmount + budgetCostAmount;
-        var forecastTotalAmount = forecastPurchaseAmount + forecastCostAmount;
+        var budget = Totals(ValueKind.Budget);
+        var actual = Totals(ValueKind.Actual);
+        var forecast = Totals(ValueKind.Forecast);
 
         var periods = await db.FiscalPeriods.AsNoTracking()
             .Where(x => x.FiscalYearId == fiscalYearId)
             .OrderBy(x => x.Sequence)
             .Select(x => new { x.Id, x.Name, x.Sequence })
             .ToListAsync(cancellationToken);
-
         var monthly = periods.Select(period =>
         {
-            var periodFacts = allFacts.Where(x => x.PeriodId == period.Id).ToList();
-            decimal PeriodSum(Guid measureId, ValueKind kind) => periodFacts
-                .Where(x => x.MeasureId == measureId && x.ValueKind == kind)
-                .Sum(x => x.Value);
-            var budgetPurchase = PeriodSum(amountMeasureId, ValueKind.Budget);
-            var forecastPurchase = PeriodSum(amountMeasureId, ValueKind.Forecast);
-            var budgetCost = PeriodSum(costMeasureId, ValueKind.Budget);
-            var forecastCost = PeriodSum(costMeasureId, ValueKind.Forecast);
+            var periodFacts = facts.Where(x => x.PeriodId == period.Id).ToList();
+            var b = Totals(ValueKind.Budget, periodFacts);
+            var a = Totals(ValueKind.Actual, periodFacts);
+            var f = Totals(ValueKind.Forecast, periodFacts);
             return new PurchaseDashboardMonthlyDto(
-                period.Id,
-                period.Name,
-                period.Sequence,
-                PeriodSum(quantityMeasureId, ValueKind.Budget),
-                PeriodSum(quantityMeasureId, ValueKind.Forecast),
-                budgetPurchase,
-                forecastPurchase,
-                budgetCost,
-                forecastCost,
-                budgetPurchase + budgetCost,
-                forecastPurchase + forecastCost);
+                period.Id, period.Name, period.Sequence,
+                b.Quantity, a.Quantity, f.Quantity,
+                b.PurchaseAmount, a.PurchaseAmount, f.PurchaseAmount,
+                b.CostAmount, a.CostAmount, f.CostAmount,
+                b.TotalAmount, a.TotalAmount, f.TotalAmount);
         }).ToList();
 
         var modelDimensions = await db.BudgetModelDimensions.AsNoTracking()
@@ -122,255 +96,151 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
         var costDimension = modelDimensions.FirstOrDefault(x => x.Code == CostDimensionCode);
         var drillDimensions = modelDimensions.Where(x => x.Code != CostDimensionCode).ToList();
 
-        IReadOnlyList<PurchaseDashboardCostDto> costs = costDimension is null
-            ? BuildUnallocatedCostRows(Array.Empty<PurchaseDashboardCostDto>(), budgetCostAmount, forecastCostAmount)
+        var costs = costDimension is null
+            ? BuildUnallocatedCostRows([], budget.CostAmount, actual.CostAmount, forecast.CostAmount)
             : await BuildCostBreakdownAsync(
-                version.Id,
-                companyId,
-                costDimension.Id,
-                costMeasureId,
-                currency,
-                budgetCostAmount,
-                forecastCostAmount,
-                cancellationToken);
+                companyId, costDimension.Id, costMeasureId, facts,
+                budget.CostAmount, actual.CostAmount, forecast.CostAmount, cancellationToken);
 
-        DashboardDimensionOptionDto? selectedDimension = null;
-        if (dimensionId.HasValue)
-        {
-            selectedDimension = drillDimensions.FirstOrDefault(x => x.Id == dimensionId.Value)
-                ?? throw new ArgumentException("Selected dimension is not available for purchase dashboard drill-down.");
-        }
-        else
-        {
-            selectedDimension = drillDimensions.FirstOrDefault(x => x.Code == ProductDimensionCode)
-                ?? drillDimensions.FirstOrDefault();
-        }
+        var selectedDimension = dimensionId.HasValue
+            ? drillDimensions.FirstOrDefault(x => x.Id == dimensionId.Value)
+                ?? throw new ArgumentException("Selected dimension is not available for purchase dashboard drill-down.")
+            : drillDimensions.FirstOrDefault(x => x.Code == ProductDimensionCode) ?? drillDimensions.FirstOrDefault();
 
-        IReadOnlyList<PurchaseDashboardDrilldownRowDto> drilldown = selectedDimension is null
-            ? Array.Empty<PurchaseDashboardDrilldownRowDto>()
+        var drilldown = selectedDimension is null
+            ? []
             : await BuildDrilldownAsync(
-                version.Id,
-                companyId,
-                selectedDimension.Id,
-                quantityMeasureId,
-                amountMeasureId,
-                costMeasureId,
-                currency,
-                budgetQuantity,
-                forecastQuantity,
-                budgetPurchaseAmount,
-                forecastPurchaseAmount,
-                budgetCostAmount,
-                forecastCostAmount,
-                Math.Clamp(take, 1, 500),
-                cancellationToken);
+                companyId, selectedDimension.Id, facts,
+                quantityMeasureId, amountMeasureId, costMeasureId,
+                budget, actual, forecast, Math.Clamp(take, 1, 500), cancellationToken);
 
         return new PurchaseDashboardDto(
-            version.Id,
-            version.VersionNumber,
-            version.Name,
-            currency,
-            budgetQuantity,
-            forecastQuantity,
-            budgetPurchaseAmount,
-            forecastPurchaseAmount,
-            budgetCostAmount,
-            forecastCostAmount,
-            budgetTotalAmount,
-            forecastTotalAmount,
-            forecastTotalAmount - budgetTotalAmount,
-            monthly,
-            costs,
-            drillDimensions,
-            selectedDimension?.Id,
-            drilldown);
+            version.Id, version.VersionNumber, version.Name, currency,
+            budget.Quantity, actual.Quantity, forecast.Quantity,
+            budget.PurchaseAmount, actual.PurchaseAmount, forecast.PurchaseAmount,
+            budget.CostAmount, actual.CostAmount, forecast.CostAmount,
+            budget.TotalAmount, actual.TotalAmount, forecast.TotalAmount,
+            actual.TotalAmount - budget.TotalAmount,
+            forecast.TotalAmount - budget.TotalAmount,
+            monthly, costs, drillDimensions, selectedDimension?.Id, drilldown);
     }
 
     private async Task<IReadOnlyList<PurchaseDashboardCostDto>> BuildCostBreakdownAsync(
-        Guid versionId,
         Guid companyId,
         Guid costDimensionId,
         Guid costMeasureId,
-        string currency,
+        IReadOnlyList<BudgetFact> facts,
         decimal totalBudgetCost,
+        decimal totalActualCost,
         decimal totalForecastCost,
         CancellationToken ct)
     {
-        var links = await db.BudgetFactDimensions.AsNoTracking()
-            .Where(x => x.DimensionId == costDimensionId
-                && x.BudgetFact!.VersionId == versionId
-                && x.BudgetFact.MeasureId == costMeasureId
-                && (x.BudgetFact.ValueKind == ValueKind.Budget || x.BudgetFact.ValueKind == ValueKind.Forecast)
-                && x.BudgetFact.CurrencyCode == currency)
-            .Select(x => new { x.MemberId, x.BudgetFact!.ValueKind, x.BudgetFact.Value })
-            .ToListAsync(ct);
-
-        var memberIds = links.Select(x => x.MemberId).Distinct().ToArray();
+        var costFacts = facts.Where(x => x.MeasureId == costMeasureId).ToList();
+        var memberIds = costFacts.SelectMany(x => x.Dimensions
+            .Where(d => d.DimensionId == costDimensionId).Select(d => d.MemberId)).Distinct().ToArray();
         var members = await db.DimensionMembers.AsNoTracking()
-            .Where(x => memberIds.Contains(x.Id)
-                && x.DimensionId == costDimensionId
-                && x.IsActive
+            .Where(x => memberIds.Contains(x.Id) && x.DimensionId == costDimensionId && x.IsActive
                 && (x.CompanyId == null || x.CompanyId == companyId))
-            .Select(x => new { x.Id, x.Code, x.Name })
-            .ToDictionaryAsync(x => x.Id, ct);
+            .Select(x => new { x.Id, x.Code, x.Name }).ToDictionaryAsync(x => x.Id, ct);
 
-        var rows = links
-            .Where(x => members.ContainsKey(x.MemberId))
-            .GroupBy(x => x.MemberId)
-            .Select(group =>
-            {
-                var member = members[group.Key];
-                var budget = group.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
-                var forecast = group.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
-                return new PurchaseDashboardCostDto(member.Id, member.Code, member.Name, budget, forecast, forecast - budget);
-            })
-            .OrderByDescending(x => x.ForecastAmount)
-            .ThenByDescending(x => x.BudgetAmount)
-            .ToList();
+        var rows = members.Values.Select(member =>
+        {
+            var memberFacts = costFacts.Where(x => x.Dimensions.Any(d => d.DimensionId == costDimensionId && d.MemberId == member.Id)).ToList();
+            var b = memberFacts.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
+            var a = memberFacts.Where(x => x.ValueKind == ValueKind.Actual).Sum(x => x.Value);
+            var f = memberFacts.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
+            return new PurchaseDashboardCostDto(member.Id, member.Code, member.Name, b, a, f, a - b, f - b);
+        }).Where(x => x.BudgetAmount != 0 || x.ActualAmount != 0 || x.ForecastAmount != 0).ToList();
 
-        return BuildUnallocatedCostRows(rows, totalBudgetCost, totalForecastCost);
+        return BuildUnallocatedCostRows(rows, totalBudgetCost, totalActualCost, totalForecastCost);
     }
 
     private static IReadOnlyList<PurchaseDashboardCostDto> BuildUnallocatedCostRows(
         IReadOnlyList<PurchaseDashboardCostDto> rows,
         decimal totalBudgetCost,
+        decimal totalActualCost,
         decimal totalForecastCost)
     {
         var result = rows.ToList();
-        var allocatedBudget = result.Sum(x => x.BudgetAmount);
-        var allocatedForecast = result.Sum(x => x.ForecastAmount);
-        var unallocatedBudget = totalBudgetCost - allocatedBudget;
-        var unallocatedForecast = totalForecastCost - allocatedForecast;
-        if (unallocatedBudget != 0m || unallocatedForecast != 0m)
-            result.Add(new PurchaseDashboardCostDto(
-                Guid.Empty,
-                "UNALLOCATED",
-                "بدون نوع هزینه",
-                unallocatedBudget,
-                unallocatedForecast,
-                unallocatedForecast - unallocatedBudget));
-        return result
-            .OrderByDescending(x => x.ForecastAmount)
-            .ThenByDescending(x => x.BudgetAmount)
-            .ToList();
+        var ub = totalBudgetCost - result.Sum(x => x.BudgetAmount);
+        var ua = totalActualCost - result.Sum(x => x.ActualAmount);
+        var uf = totalForecastCost - result.Sum(x => x.ForecastAmount);
+        if (ub != 0 || ua != 0 || uf != 0)
+            result.Add(new PurchaseDashboardCostDto(Guid.Empty, "UNALLOCATED", "بدون نوع هزینه", ub, ua, uf, ua - ub, uf - ub));
+        return result.OrderByDescending(x => x.ActualAmount).ThenByDescending(x => x.ForecastAmount).ThenByDescending(x => x.BudgetAmount).ToList();
     }
 
     private async Task<IReadOnlyList<PurchaseDashboardDrilldownRowDto>> BuildDrilldownAsync(
-        Guid versionId,
         Guid companyId,
         Guid dimensionId,
+        IReadOnlyList<BudgetFact> facts,
         Guid quantityMeasureId,
         Guid amountMeasureId,
         Guid costMeasureId,
-        string currency,
-        decimal totalBudgetQuantity,
-        decimal totalForecastQuantity,
-        decimal totalBudgetPurchase,
-        decimal totalForecastPurchase,
-        decimal totalBudgetCost,
-        decimal totalForecastCost,
+        PurchaseTotals totalBudget,
+        PurchaseTotals totalActual,
+        PurchaseTotals totalForecast,
         int take,
         CancellationToken ct)
     {
-        var measureIds = new[] { quantityMeasureId, amountMeasureId, costMeasureId };
-        var links = await db.BudgetFactDimensions.AsNoTracking()
-            .Where(x => x.DimensionId == dimensionId
-                && x.BudgetFact!.VersionId == versionId
-                && measureIds.Contains(x.BudgetFact.MeasureId)
-                && (x.BudgetFact.ValueKind == ValueKind.Budget || x.BudgetFact.ValueKind == ValueKind.Forecast)
-                && (x.BudgetFact.MeasureId == quantityMeasureId || x.BudgetFact.CurrencyCode == currency))
-            .Select(x => new
-            {
-                x.MemberId,
-                x.BudgetFact!.MeasureId,
-                x.BudgetFact.ValueKind,
-                x.BudgetFact.Value
-            })
-            .ToListAsync(ct);
-
-        var memberIds = links.Select(x => x.MemberId).Distinct().ToArray();
+        var memberIds = facts.SelectMany(x => x.Dimensions.Where(d => d.DimensionId == dimensionId).Select(d => d.MemberId)).Distinct().ToArray();
         var members = await db.DimensionMembers.AsNoTracking()
-            .Where(x => memberIds.Contains(x.Id)
-                && x.DimensionId == dimensionId
-                && x.IsActive
+            .Where(x => memberIds.Contains(x.Id) && x.DimensionId == dimensionId && x.IsActive
                 && (x.CompanyId == null || x.CompanyId == companyId))
-            .Select(x => new { x.Id, x.Code, x.Name })
-            .ToDictionaryAsync(x => x.Id, ct);
+            .Select(x => new { x.Id, x.Code, x.Name }).ToDictionaryAsync(x => x.Id, ct);
 
-        var rows = links
-            .Where(x => members.ContainsKey(x.MemberId))
-            .GroupBy(x => x.MemberId)
-            .Select(group =>
-            {
-                var member = members[group.Key];
-                decimal Sum(Guid measureId, ValueKind kind) => group
-                    .Where(x => x.MeasureId == measureId && x.ValueKind == kind)
-                    .Sum(x => x.Value);
-                var budgetPurchase = Sum(amountMeasureId, ValueKind.Budget);
-                var forecastPurchase = Sum(amountMeasureId, ValueKind.Forecast);
-                var budgetCost = Sum(costMeasureId, ValueKind.Budget);
-                var forecastCost = Sum(costMeasureId, ValueKind.Forecast);
-                var budgetTotal = budgetPurchase + budgetCost;
-                var forecastTotal = forecastPurchase + forecastCost;
-                return new PurchaseDashboardDrilldownRowDto(
-                    member.Id,
-                    member.Code,
-                    member.Name,
-                    Sum(quantityMeasureId, ValueKind.Budget),
-                    Sum(quantityMeasureId, ValueKind.Forecast),
-                    budgetPurchase,
-                    forecastPurchase,
-                    budgetCost,
-                    forecastCost,
-                    budgetTotal,
-                    forecastTotal,
-                    forecastTotal - budgetTotal);
-            })
-            .ToList();
-
-        var allocatedBudgetQuantity = rows.Sum(x => x.BudgetQuantity);
-        var allocatedForecastQuantity = rows.Sum(x => x.ForecastQuantity);
-        var allocatedBudgetPurchase = rows.Sum(x => x.BudgetPurchaseAmount);
-        var allocatedForecastPurchase = rows.Sum(x => x.ForecastPurchaseAmount);
-        var allocatedBudgetCost = rows.Sum(x => x.BudgetCostAmount);
-        var allocatedForecastCost = rows.Sum(x => x.ForecastCostAmount);
-
-        var unallocatedBudgetQuantity = totalBudgetQuantity - allocatedBudgetQuantity;
-        var unallocatedForecastQuantity = totalForecastQuantity - allocatedForecastQuantity;
-        var unallocatedBudgetPurchase = totalBudgetPurchase - allocatedBudgetPurchase;
-        var unallocatedForecastPurchase = totalForecastPurchase - allocatedForecastPurchase;
-        var unallocatedBudgetCost = totalBudgetCost - allocatedBudgetCost;
-        var unallocatedForecastCost = totalForecastCost - allocatedForecastCost;
-        if (unallocatedBudgetQuantity != 0m
-            || unallocatedForecastQuantity != 0m
-            || unallocatedBudgetPurchase != 0m
-            || unallocatedForecastPurchase != 0m
-            || unallocatedBudgetCost != 0m
-            || unallocatedForecastCost != 0m)
+        PurchaseTotals T(IEnumerable<BudgetFact> source, ValueKind kind)
         {
-            var budgetTotal = unallocatedBudgetPurchase + unallocatedBudgetCost;
-            var forecastTotal = unallocatedForecastPurchase + unallocatedForecastCost;
-            rows.Add(new PurchaseDashboardDrilldownRowDto(
-                Guid.Empty,
-                "UNALLOCATED",
-                "بدون تفکیک",
-                unallocatedBudgetQuantity,
-                unallocatedForecastQuantity,
-                unallocatedBudgetPurchase,
-                unallocatedForecastPurchase,
-                unallocatedBudgetCost,
-                unallocatedForecastCost,
-                budgetTotal,
-                forecastTotal,
-                forecastTotal - budgetTotal));
+            var items = source.Where(x => x.ValueKind == kind).ToList();
+            var q = items.Where(x => x.MeasureId == quantityMeasureId).Sum(x => x.Value);
+            var p = items.Where(x => x.MeasureId == amountMeasureId).Sum(x => x.Value);
+            var c = items.Where(x => x.MeasureId == costMeasureId).Sum(x => x.Value);
+            return new PurchaseTotals(q, p, c, p + c);
         }
 
-        return rows
-            .OrderByDescending(x => x.ForecastTotalAmount)
-            .ThenByDescending(x => x.BudgetTotalAmount)
-            .Take(take)
-            .ToList();
+        var rows = members.Values.Select(member =>
+        {
+            var memberFacts = facts.Where(x => x.Dimensions.Any(d => d.DimensionId == dimensionId && d.MemberId == member.Id)).ToList();
+            var b = T(memberFacts, ValueKind.Budget); var a = T(memberFacts, ValueKind.Actual); var f = T(memberFacts, ValueKind.Forecast);
+            return new PurchaseDashboardDrilldownRowDto(
+                member.Id, member.Code, member.Name,
+                b.Quantity, a.Quantity, f.Quantity,
+                b.PurchaseAmount, a.PurchaseAmount, f.PurchaseAmount,
+                b.CostAmount, a.CostAmount, f.CostAmount,
+                b.TotalAmount, a.TotalAmount, f.TotalAmount,
+                a.TotalAmount - b.TotalAmount,
+                f.TotalAmount - b.TotalAmount);
+        }).Where(x => x.BudgetTotalAmount != 0 || x.ActualTotalAmount != 0 || x.ForecastTotalAmount != 0
+            || x.BudgetQuantity != 0 || x.ActualQuantity != 0 || x.ForecastQuantity != 0).ToList();
+
+        PurchaseTotals Allocated(ValueKind kind) => new(
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetQuantity : kind == ValueKind.Actual ? x.ActualQuantity : x.ForecastQuantity),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetPurchaseAmount : kind == ValueKind.Actual ? x.ActualPurchaseAmount : x.ForecastPurchaseAmount),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetCostAmount : kind == ValueKind.Actual ? x.ActualCostAmount : x.ForecastCostAmount),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetTotalAmount : kind == ValueKind.Actual ? x.ActualTotalAmount : x.ForecastTotalAmount));
+        PurchaseTotals Remaining(PurchaseTotals total, PurchaseTotals allocated) => new(
+            total.Quantity - allocated.Quantity,
+            total.PurchaseAmount - allocated.PurchaseAmount,
+            total.CostAmount - allocated.CostAmount,
+            total.TotalAmount - allocated.TotalAmount);
+
+        var ub = Remaining(totalBudget, Allocated(ValueKind.Budget));
+        var ua = Remaining(totalActual, Allocated(ValueKind.Actual));
+        var uf = Remaining(totalForecast, Allocated(ValueKind.Forecast));
+        if (HasValues(ub) || HasValues(ua) || HasValues(uf))
+            rows.Add(new PurchaseDashboardDrilldownRowDto(
+                Guid.Empty, "UNALLOCATED", "بدون تفکیک",
+                ub.Quantity, ua.Quantity, uf.Quantity,
+                ub.PurchaseAmount, ua.PurchaseAmount, uf.PurchaseAmount,
+                ub.CostAmount, ua.CostAmount, uf.CostAmount,
+                ub.TotalAmount, ua.TotalAmount, uf.TotalAmount,
+                ua.TotalAmount - ub.TotalAmount,
+                uf.TotalAmount - ub.TotalAmount));
+
+        return rows.OrderByDescending(x => x.ActualTotalAmount).ThenByDescending(x => x.ForecastTotalAmount).ThenByDescending(x => x.BudgetTotalAmount).Take(take).ToList();
     }
+
+    private static bool HasValues(PurchaseTotals x) => x.Quantity != 0 || x.PurchaseAmount != 0 || x.CostAmount != 0 || x.TotalAmount != 0;
 
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
@@ -386,10 +256,5 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
             .Select(x => x.Code)
             .FirstOrDefaultAsync(ct) ?? "IRR";
 
-    private sealed record PurchaseFact(
-        Guid Id,
-        Guid PeriodId,
-        Guid MeasureId,
-        ValueKind ValueKind,
-        decimal Value);
+    private sealed record PurchaseTotals(decimal Quantity, decimal PurchaseAmount, decimal CostAmount, decimal TotalAmount);
 }
