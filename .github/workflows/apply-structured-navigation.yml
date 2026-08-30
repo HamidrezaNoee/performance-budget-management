@@ -1,4 +1,4 @@
-name: Apply structured master data navigation
+name: Finalize structured master data navigation
 
 on:
   push:
@@ -21,37 +21,57 @@ jobs:
           ref: feat/initial-platform
           fetch-depth: 0
 
-      - name: Patch App navigation
+      - name: Patch direct entity navigation
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('src/PBM.Web/src/App.tsx')
-          s = p.read_text(encoding='utf-8')
 
-          def repl(old, new):
-              global s
+          def replace(path, old, new):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
               if old not in s:
-                  raise SystemExit('Expected App.tsx block not found:\n' + old[:220])
-              s = s.replace(old, new, 1)
+                  raise SystemExit(f'Expected block not found in {path}: {old[:180]}')
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-          repl("import ReferenceAdmin from './ReferenceAdmin'\nimport MasterDataWorkspace from './MasterDataWorkspace'\n", "import SidebarTree from './SidebarTree'\nimport { masterDataTree, settingsTree } from './NavigationTrees'\nimport StructuredMasterDataWorkspace from './StructuredMasterDataWorkspace'\nimport SystemSettingsWorkspace from './SystemSettingsWorkspace'\n")
+          master = 'src/PBM.Web/src/MasterDataAdmin.tsx'
+          replace(master,
+            "export default function MasterDataAdmin({ companyId, roles }: { companyId: string; roles: string[] }) {",
+            "export default function MasterDataAdmin({ companyId, roles, initialDimensionCode }: { companyId: string; roles: string[]; initialDimensionCode?: string }) {"
+          )
+          replace(master,
+            "  const canGlobal = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN')\n\n  const [dimensions, setDimensions] = useState<Dimension[]>([])",
+            "  const canGlobal = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN')\n  const lockedDimensionCode = initialDimensionCode?.trim().toUpperCase() ?? ''\n\n  const [dimensions, setDimensions] = useState<Dimension[]>([])"
+          )
+          replace(master,
+            "      const product = response.data.find(x => x.code.toUpperCase() === 'PRODUCT')\n      const nextId = product?.id ?? response.data.find(x => operationalCodes.has(x.code.toUpperCase()))?.id ?? ''",
+            "      const requested = lockedDimensionCode ? response.data.find(x => x.code.toUpperCase() === lockedDimensionCode) : undefined\n      const product = response.data.find(x => x.code.toUpperCase() === 'PRODUCT')\n      const nextId = requested?.id ?? product?.id ?? response.data.find(x => operationalCodes.has(x.code.toUpperCase()))?.id ?? ''"
+          )
+          replace(master,
+            "  useEffect(() => { void loadDimensions() }, [companyId])",
+            "  useEffect(() => { void loadDimensions() }, [companyId, lockedDimensionCode])"
+          )
+          replace(master,
+            "      <FormControl size=\"small\" sx={{ minWidth: 320, mb: 2 }}><InputLabel>نوع اطلاعات پایه</InputLabel><Select label=\"نوع اطلاعات پایه\" value={dimensionId} onChange={e => setDimensionId(e.target.value)}>{visibleDimensions.map(item => <MenuItem key={item.id} value={item.id}>{labels[item.code.toUpperCase()] ?? item.name}</MenuItem>)}</Select></FormControl>",
+            "      {!lockedDimensionCode && <FormControl size=\"small\" sx={{ minWidth: 320, mb: 2 }}><InputLabel>نوع اطلاعات پایه</InputLabel><Select label=\"نوع اطلاعات پایه\" value={dimensionId} onChange={e => setDimensionId(e.target.value)}>{visibleDimensions.map(item => <MenuItem key={item.id} value={item.id}>{labels[item.code.toUpperCase()] ?? item.name}</MenuItem>)}</Select></FormControl>}"
+          )
+          replace(master,
+            "<MenuItem value=\"Province\">استان / ایالت</MenuItem><MenuItem value=\"City\">شهر</MenuItem><MenuItem value=\"Village\">روستا</MenuItem><MenuItem value=\"District\">بخش / ناحیه</MenuItem><MenuItem value=\"Other\">سایر</MenuItem>",
+            "<MenuItem value=\"Province\">استان / ایالت</MenuItem><MenuItem value=\"County\">شهرستان</MenuItem><MenuItem value=\"City\">شهر</MenuItem><MenuItem value=\"District\">بخش / ناحیه</MenuItem><MenuItem value=\"RuralDistrict\">دهستان</MenuItem><MenuItem value=\"Village\">روستا</MenuItem><MenuItem value=\"Other\">سایر</MenuItem>"
+          )
 
-          repl("function viewIndexFromHash() {\n  const hash = window.location.hash.replace(/^#/, '').toLowerCase()\n  const index = viewHashes.findIndex(x => x === hash)\n  return index >= 0 ? index : 0\n}", "function viewIndexFromHash() {\n  const hash = window.location.hash.replace(/^#/, '').toLowerCase()\n  const root = hash.split('/')[0]\n  const index = viewHashes.findIndex(x => x === root)\n  return index >= 0 ? index : 0\n}")
+          workspace = 'src/PBM.Web/src/StructuredMasterDataWorkspace.tsx'
+          replace(workspace,
+            "      <Typography color=\"text.secondary\" mt={.5}>این موجودیت در موتور اطلاعات پایه فعال است. در فرم زیر نوع «{dimension}» را انتخاب کنید؛ در گام بعد Deep-Link مستقیم هر نوع نیز تکمیل می‌شود.</Typography>",
+            "      <Typography color=\"text.secondary\" mt={.5}>این موجودیت در موتور اطلاعات پایه فعال است و فرم ثبت/ویرایش آن مستقیماً برای همین نوع باز شده است.</Typography>"
+          )
+          replace(workspace,
+            "    {companyId ? <MasterDataAdmin companyId={companyId} roles={roles} /> : <Alert severity=\"warning\">برای مدیریت این اطلاعات ابتدا باید یک شرکت در دسترس باشد.</Alert>}",
+            "    {companyId ? <MasterDataAdmin companyId={companyId} roles={roles} initialDimensionCode={dimension} /> : <Alert severity=\"warning\">برای مدیریت این اطلاعات ابتدا باید یک شرکت در دسترس باشد.</Alert>}"
+          )
 
-          repl("  const [activeView, setActiveView] = useState(viewIndexFromHash)\n  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)\n  const [budgetMenuOpen, setBudgetMenuOpen] = useState(true)\n  const [controlMenuOpen, setControlMenuOpen] = useState(false)\n  const [operationsMenuOpen, setOperationsMenuOpen] = useState(false)\n", "  const [activeView, setActiveView] = useState(viewIndexFromHash)\n  const [currentHash, setCurrentHash] = useState(() => window.location.hash.replace(/^#/, '').toLowerCase())\n  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)\n  const [budgetMenuOpen, setBudgetMenuOpen] = useState(true)\n  const [controlMenuOpen, setControlMenuOpen] = useState(false)\n  const [operationsMenuOpen, setOperationsMenuOpen] = useState(false)\n  const [masterDataMenuOpen, setMasterDataMenuOpen] = useState(activeView === 18)\n  const [settingsMenuOpen, setSettingsMenuOpen] = useState(activeView === 17)\n")
-
-          repl("  useEffect(() => { const onHashChange = () => setActiveView(viewIndexFromHash()); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange) }, [])\n", "  useEffect(() => {\n    const onHashChange = () => {\n      setActiveView(viewIndexFromHash())\n      setCurrentHash(window.location.hash.replace(/^#/, '').toLowerCase())\n    }\n    window.addEventListener('hashchange', onHashChange)\n    return () => window.removeEventListener('hashchange', onHashChange)\n  }, [])\n")
-
-          repl("    if (operationsViews.includes(activeView)) setOperationsMenuOpen(true)\n  }, [activeView])\n\n  const selectView = (index: number) => { setActiveView(index); const hash = viewHashes[index] ?? viewHashes[0]; if (window.location.hash !== `#${hash}`) window.location.hash = hash }\n", "    if (operationsViews.includes(activeView)) setOperationsMenuOpen(true)\n    if (activeView === 18) setMasterDataMenuOpen(true)\n    if (activeView === 17) setSettingsMenuOpen(true)\n  }, [activeView])\n\n  const selectView = (index: number) => {\n    setActiveView(index)\n    const hash = viewHashes[index] ?? viewHashes[0]\n    setCurrentHash(hash)\n    if (window.location.hash !== `#${hash}`) window.location.hash = hash\n  }\n  const selectNestedView = (index: number, root: 'master-data' | 'settings', path: string) => {\n    const hash = `${root}/${path}`\n    setActiveView(index); setCurrentHash(hash)\n    if (window.location.hash !== `#${hash}`) window.location.hash = hash\n  }\n  const selectedMasterPath = currentHash.startsWith('master-data/') ? currentHash.slice('master-data/'.length) : ''\n  const selectedSettingsPath = currentHash.startsWith('settings/') ? currentHash.slice('settings/'.length) : ''\n")
-
-          repl("          <Divider sx={{ borderColor: 'rgba(255,255,255,.08)', my: 1 }} />\n          {navItem(18, 'اطلاعات پایه', <Inventory2RoundedIcon />)}\n          {navItem(17, 'تنظیمات', <SettingsRoundedIcon />)}\n", "          <Divider sx={{ borderColor: 'rgba(255,255,255,.08)', my: 1 }} />\n          <SidebarTree title=\"اطلاعات پایه\" icon={<Inventory2RoundedIcon />} selectedPath={selectedMasterPath} nodes={masterDataTree} open={masterDataMenuOpen} onToggle={() => setMasterDataMenuOpen(x => !x)} onSelect={path => selectNestedView(18, 'master-data', path)} />\n          <SidebarTree title=\"تنظیمات\" icon={<SettingsRoundedIcon />} selectedPath={selectedSettingsPath} nodes={settingsTree} open={settingsMenuOpen} onToggle={() => setSettingsMenuOpen(x => !x)} onSelect={path => selectNestedView(17, 'settings', path)} />\n")
-
-          s = s.replace('از «تنظیمات ← تقویم مالی» سال مالی را ایجاد کنید.', 'از «اطلاعات پایه ← برنامه‌ریزی و مالی ← تقویم» سال مالی را ایجاد کنید.')
-
-          repl("        {!loading && activeView === 17 && <ReferenceAdmin companyId={companyId} roles={roles} />}\n        {!loading && activeView === 18 && <MasterDataWorkspace companyId={companyId} roles={roles} />}\n", "        {!loading && activeView === 17 && <SystemSettingsWorkspace companyId={companyId} roles={roles} section={selectedSettingsPath} />}\n        {!loading && activeView === 18 && <StructuredMasterDataWorkspace companyId={companyId} roles={roles} section={selectedMasterPath} />}\n")
-
-          p.write_text(s, encoding='utf-8')
+          app = 'src/PBM.Web/src/App.tsx'
+          replace(app, "const drawerWidth = 280", "const drawerWidth = 320")
           PY
 
       - name: Setup Node
@@ -65,12 +85,12 @@ jobs:
           npm install
           npm run build
 
-      - name: Commit navigation
+      - name: Commit final navigation
         shell: bash
         run: |
           set -euo pipefail
-          git add src/PBM.Web/src/App.tsx
+          git add src/PBM.Web/src/App.tsx src/PBM.Web/src/MasterDataAdmin.tsx src/PBM.Web/src/StructuredMasterDataWorkspace.tsx
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Implement structured master data sidebar hierarchy"
+          git commit -m "Finalize structured master data navigation"
           git push origin HEAD:feat/initial-platform
