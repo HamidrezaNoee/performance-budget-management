@@ -19,7 +19,17 @@ public sealed record SecurityUserDto(
     IReadOnlyList<SecurityRoleDto> Roles,
     IReadOnlyList<UserCompanyAccessDto> CompanyAccess);
 
-public sealed record UserCompanyAccessInput(Guid CompanyId, Guid? OrganizationUnitId, bool CanRead, bool CanWrite);
+public sealed record UserCompanyAccessInput(Guid CompanyId, Guid? OrganizationUnitId, bool CanRead, bool CanWrite)
+{
+    // Compatibility overload for integration/service-account code paths that do not
+    // belong to an organizational position. Human users can still supply the full
+    // four-argument shape and bind their company access to an OrganizationUnit/Position.
+    public UserCompanyAccessInput(Guid companyId, bool canRead, bool canWrite)
+        : this(companyId, null, canRead, canWrite)
+    {
+    }
+}
+
 public sealed record CreateSecurityUserRequest(
     string UserName,
     string DisplayName,
