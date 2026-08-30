@@ -24,7 +24,8 @@ export const masterDataTree: SidebarTreeNode[] = [
         { label: 'تقسیمات کشوری', path: 'operational/geography/divisions' }
       ]},
       { label: '1.5 ارز', path: 'operational/currency', children: [
-        { label: 'ارزها', path: 'operational/currency/currencies' }
+        { label: 'ارزها', path: 'operational/currency/currencies' },
+        { label: 'نرخ ارز', path: 'operational/currency/rates' }
       ]},
       { label: '1.6 انبار و لجستیک', path: 'operational/warehouse', children: [
         { label: 'انبارها', path: 'operational/warehouse/warehouses' },
