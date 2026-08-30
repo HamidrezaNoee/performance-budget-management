@@ -165,12 +165,63 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
 
   useEffect(() => { const onHashChange = () => setActiveView(viewIndexFromHash()); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange) }, [])
   const selectView = (index: number) => { setActiveView(index); const hash = viewHashes[index] ?? viewHashes[0]; if (window.location.hash !== `#${hash}`) window.location.hash = hash }
-  useEffect(() => { api.get<Company[]>('/companies').then(response => { setCompanies(response.data); if (response.data.length) setCompanyId(response.data[0].id) }).catch(() => setError('دریافت فهرست شرکت‌ها ناموفق بود.')).finally(() => setLoading(false)) }, [])
-  useEffect(() => { if (!companyId) return; setYearId(''); api.get<FiscalYear[]>('/reference/fiscal-years', { params: { companyId } }).then(response => { setYears(response.data); if (response.data.length) setYearId(response.data[0].id) }).catch(() => setError('دریافت سال مالی ناموفق بود.')) }, [companyId])
+
+  const loadCompanies = async () => {
+    try {
+      const { data } = await api.get<Company[]>('/companies')
+      setCompanies(data)
+      setCompanyId(current => {
+        const remembered = localStorage.getItem('pbm_selected_company_id') ?? ''
+        const next = data.some(x => x.id === current) ? current : data.some(x => x.id === remembered) ? remembered : data[0]?.id ?? ''
+        if (next) localStorage.setItem('pbm_selected_company_id', next)
+        else localStorage.removeItem('pbm_selected_company_id')
+        return next
+      })
+    } catch { setError('دریافت فهرست شرکت‌ها ناموفق بود.') }
+  }
+
+  const loadYears = async (targetCompanyId: string) => {
+    if (!targetCompanyId) { setYears([]); setYearId(''); return }
+    try {
+      const { data } = await api.get<FiscalYear[]>('/reference/fiscal-years', { params: { companyId: targetCompanyId } })
+      setYears(data)
+      setYearId(current => {
+        const storageKey = `pbm_selected_fiscal_year_id:${targetCompanyId}`
+        const remembered = localStorage.getItem(storageKey) ?? ''
+        const next = data.some(x => x.id === current) ? current : data.some(x => x.id === remembered) ? remembered : data[0]?.id ?? ''
+        if (next) localStorage.setItem(storageKey, next)
+        else localStorage.removeItem(storageKey)
+        return next
+      })
+    } catch { setYears([]); setYearId(''); setError('دریافت سال مالی ناموفق بود.') }
+  }
+
+  const refreshWorkspaceData = async () => {
+    setError('')
+    await loadCompanies()
+    if (companyId) await loadYears(companyId)
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    void loadCompanies().finally(() => setLoading(false))
+    const refresh = () => { void loadCompanies() }
+    window.addEventListener('pbm:workspace-data-changed', refresh)
+    return () => window.removeEventListener('pbm:workspace-data-changed', refresh)
+  }, [])
+
+  useEffect(() => {
+    if (!companyId) { setYears([]); setYearId(''); return }
+    localStorage.setItem('pbm_selected_company_id', companyId)
+    void loadYears(companyId)
+    const refresh = () => { void loadYears(companyId) }
+    window.addEventListener('pbm:workspace-data-changed', refresh)
+    return () => window.removeEventListener('pbm:workspace-data-changed', refresh)
+  }, [companyId])
 
   const selectedCompany = useMemo(() => companies.find(x => x.id === companyId), [companies, companyId])
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
-  const canWriteCompany = roleSet.has('SUPERADMIN') || writableCompanyIds.includes(companyId)
+  const canWriteCompany = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || writableCompanyIds.includes(companyId)
   const menu = [
     ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
     ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />], ['بودجه و Forecast خرید', <ShoppingCartCheckoutRoundedIcon />],
@@ -199,27 +250,29 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         <Box flexGrow={1} /><List sx={{ p: 1 }}><ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}><Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box><Stack direction="row" spacing={1.5}><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.jalaliYear}</MenuItem>)}</Select></FormControl></Stack></Stack>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}><Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" displayEmpty onChange={e => { const value = e.target.value; setCompanyId(value); if (value) localStorage.setItem('pbm_selected_company_id', value) }}><MenuItem value="" disabled><em>انتخاب کنید</em></MenuItem>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" displayEmpty disabled={!companyId} onChange={e => { const value = e.target.value; setYearId(value); if (companyId && value) localStorage.setItem(`pbm_selected_fiscal_year_id:${companyId}`, value) }}><MenuItem value="" disabled><em>{years.length ? 'انتخاب کنید' : 'سال مالی تعریف نشده'}</em></MenuItem>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.jalaliYear}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={() => void refreshWorkspaceData()} disabled={loading}>بازخوانی</Button></Stack></Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {writeSensitiveView && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
+        {!loading && companies.length === 0 && <Alert severity="warning" sx={{ mb: 2 }}>هیچ شرکت فعالی برای این کاربر در دسترس نیست. از تنظیمات، شرکت را تعریف یا دسترسی کاربر را بررسی کنید.</Alert>}
+        {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «تنظیمات و داده‌های پایه ← تقویم مالی» سال مالی را ایجاد کنید.</Alert>}
+        {writeSensitiveView && companyId && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
-        {!loading && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 1 && <BudgetInbox companyId={companyId} />}
-        {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 3 && <TradeSupplyChain companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 4 && <PurchaseForecastPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 5 && <SalesPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 6 && <ExpensePlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 7 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 8 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 9 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 10 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 11 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 12 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 13 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 14 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 15 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && companyId && yearId && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && activeView === 1 && <BudgetInbox companyId={companyId} />}
+        {!loading && companyId && yearId && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 3 && <TradeSupplyChain companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && companyId && yearId && activeView === 4 && <PurchaseForecastPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && companyId && yearId && activeView === 5 && <SalesPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && companyId && yearId && activeView === 6 && <ExpensePlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && companyId && yearId && activeView === 7 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && companyId && yearId && activeView === 8 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && companyId && yearId && activeView === 9 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 10 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 11 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 12 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 13 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && companyId && yearId && activeView === 14 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && companyId && yearId && activeView === 15 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && companyId && yearId && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {!loading && activeView === 17 && <ReferenceAdmin companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
