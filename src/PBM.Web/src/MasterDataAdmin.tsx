@@ -156,10 +156,10 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
         <Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <Inventory2RoundedIcon color="primary" />
-            <Typography variant="h6" fontWeight={900}>اطلاعات پایه بودجه</Typography>
+            <Typography variant="h6" fontWeight={900}>کدینگ و داده‌های عملیاتی</Typography>
           </Stack>
           <Typography color="text.secondary" mt={0.7}>
-            این بخش مستقل از صنعت است. هر شرکت می‌تواند کالاها، تأمین‌کنندگان، برندها و ارزهای متناسب با فعالیت خودش را تعریف کند.
+            داده‌هایی که در ثبت بودجه و عملیات روزمره شرکت استفاده می‌شوند؛ از جمله کالا و محصول، تأمین‌کننده، برند، مشتری، قرارداد، مرکز هزینه، حساب، پروژه و سایر ابعاد عملیاتی.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -171,7 +171,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
       </Stack>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        در حالت اصلی فقط کالا، تأمین‌کننده، برند و ارز نمایش داده می‌شوند. برای مشتری، قرارداد، منطقه، واحد سازمانی، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی «نمایش اطلاعات تکمیلی» را بزنید.
+        در حالت اصلی کالا، تأمین‌کننده، برند و ارز نمایش داده می‌شوند. برای مشتری، قرارداد، منطقه، واحد سازمانی، مرکز هزینه، حساب، برنامه، فعالیت، پروژه، منبع تأمین مالی و سایر کدینگ‌ها «نمایش اطلاعات تکمیلی» را بزنید.
       </Alert>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -185,11 +185,11 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
           </Select>
         </FormControl>
         {isProduct && <Alert severity="info" sx={{ py: 0 }}>برای ثبت بودجه خرید یا فروش، حداقل یک کالا / محصول تعریف کنید.</Alert>}
-        {isCurrency && <Alert severity="info" sx={{ py: 0 }}>کدهای ارز بودجه را اینجا تعریف کنید؛ نرخ تبدیل ارز در تب «ارز و نرخ ارز» نگهداری می‌شود.</Alert>}
+        {isCurrency && <Alert severity="info" sx={{ py: 0 }}>کدهای ارز عملیاتی را اینجا تعریف کنید؛ نرخ تبدیل ارز از بخش «تنظیمات ← ارز و نرخ ارز» نگهداری می‌شود.</Alert>}
       </Stack>
 
       {showAdvanced && <Alert severity="warning" sx={{ mb: 2 }}>
-        حالت تکمیلی فعال است. این Dimensionها فعلاً در فرم ساده خرید و فروش نمایش داده نمی‌شوند و برای توسعه‌های بعدی و تحلیل‌های پیشرفته نگهداری می‌شوند.
+        حالت تکمیلی فعال است. این Dimensionها برای بودجه‌ریزی تفصیلی، تحلیل و اتصال به سیستم‌های عملیاتی نگهداری می‌شوند.
       </Alert>}
 
       {canManage ? <Card variant="outlined" sx={{ mb: 2 }}><CardContent>
