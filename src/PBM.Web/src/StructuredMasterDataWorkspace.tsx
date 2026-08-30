@@ -4,6 +4,7 @@ import MasterDataAdmin from './MasterDataAdmin'
 import OrganizationAdmin from './OrganizationAdmin'
 import SecurityAdmin from './SecurityAdmin'
 import CurrencyAdmin from './CurrencyAdmin'
+import CurrencyCatalogAdmin from './CurrencyCatalogAdmin'
 import FiscalCalendarAdmin from './FiscalCalendarAdmin'
 import ScenarioAdmin from './ScenarioAdmin'
 import AssumptionsAdmin from './AssumptionsAdmin'
@@ -52,7 +53,8 @@ export default function StructuredMasterDataWorkspace({ companyId, roles, sectio
   if (section === 'operational/partners/vendors') return <CatalogPlaceholder title="فروشندگان" fields={['کد', 'نام', 'نوع فروشنده', 'کشور', 'اطلاعات تماس']} />
   if (section === 'operational/partners/others') return <CatalogPlaceholder title="سایر طرف‌های تجاری" fields={['کد', 'نام', 'نوع طرف تجاری', 'کشور', 'اطلاعات تماس']} />
 
-  if (section === 'operational/currency/currencies') return <CurrencyAdmin roles={roles} />
+  if (section === 'operational/currency/currencies') return <CurrencyCatalogAdmin roles={roles} />
+  if (section === 'operational/currency/rates') return <CurrencyAdmin roles={roles} />
   if (section === 'operational/warehouse/types') return <CatalogPlaceholder title="انواع انبار" fields={['کد نوع انبار', 'عنوان', 'شرح', 'وضعیت']} />
 
   const customsPlaceholders: Record<string, string> = {
