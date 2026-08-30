@@ -67,10 +67,12 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
   const selectedDimension = dimensions.find(x => x.id === dimensionId)
   const selectedCode = selectedDimension?.code.toUpperCase() ?? ''
   const isProduct = selectedCode === 'PRODUCT'
+  const isSupplier = selectedCode === 'SUPPLIER'
+  const isBrand = selectedCode === 'BRAND'
   const isCurrency = selectedCode === 'CURRENCY'
   const visibleDimensions = useMemo(() => dimensions.filter(item => {
-    const code = item.code.toUpperCase()
-    return primaryDimensionCodes.has(code) || (showAdvanced && (advancedDimensionCodes.has(code) || !primaryDimensionCodes.has(code)))
+    const itemCode = item.code.toUpperCase()
+    return primaryDimensionCodes.has(itemCode) || (showAdvanced && advancedDimensionCodes.has(itemCode))
   }), [dimensions, showAdvanced])
 
   const loadMembers = async (targetDimensionId = dimensionId) => {
@@ -123,9 +125,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
       })
       setCode(''); setName(''); setExternalKey('')
       await loadMembers(dimensionId)
-      setMessage(isProduct
-        ? 'کالا ثبت شد و پس از بازخوانی در بودجه خرید و فروش قابل انتخاب است.'
-        : `${selectedDimension?.name ?? 'داده پایه'} با موفقیت ثبت شد.`)
+      setMessage(`${selectedDimension?.name ?? 'داده پایه'} با موفقیت ثبت شد.`)
     } catch (requestError) {
       setError(apiError(requestError, 'ثبت داده پایه ناموفق بود.'))
     } finally { setSaving(false) }
@@ -147,6 +147,9 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
     } finally { setSaving(false) }
   }
 
+  const codePlaceholder = isProduct ? 'ITEM-001' : isSupplier ? 'SUPPLIER-001' : isBrand ? 'BRAND-001' : isCurrency ? 'USD' : 'CODE-001'
+  const namePlaceholder = isProduct ? 'نام کالا / محصول' : isSupplier ? 'نام تأمین‌کننده' : isBrand ? 'نام برند' : isCurrency ? 'نام ارز' : 'نام داده پایه'
+
   return <Card elevation={0}>
     <CardContent>
       <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ lg: 'center' }} mb={2}>
@@ -156,7 +159,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
             <Typography variant="h6" fontWeight={900}>اطلاعات پایه بودجه</Typography>
           </Stack>
           <Typography color="text.secondary" mt={0.7}>
-            در حالت عادی فقط کالا، تأمین‌کننده، برند و ارز نمایش داده می‌شوند. داده‌های پایه تکمیلی از همین بخش قابل تعریف‌اند ولی فعلاً از فرم‌های خرید و فروش پنهان شده‌اند.
+            این بخش مستقل از صنعت است. هر شرکت می‌تواند کالاها، تأمین‌کنندگان، برندها و ارزهای متناسب با فعالیت خودش را تعریف کند.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -168,7 +171,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
       </Stack>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        برای تعریف شرکت جدید از تب «شرکت‌ها و ساختار سازمانی» در همین صفحه تنظیمات استفاده کنید. نسخه بودجه Dimension نیست و از بخش برنامه‌ریزی و گردش نسخه‌ها مدیریت می‌شود.
+        در حالت اصلی فقط کالا، تأمین‌کننده، برند و ارز نمایش داده می‌شوند. برای مشتری، قرارداد، منطقه، واحد سازمانی، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی «نمایش اطلاعات تکمیلی» را بزنید.
       </Alert>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -181,45 +184,20 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
             {visibleDimensions.map(item => <MenuItem key={item.id} value={item.id}>{item.name} — {item.code}</MenuItem>)}
           </Select>
         </FormControl>
-        {isProduct && <Alert severity="info" sx={{ py: 0 }}>
-          برای شروع بودجه خرید یا فروش، حداقل یک کالا ثبت کنید.
-        </Alert>}
-        {isCurrency && <Alert severity="info" sx={{ py: 0 }}>
-          کدهای ارز بودجه را اینجا تعریف کنید؛ نرخ تبدیل ارز در تب «ارز و نرخ ارز» نگهداری می‌شود.
-        </Alert>}
+        {isProduct && <Alert severity="info" sx={{ py: 0 }}>برای ثبت بودجه خرید یا فروش، حداقل یک کالا / محصول تعریف کنید.</Alert>}
+        {isCurrency && <Alert severity="info" sx={{ py: 0 }}>کدهای ارز بودجه را اینجا تعریف کنید؛ نرخ تبدیل ارز در تب «ارز و نرخ ارز» نگهداری می‌شود.</Alert>}
       </Stack>
 
       {showAdvanced && <Alert severity="warning" sx={{ mb: 2 }}>
-        حالت تکمیلی فعال است: مشتری، قرارداد، منطقه، واحد سازمانی، مرکز هزینه، حساب، برنامه، فعالیت، پروژه، منبع تأمین مالی و سایر Dimensionهای تخصصی قابل مدیریت هستند.
+        حالت تکمیلی فعال است. این Dimensionها فعلاً در فرم ساده خرید و فروش نمایش داده نمی‌شوند و برای توسعه‌های بعدی و تحلیل‌های پیشرفته نگهداری می‌شوند.
       </Alert>}
 
       {canManage ? <Card variant="outlined" sx={{ mb: 2 }}><CardContent>
         <Typography fontWeight={900} mb={1.5}>افزودن {selectedDimension?.name ?? 'عضو جدید'}</Typography>
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
-          <TextField
-            size="small"
-            label="کد *"
-            value={code}
-            onChange={e => setCode(e.target.value.toUpperCase())}
-            placeholder={isProduct ? 'SYLPHY-2026-EP' : isCurrency ? 'USD' : 'CODE-001'}
-            sx={{ minWidth: 190, direction: 'ltr' }}
-          />
-          <TextField
-            size="small"
-            label="نام *"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder={isProduct ? 'Nissan Sylphy 2026 e-Power' : isCurrency ? 'دلار آمریکا' : 'نام داده پایه'}
-            sx={{ minWidth: 270 }}
-          />
-          <TextField
-            size="small"
-            label="کد/کلید ERP (اختیاری)"
-            value={externalKey}
-            onChange={e => setExternalKey(e.target.value)}
-            placeholder="ERP-ITEM-001"
-            sx={{ minWidth: 210, direction: 'ltr' }}
-          />
+          <TextField size="small" label="کد *" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={codePlaceholder} sx={{ minWidth: 190, direction: 'ltr' }} />
+          <TextField size="small" label="نام *" value={name} onChange={e => setName(e.target.value)} placeholder={namePlaceholder} sx={{ minWidth: 270 }} />
+          <TextField size="small" label="کد/کلید ERP (اختیاری)" value={externalKey} onChange={e => setExternalKey(e.target.value)} placeholder="ERP-KEY-001" sx={{ minWidth: 210, direction: 'ltr' }} />
           {canGlobal && <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel>دامنه</InputLabel>
             <Select label="دامنه" value={scope} onChange={e => setScope(e.target.value as Scope)}>
@@ -227,26 +205,17 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
               <MenuItem value="global">سراسری Tenant</MenuItem>
             </Select>
           </FormControl>}
-          <Button
-            variant="contained"
-            startIcon={<AddRoundedIcon />}
-            onClick={() => void createMember()}
-            disabled={saving || busy || !dimensionId || !code.trim() || !name.trim()}
-          >
-            ثبت
-          </Button>
+          <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={() => void createMember()} disabled={saving || busy || !dimensionId || !code.trim() || !name.trim()}>ثبت</Button>
         </Stack>
         <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>
-          برای اتصال آینده به ERP می‌توانید کد سیستم مبدأ را در «کلید ERP» نگهداری کنید. حذف فیزیکی انجام نمی‌شود؛ اعضای استفاده‌شده را غیرفعال کنید.
+          برای اتصال آینده به ERP می‌توانید شناسه سیستم مبدأ را در «کلید ERP» نگهداری کنید. حذف فیزیکی انجام نمی‌شود؛ اعضای استفاده‌شده را غیرفعال کنید.
         </Typography>
       </CardContent></Card> : <Alert severity="info" sx={{ mb: 2 }}>ثبت داده پایه برای مدیر سامانه یا مدیر بودجه فعال است.</Alert>}
 
       {busy && !members.length ? <Box py={4} textAlign="center"><CircularProgress size={28} /></Box> :
         <TableContainer sx={{ maxHeight: 430 }}>
           <Table stickyHeader size="small">
-            <TableHead><TableRow>
-              <TableCell>کد</TableCell><TableCell>نام</TableCell><TableCell>کلید ERP</TableCell><TableCell>دامنه</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell>
-            </TableRow></TableHead>
+            <TableHead><TableRow><TableCell>کد</TableCell><TableCell>نام</TableCell><TableCell>کلید ERP</TableCell><TableCell>دامنه</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell></TableRow></TableHead>
             <TableBody>
               {members.map(member => <TableRow key={member.id} hover>
                 <TableCell sx={{ direction: 'ltr', fontFamily: 'monospace' }}>{member.code}</TableCell>
@@ -256,9 +225,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
                 <TableCell><Chip size="small" label={member.isActive ? 'فعال' : 'غیرفعال'} color={member.isActive ? 'success' : 'default'} variant="outlined" /></TableCell>
                 <TableCell><Button size="small" onClick={() => void toggleActive(member)} disabled={!canManage || saving}>{member.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</Button></TableCell>
               </TableRow>)}
-              {!members.length && !busy && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                هنوز عضوی برای {selectedDimension?.name ?? 'این Dimension'} ثبت نشده است.
-              </TableCell></TableRow>}
+              {!members.length && !busy && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>هنوز عضوی برای {selectedDimension?.name ?? 'این Dimension'} ثبت نشده است.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </TableContainer>}
