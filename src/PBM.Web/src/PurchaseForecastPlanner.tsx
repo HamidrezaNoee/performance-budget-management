@@ -28,7 +28,8 @@ type Plan = { id: string; companyId: string; fiscalYearId: string; budgetModelId
 type Period = { id: string; sequence: number; code: string; name: string; jalaliMonth: number; isClosed: boolean }
 type PeriodValue = { periodId: string; periodName: string; sequence: number; value: number; factId?: string | null }
 type CostSeries = { costTypeId: string; code: string; name: string; amounts: PeriodValue[]; rates: PeriodValue[] }
-type ForecastData = { periods: Period[]; quantity: PeriodValue[]; amount: PeriodValue[]; costs: CostSeries[] }
+type PlanningData = { periods: Period[]; quantity: PeriodValue[]; amount: PeriodValue[]; costs: CostSeries[] }
+type PlanningKind = 'budget' | 'forecast'
 
 const number = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 })
 const compact = new Intl.NumberFormat('fa-IR', { notation: 'compact', maximumFractionDigits: 1 })
@@ -58,7 +59,8 @@ export default function PurchaseForecastPlanner({
   const [plan, setPlan] = useState<Plan | null>(null)
   const [versionId, setVersionId] = useState('')
   const [selections, setSelections] = useState<Record<string, string>>({})
-  const [data, setData] = useState<ForecastData | null>(null)
+  const [data, setData] = useState<PlanningData | null>(null)
+  const [planningKind, setPlanningKind] = useState<PlanningKind>('budget')
   const [costMode, setCostMode] = useState<'amount' | 'rate'>('amount')
   const [newCostCode, setNewCostCode] = useState('')
   const [newCostName, setNewCostName] = useState('')
@@ -67,6 +69,8 @@ export default function PurchaseForecastPlanner({
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  const valueKind = planningKind === 'budget' ? 0 : 3
+  const planningLabel = planningKind === 'budget' ? 'بودجه خرید' : 'Forecast خرید'
   const versions = useMemo(() => [...(plan?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber), [plan])
   const version = versions.find(x => x.id === versionId) ?? versions[0]
   const editable = canWrite && !!version && version.status === 0 && !version.isLocked
@@ -102,7 +106,7 @@ export default function PurchaseForecastPlanner({
       })
       setSelections(defaults)
     } catch (requestError) {
-      setError(apiError(requestError, 'دریافت تنظیمات پیش‌بینی خرید ناموفق بود.'))
+      setError(apiError(requestError, 'دریافت تنظیمات برنامه‌ریزی خرید ناموفق بود.'))
     } finally { setBusy(false) }
   }
 
@@ -112,20 +116,21 @@ export default function PurchaseForecastPlanner({
     if (!version || !requiredReady) { setData(null); return }
     setBusy(true); setError('')
     try {
-      const response = await api.post<ForecastData>('/purchase-forecast/query', {
+      const response = await api.post<PlanningData>('/purchase-forecast/query', {
         versionId: version.id,
-        dimensions: selectedDimensions
+        dimensions: selectedDimensions,
+        valueKind
       })
       setData(response.data)
     } catch (requestError) {
-      setError(apiError(requestError, 'بارگذاری Forecast خرید ناموفق بود.'))
+      setError(apiError(requestError, `بارگذاری ${planningLabel} ناموفق بود.`))
     } finally { setBusy(false) }
   }
 
   useEffect(() => {
     if (version && requiredReady) void query()
     else setData(null)
-  }, [version?.id, requiredReady, JSON.stringify(selectedDimensions)])
+  }, [version?.id, requiredReady, valueKind, JSON.stringify(selectedDimensions)])
 
   const createPlan = async () => {
     if (!setup || !canWrite) return
@@ -135,14 +140,14 @@ export default function PurchaseForecastPlanner({
         companyId,
         fiscalYearId,
         budgetModelId: setup.modelId,
-        name: 'برنامه پیش‌بینی خرید، واردات و فروش'
+        name: 'برنامه بودجه و پیش‌بینی خرید، واردات و فروش'
       })
       setPlan(response.data)
       const latest = [...response.data.versions].sort((a, b) => b.versionNumber - a.versionNumber)[0]
       setVersionId(latest?.id ?? '')
-      setMessage('برنامه TRADE برای پیش‌بینی خرید ایجاد شد.')
+      setMessage('برنامه TRADE برای بودجه و پیش‌بینی خرید ایجاد شد.')
     } catch (requestError) {
-      setError(apiError(requestError, 'ایجاد برنامه پیش‌بینی خرید ناموفق بود.'))
+      setError(apiError(requestError, 'ایجاد برنامه خرید ناموفق بود.'))
     } finally { setBusy(false) }
   }
 
@@ -158,7 +163,7 @@ export default function PurchaseForecastPlanner({
       setNewCostCode(''); setNewCostName('')
       const response = await api.get<Setup>('/purchase-forecast/setup', { params: { companyId } })
       setSetup(response.data)
-      setMessage('نوع هزینه جدید اضافه شد و از این پس در Forecastهای خرید قابل استفاده است.')
+      setMessage('نوع هزینه جدید اضافه شد و در بودجه و Forecast خرید قابل استفاده است.')
       if (version && requiredReady) await query()
     } catch (requestError) {
       setError(apiError(requestError, 'ایجاد نوع هزینه خرید ناموفق بود.'))
@@ -177,18 +182,19 @@ export default function PurchaseForecastPlanner({
         value,
         dimensions: selectedDimensions,
         costTypeId: costTypeId ?? null,
-        note: null
+        note: null,
+        valueKind
       })
       await query()
     } catch (requestError) {
-      setError(apiError(requestError, 'ذخیره Forecast خرید ناموفق بود.'))
+      setError(apiError(requestError, `ذخیره ${planningLabel} ناموفق بود.`))
     } finally { setSavingKey('') }
   }
 
   const totalQuantity = data?.quantity.reduce((sum, x) => sum + Number(x.value || 0), 0) ?? 0
   const totalAmount = data?.amount.reduce((sum, x) => sum + Number(x.value || 0), 0) ?? 0
   const totalCosts = data?.costs.reduce((sum, cost) => sum + cost.amounts.reduce((s, x) => s + Number(x.value || 0), 0), 0) ?? 0
-  const totalForecast = totalAmount + totalCosts
+  const totalPlanning = totalAmount + totalCosts
 
   if (busy && !setup) return <Box py={8} display="flex" justifyContent="center"><CircularProgress /></Box>
 
@@ -198,18 +204,24 @@ export default function PurchaseForecastPlanner({
 
     <Card elevation={0} sx={{ background: 'linear-gradient(135deg, rgba(25,118,210,.08), rgba(46,125,50,.07))' }}>
       <CardContent>
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ lg: 'center' }}>
           <Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <ShoppingCartCheckoutRoundedIcon color="primary" />
-              <Typography variant="h5" fontWeight={900}>پیش‌بینی چندبعدی خرید کالا</Typography>
-              <Chip label="Forecast" color="primary" variant="outlined" />
+              <Typography variant="h5" fontWeight={900}>بودجه و پیش‌بینی چندبعدی خرید کالا</Typography>
+              <Chip label={planningKind === 'budget' ? 'Budget' : 'Forecast'} color={planningKind === 'budget' ? 'success' : 'primary'} variant="outlined" />
             </Stack>
             <Typography color="text.secondary" mt={1}>
-              پیش‌بینی تعداد، مبلغ خرید و هزینه‌های جانبی به تفکیک کالا و هر ترکیب دلخواه از تأمین‌کننده، برند، ارز، قرارداد، منطقه، واحد، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی.
+              ثبت ماهانه تعداد، مبلغ خرید و هزینه‌های جانبی به تفکیک کالا و هر ترکیب دلخواه از تأمین‌کننده، برند، ارز، قرارداد، منطقه، واحد، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی.
             </Typography>
           </Box>
-          <Button startIcon={<RefreshRoundedIcon />} onClick={() => void reloadSetupAndPlan()} disabled={busy}>بازخوانی</Button>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ToggleButtonGroup exclusive size="small" value={planningKind} onChange={(_, value) => value && setPlanningKind(value)}>
+              <ToggleButton value="budget">بودجه خرید</ToggleButton>
+              <ToggleButton value="forecast">Forecast خرید</ToggleButton>
+            </ToggleButtonGroup>
+            <Button startIcon={<RefreshRoundedIcon />} onClick={() => void reloadSetupAndPlan()} disabled={busy}>بازخوانی</Button>
+          </Stack>
         </Stack>
       </CardContent>
     </Card>
@@ -219,8 +231,8 @@ export default function PurchaseForecastPlanner({
     </Alert>}
 
     {setup && <Card elevation={0}><CardContent>
-      <Typography variant="h6" fontWeight={900}>مختصات پیش‌بینی</Typography>
-      <Typography color="text.secondary" mb={2}>کالا اجباری است؛ سایر Dimensionها را فقط زمانی انتخاب کنید که می‌خواهید Forecast در آن سطح تفکیک شود.</Typography>
+      <Typography variant="h6" fontWeight={900}>مختصات {planningLabel}</Typography>
+      <Typography color="text.secondary" mb={2}>کالا اجباری است؛ سایر Dimensionها را فقط زمانی انتخاب کنید که می‌خواهید داده در آن سطح تفکیک شود.</Typography>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.3} flexWrap="wrap" useFlexGap>
         {setup.dimensions.map(dimension => <FormControl key={dimension.id} size="small" sx={{ minWidth: 205 }}>
           <InputLabel>{dimension.name}{dimension.isRequired || dimension.code.toUpperCase() === 'PRODUCT' ? ' *' : ''}</InputLabel>
@@ -247,10 +259,10 @@ export default function PurchaseForecastPlanner({
     {data && <>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {[
-          ['تعداد پیش‌بینی خرید', number.format(totalQuantity), 'واحد'],
+          [`تعداد ${planningLabel}`, number.format(totalQuantity), 'واحد'],
           ['مبلغ پایه خرید', compact.format(totalAmount), setup?.baseCurrencyCode ?? ''],
           ['هزینه‌های جانبی', compact.format(totalCosts), setup?.baseCurrencyCode ?? ''],
-          ['کل Forecast خرید', compact.format(totalForecast), setup?.baseCurrencyCode ?? '']
+          [`کل ${planningLabel}`, compact.format(totalPlanning), setup?.baseCurrencyCode ?? '']
         ].map(([label, value, unit]) => <Card key={label} elevation={0} sx={{ flex: 1 }}><CardContent>
           <Typography color="text.secondary" variant="body2">{label}</Typography>
           <Typography variant="h5" fontWeight={900} mt={1}>{value}</Typography>
@@ -262,7 +274,7 @@ export default function PurchaseForecastPlanner({
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={2}>
           <Box>
             <Typography variant="h6" fontWeight={900}>هزینه‌های قابل تعریف خرید</Typography>
-            <Typography color="text.secondary">هزینه جدید به‌صورت عضو Dimension «نوع هزینه خرید» ایجاد می‌شود و نیاز به تغییر ساختار دیتابیس ندارد.</Typography>
+            <Typography color="text.secondary">هزینه جدید به‌صورت عضو Dimension «نوع هزینه خرید» ایجاد می‌شود و در Budget و Forecast همان مختصات قابل ثبت است.</Typography>
           </Box>
           <ToggleButtonGroup exclusive size="small" value={costMode} onChange={(_, value) => value && setCostMode(value)}>
             <ToggleButton value="amount">مبلغ هزینه</ToggleButton>
@@ -281,8 +293,8 @@ export default function PurchaseForecastPlanner({
 
       <Card elevation={0}><CardContent sx={{ p: 0 }}>
         <Box p={2.5}>
-          <Typography variant="h6" fontWeight={900}>Forecast ماهانه خرید</Typography>
-          <Typography color="text.secondary">در حالت درصد، ثبت نرخ هزینه باعث محاسبه مبلغ هزینه بر مبنای مبلغ خرید همان ماه می‌شود.</Typography>
+          <Typography variant="h6" fontWeight={900}>{planningLabel} ماهانه</Typography>
+          <Typography color="text.secondary">در حالت درصد، ثبت نرخ هزینه باعث محاسبه مبلغ هزینه بر مبنای مبلغ خرید همان ماه و همان ترکیب Dimensionها می‌شود.</Typography>
         </Box>
         <TableContainer sx={{ maxHeight: '68vh' }}>
           <Table stickyHeader size="small" sx={{ minWidth: 950 + (data.costs.length * 150) }}>
