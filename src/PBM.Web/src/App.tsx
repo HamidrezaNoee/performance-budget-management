@@ -60,7 +60,7 @@ type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
 type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[]; writableCompanyIds: string[] }
 type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds: number }
 
-const drawerWidth = 280
+const drawerWidth = 320
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'sales', 'expenses', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings', 'master-data'] as const
 

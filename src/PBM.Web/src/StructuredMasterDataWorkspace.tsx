@@ -28,9 +28,9 @@ function DimensionWorkspace({ companyId, roles, title, dimension }: { companyId:
   return <Stack spacing={2}>
     <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>{title}</Typography>
-      <Typography color="text.secondary" mt={.5}>این موجودیت در موتور اطلاعات پایه فعال است. در فرم زیر نوع «{dimension}» را انتخاب کنید؛ در گام بعد Deep-Link مستقیم هر نوع نیز تکمیل می‌شود.</Typography>
+      <Typography color="text.secondary" mt={.5}>این موجودیت در موتور اطلاعات پایه فعال است و فرم ثبت/ویرایش آن مستقیماً برای همین نوع باز شده است.</Typography>
     </CardContent></Card>
-    {companyId ? <MasterDataAdmin companyId={companyId} roles={roles} /> : <Alert severity="warning">برای مدیریت این اطلاعات ابتدا باید یک شرکت در دسترس باشد.</Alert>}
+    {companyId ? <MasterDataAdmin companyId={companyId} roles={roles} initialDimensionCode={dimension} /> : <Alert severity="warning">برای مدیریت این اطلاعات ابتدا باید یک شرکت در دسترس باشد.</Alert>}
   </Stack>
 }
 
