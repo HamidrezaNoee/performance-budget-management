@@ -68,7 +68,7 @@ public sealed class SalesPlanningService(
 
     public async Task<SalesPlanningDataDto> QueryAsync(SalesPlanningQueryRequest request, CancellationToken cancellationToken = default)
     {
-        ValidatePlanningKind(request.ValueKind);
+        ValidateReadableKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompany(context.CompanyId);
         await provisioner.EnsureSalesAsync(context.TenantId, cancellationToken);
@@ -106,7 +106,7 @@ public sealed class SalesPlanningService(
 
     public async Task<Guid> UpsertCellAsync(UpsertSalesPlanningCellRequest request, CancellationToken cancellationToken = default)
     {
-        ValidatePlanningKind(request.ValueKind);
+        ValidateEditableKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompanyWrite(context.CompanyId);
         await provisioner.EnsureSalesAsync(context.TenantId, cancellationToken);
@@ -201,10 +201,16 @@ public sealed class SalesPlanningService(
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";
 
-    private static void ValidatePlanningKind(ValueKind valueKind)
+    private static void ValidateReadableKind(ValueKind valueKind)
+    {
+        if (valueKind is not (ValueKind.Budget or ValueKind.Actual or ValueKind.Forecast))
+            throw new ArgumentException("Sales planning view supports Budget, Actual and Forecast values.");
+    }
+
+    private static void ValidateEditableKind(ValueKind valueKind)
     {
         if (valueKind is not (ValueKind.Budget or ValueKind.Forecast))
-            throw new ArgumentException("Sales planner supports Budget and Forecast values only.");
+            throw new ArgumentException("Only Budget and Forecast can be edited in the sales planner. Actual values are owned by Actual Ledger / controlled imports.");
     }
 
     private void EnsureCompany(Guid companyId)
