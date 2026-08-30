@@ -99,8 +99,8 @@ public static class InitialTenantProvisioner
         {
             TenantId = tenantId,
             Code = "TRADE",
-            Name = "واردات، فروش و موجودی",
-            Description = "مدل پایه برنامه‌ریزی واردات، فروش، موجودی و بهای تمام‌شده"
+            Name = "خرید، فروش و موجودی",
+            Description = "مدل عمومی برنامه‌ریزی خرید، فروش، موجودی و بهای تمام‌شده برای شرکت‌های دارای کالا یا محصول"
         };
         model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = product.Id, Sequence = 1 });
         model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = supplier.Id, Sequence = 2, IsRequired = false });
@@ -112,17 +112,17 @@ public static class InitialTenantProvisioner
             Measure(model, "FREE_SALES_QTY", "فروش رایگان / آفر", "عدد", MeasureValueType.Quantity, 3),
             Measure(model, "SALES_PRICE", "نرخ فروش", "ریال", MeasureValueType.Rate, 4, MeasureAggregation.Average),
             Measure(model, "GROSS_SALES", "فروش ناخالص", "ریال", MeasureValueType.Amount, 5, formula: "[SALES_QTY] * [SALES_PRICE]"),
-            Measure(model, "IMPORT_QTY", "تعداد واردات", "عدد", MeasureValueType.Quantity, 6),
-            Measure(model, "IMPORT_FX", "مبلغ ارزی واردات", "ارز", MeasureValueType.Amount, 7),
+            Measure(model, "IMPORT_QTY", "تعداد خرید / ورود کالا", "عدد", MeasureValueType.Quantity, 6),
+            Measure(model, "IMPORT_FX", "مبلغ ارزی خرید", "ارز", MeasureValueType.Amount, 7),
             Measure(model, "SAMPLE_QTY", "نمونه", "عدد", MeasureValueType.Quantity, 8),
             Measure(model, "WASTE_QTY", "ضایعات", "عدد", MeasureValueType.Quantity, 9),
             Measure(model, "CLOSING_QTY", "موجودی پایان دوره", "عدد", MeasureValueType.Quantity, 10,
                 formula: "[OPENING_QTY] + [IMPORT_QTY] - [SALES_QTY] - [FREE_SALES_QTY] - [SAMPLE_QTY] - [WASTE_QTY]"),
-            Measure(model, "CUSTOMS_VALUE", "ارزش اظهار شده گمرکی", "ریال", MeasureValueType.Amount, 11),
-            Measure(model, "CUSTOMS_TARIFF", "تعرفه گمرکی", "ریال", MeasureValueType.Amount, 12, formula: "[CUSTOMS_VALUE] * 0.05"),
+            Measure(model, "CUSTOMS_VALUE", "ارزش مبنای خرید / گمرکی", "ریال", MeasureValueType.Amount, 11),
+            Measure(model, "CUSTOMS_TARIFF", "حقوق و عوارض", "ریال", MeasureValueType.Amount, 12),
             Measure(model, "BANK_FEE", "کارمزد بانکی", "ریال", MeasureValueType.Amount, 13),
             Measure(model, "INSURANCE", "بیمه", "ریال", MeasureValueType.Amount, 14),
-            Measure(model, "ORDER_REG_FEE", "هزینه ثبت سفارش", "ریال", MeasureValueType.Amount, 15)
+            Measure(model, "ORDER_REG_FEE", "سایر هزینه‌های سفارش", "ریال", MeasureValueType.Amount, 15)
         };
         foreach (var measure in measures) model.Measures.Add(measure);
         return model;
