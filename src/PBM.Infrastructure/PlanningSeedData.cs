@@ -14,6 +14,7 @@ public static class PlanningSeedData
         await db.SaveChangesAsync(cancellationToken);
         await EnsureScenariosAsync(db, tenant.Id, cancellationToken);
         await EnsureExpenseModelDimensionsAsync(db, tenant.Id, cancellationToken);
+        await EnsureTradeForecastDimensionsAsync(db, tenant.Id, cancellationToken);
         await EnsureTradeLandedCostMeasuresAsync(db, tenant.Id, cancellationToken);
         await EnsureDriverBasedMeasuresAsync(db, tenant.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -21,13 +22,15 @@ public static class PlanningSeedData
 
     private static async Task EnsureDimensionsAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
-        var existing = await db.Dimensions.Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var existing = await db.Dimensions.Where(x => x.TenantId == tenantId)
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
 
         var required = new[]
         {
             (Code: "COSTTYPE", Name: "نوع هزینه", Hierarchical: false),
             (Code: "PROJECT", Name: "پروژه", Hierarchical: true),
-            (Code: "FUNDINGSOURCE", Name: "منبع تامین مالی", Hierarchical: false)
+            (Code: "FUNDINGSOURCE", Name: "منبع تامین مالی", Hierarchical: false),
+            (Code: "PURCHASECOST", Name: "نوع هزینه خرید", Hierarchical: false)
         };
 
         foreach (var item in required)
@@ -54,11 +57,24 @@ public static class PlanningSeedData
         await EnsureMemberAsync(db, fundingSource, "BANK_LOAN", "تسهیلات بانکی", ct);
         await EnsureMemberAsync(db, fundingSource, "SHAREHOLDER", "تامین مالی سهامداران", ct);
         await EnsureMemberAsync(db, fundingSource, "OTHER", "سایر منابع", ct);
+
+        var purchaseCost = existing["PURCHASECOST"];
+        await EnsureMemberAsync(db, purchaseCost, "FREIGHT", "حمل بین‌المللی", ct);
+        await EnsureMemberAsync(db, purchaseCost, "INSURANCE", "بیمه خرید / حمل", ct);
+        await EnsureMemberAsync(db, purchaseCost, "BANK_FEE", "کارمزد بانکی", ct);
+        await EnsureMemberAsync(db, purchaseCost, "ORDER_REG", "ثبت سفارش", ct);
+        await EnsureMemberAsync(db, purchaseCost, "CUSTOMS", "حقوق و عوارض گمرکی", ct);
+        await EnsureMemberAsync(db, purchaseCost, "VAT", "ارزش افزوده", ct);
+        await EnsureMemberAsync(db, purchaseCost, "CLEARANCE", "ترخیص", ct);
+        await EnsureMemberAsync(db, purchaseCost, "INLAND", "حمل داخلی تا انبار", ct);
+        await EnsureMemberAsync(db, purchaseCost, "INSPECTION", "بازرسی و استاندارد", ct);
+        await EnsureMemberAsync(db, purchaseCost, "OTHER", "سایر هزینه‌های خرید", ct);
     }
 
     private static async Task EnsureScenariosAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
-        var existing = await db.BudgetScenarios.Where(x => x.TenantId == tenantId).Select(x => x.Code).ToHashSetAsync(ct);
+        var existing = await db.BudgetScenarios.Where(x => x.TenantId == tenantId)
+            .Select(x => x.Code).ToHashSetAsync(ct);
         foreach (var (code, name) in new[]
         {
             ("OPTIMISTIC", "سناریوی خوش‌بینانه"),
@@ -67,16 +83,19 @@ public static class PlanningSeedData
             ("LATEST_FORECAST", "آخرین پیش‌بینی")
         })
         {
-            if (!existing.Contains(code)) db.BudgetScenarios.Add(new BudgetScenario { TenantId = tenantId, Code = code, Name = name });
+            if (!existing.Contains(code))
+                db.BudgetScenarios.Add(new BudgetScenario { TenantId = tenantId, Code = code, Name = name });
         }
     }
 
     private static async Task EnsureExpenseModelDimensionsAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
-        var expense = await db.BudgetModels.Include(x => x.Dimensions).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "EXPENSE", ct);
+        var expense = await db.BudgetModels.Include(x => x.Dimensions)
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "EXPENSE", ct);
         if (expense is null) return;
 
-        var dimensions = await db.Dimensions.Where(x => x.TenantId == tenantId && (x.Code == "COSTTYPE" || x.Code == "PROJECT" || x.Code == "PROGRAM" || x.Code == "ACTIVITY"))
+        var dimensions = await db.Dimensions
+            .Where(x => x.TenantId == tenantId && (x.Code == "COSTTYPE" || x.Code == "PROJECT" || x.Code == "PROGRAM" || x.Code == "ACTIVITY"))
             .ToDictionaryAsync(x => x.Code, ct);
         var attached = expense.Dimensions.Select(x => x.DimensionId).ToHashSet();
         var nextSequence = expense.Dimensions.Count == 0 ? 1 : expense.Dimensions.Max(x => x.Sequence) + 1;
@@ -95,6 +114,39 @@ public static class PlanningSeedData
         }
     }
 
+    private static async Task EnsureTradeForecastDimensionsAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
+    {
+        var trade = await db.BudgetModels.Include(x => x.Dimensions)
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "TRADE", ct);
+        if (trade is null) return;
+
+        var requestedCodes = new[]
+        {
+            "SUPPLIER", "BRAND", "CURRENCY", "CONTRACT", "REGION", "DEPARTMENT",
+            "COSTCENTER", "ACCOUNT", "PROGRAM", "ACTIVITY", "PROJECT", "FUNDINGSOURCE", "PURCHASECOST"
+        };
+        var dimensions = await db.Dimensions
+            .Where(x => x.TenantId == tenantId && requestedCodes.Contains(x.Code))
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var attached = trade.Dimensions.Select(x => x.DimensionId).ToHashSet();
+        var nextSequence = trade.Dimensions.Count == 0 ? 1 : trade.Dimensions.Max(x => x.Sequence) + 1;
+
+        foreach (var code in requestedCodes)
+        {
+            if (!dimensions.TryGetValue(code, out var dimension) || attached.Contains(dimension.Id)) continue;
+            var link = new BudgetModelDimension
+            {
+                BudgetModelId = trade.Id,
+                DimensionId = dimension.Id,
+                Sequence = nextSequence++,
+                IsRequired = false
+            };
+            db.BudgetModelDimensions.Add(link);
+            trade.Dimensions.Add(link);
+            attached.Add(dimension.Id);
+        }
+    }
+
     private static async Task EnsureTradeLandedCostMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
         var trade = await db.BudgetModels.Include(x => x.Measures)
@@ -103,6 +155,13 @@ public static class PlanningSeedData
 
         var existing = trade.Measures.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var order = trade.Measures.Count == 0 ? 1 : trade.Measures.Max(x => x.DisplayOrder) + 1;
+
+        // Purchase forecast inputs are intentionally manual. They are stored as ValueKind.Forecast
+        // and can be sliced by every optional TRADE dimension attached above.
+        Add("PURCHASE_FORECAST_QTY", "پیش‌بینی تعداد خرید", "واحد", MeasureValueType.Quantity);
+        Add("PURCHASE_FORECAST_AMOUNT", "پیش‌بینی مبلغ خرید", "ریال", MeasureValueType.Amount);
+        Add("PURCHASE_COST_AMOUNT", "پیش‌بینی مبلغ هزینه خرید", "ریال", MeasureValueType.Amount);
+        Add("PURCHASE_COST_RATE", "نرخ / درصد هزینه خرید", "%", MeasureValueType.Percentage, MeasureAggregation.Average);
 
         // Purchase at origin: CPT, currency, quantity and local-currency purchase value.
         Add("CPT_UNIT_PRICE", "قیمت CPT هر واحد", "ارز", MeasureValueType.Rate, MeasureAggregation.Average);
@@ -171,7 +230,8 @@ public static class PlanningSeedData
         Add("GROSS_MARGIN_PERCENT_CALC", "درصد حاشیه سود محاسباتی", "%", MeasureValueType.Percentage, MeasureAggregation.Average,
             "[GROSS_MARGIN_AMOUNT] / [GROSS_SALES] * 100");
 
-        void Add(string code, string name, string unit, MeasureValueType valueType, MeasureAggregation aggregation = MeasureAggregation.Sum, string? formula = null)
+        void Add(string code, string name, string unit, MeasureValueType valueType,
+            MeasureAggregation aggregation = MeasureAggregation.Sum, string? formula = null)
         {
             if (existing.Contains(code)) return;
             var measure = new MeasureDefinition
