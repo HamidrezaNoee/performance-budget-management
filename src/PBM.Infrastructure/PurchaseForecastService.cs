@@ -48,7 +48,7 @@ public sealed class PurchaseForecastService(
             .ToListAsync(cancellationToken);
 
         var costDimension = modelDimensions.SingleOrDefault(x => x.Code == CostDimensionCode)
-            ?? throw new InvalidOperationException("Purchase forecast setup is not initialized. Restart the API so PlanningSeedData can provision PURCHASECOST.");
+            ?? throw new InvalidOperationException("Purchase planning setup is not initialized. Restart the API so PlanningSeedData can provision PURCHASECOST.");
         if (!modelDimensions.Any(x => x.Code == ProductDimensionCode))
             throw new InvalidOperationException("TRADE model requires the PRODUCT dimension.");
 
@@ -84,7 +84,7 @@ public sealed class PurchaseForecastService(
             .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
         foreach (var code in measureCodes)
             if (!measures.ContainsKey(code))
-                throw new InvalidOperationException($"Purchase forecast measure '{code}' is not initialized. Restart the API to run PlanningSeedData.");
+                throw new InvalidOperationException($"Purchase planning measure '{code}' is not initialized. Restart the API to run PlanningSeedData.");
 
         return new PurchaseForecastSetupDto(
             model.Id,
@@ -151,6 +151,7 @@ public sealed class PurchaseForecastService(
         PurchaseForecastQueryRequest request,
         CancellationToken cancellationToken = default)
     {
+        ValidatePlanningKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompany(context.CompanyId);
         var dimensions = await ValidateBaseDimensionsAsync(context.ModelId, context.CompanyId, request.Dimensions, cancellationToken);
@@ -166,13 +167,13 @@ public sealed class PurchaseForecastService(
             .Where(x => x.BudgetModelId == context.ModelId && measureCodes.Contains(x.Code))
             .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
         if (measures.Count != measureCodes.Length)
-            throw new InvalidOperationException("Purchase forecast measures are not fully initialized.");
+            throw new InvalidOperationException("Purchase planning measures are not fully initialized.");
 
         var baseHash = BudgetCoordinateKey.Create(dimensions);
         var baseMeasureIds = new[] { measures[QuantityMeasureCode].Id, measures[AmountMeasureCode].Id };
         var baseFacts = await db.BudgetFacts.AsNoTracking()
             .Where(x => x.VersionId == request.VersionId
-                && x.ValueKind == ValueKind.Forecast
+                && x.ValueKind == request.ValueKind
                 && x.CoordinateHash == baseHash
                 && baseMeasureIds.Contains(x.MeasureId))
             .ToListAsync(cancellationToken);
@@ -195,7 +196,7 @@ public sealed class PurchaseForecastService(
             ? []
             : await db.BudgetFacts.AsNoTracking()
                 .Where(x => x.VersionId == request.VersionId
-                    && x.ValueKind == ValueKind.Forecast
+                    && x.ValueKind == request.ValueKind
                     && hashValues.Contains(x.CoordinateHash)
                     && costMeasureIds.Contains(x.MeasureId))
                 .ToListAsync(cancellationToken);
@@ -221,14 +222,15 @@ public sealed class PurchaseForecastService(
         UpsertPurchaseForecastCellRequest request,
         CancellationToken cancellationToken = default)
     {
+        ValidatePlanningKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompanyWrite(context.CompanyId);
         var dimensions = await ValidateBaseDimensionsAsync(context.ModelId, context.CompanyId, request.Dimensions, cancellationToken);
         var code = (request.MeasureCode ?? string.Empty).Trim().ToUpperInvariant();
         if (code is not (QuantityMeasureCode or AmountMeasureCode or CostAmountMeasureCode or CostRateMeasureCode))
-            throw new ArgumentException("Unsupported purchase forecast measure code.");
+            throw new ArgumentException("Unsupported purchase planning measure code.");
         if (request.Value < 0)
-            throw new ArgumentOutOfRangeException(nameof(request.Value), "Purchase forecast values cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(request.Value), "Purchase planning values cannot be negative.");
 
         var measure = await db.Measures.AsNoTracking()
             .SingleAsync(x => x.BudgetModelId == context.ModelId && x.Code == code, cancellationToken);
@@ -238,7 +240,7 @@ public sealed class PurchaseForecastService(
         if (code is CostAmountMeasureCode or CostRateMeasureCode)
         {
             if (!request.CostTypeId.HasValue)
-                throw new ArgumentException("A purchase cost type is required for a cost forecast value.");
+                throw new ArgumentException("A purchase cost type is required for a cost planning value.");
             costDimension = await db.Dimensions.AsNoTracking()
                 .SingleAsync(x => x.TenantId == context.TenantId && x.Code == CostDimensionCode && x.IsActive, cancellationToken);
             var validCostType = await db.DimensionMembers.AsNoTracking().AnyAsync(x =>
@@ -257,22 +259,28 @@ public sealed class PurchaseForecastService(
         var baseCurrencyCode = measure.ValueType == MeasureValueType.Amount
             ? await GetBaseCurrencyAsync(context.TenantId, cancellationToken)
             : null;
+        var source = request.ValueKind == ValueKind.Budget ? "PurchaseBudgetPlanner" : "PurchaseForecastPlanner";
 
         var id = await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
             request.VersionId,
             request.PeriodId,
             measure.Id,
-            ValueKind.Forecast,
+            request.ValueKind,
             request.Value,
             baseCurrencyCode,
             finalDimensions,
-            "PurchaseForecastPlanner",
+            source,
             request.Note), cancellationToken);
 
         if (code == CostRateMeasureCode && request.CostTypeId.HasValue && costDimension is not null)
         {
             var purchaseAmount = await GetPurchaseAmountAsync(
-                request.VersionId, request.PeriodId, context.ModelId, dimensions, cancellationToken);
+                request.VersionId,
+                request.PeriodId,
+                context.ModelId,
+                dimensions,
+                request.ValueKind,
+                cancellationToken);
             await UpsertRateDrivenCostAmountAsync(
                 context,
                 request.PeriodId,
@@ -281,6 +289,7 @@ public sealed class PurchaseForecastService(
                 request.CostTypeId.Value,
                 purchaseAmount,
                 request.Value,
+                request.ValueKind,
                 cancellationToken);
         }
         else if (code == AmountMeasureCode)
@@ -290,6 +299,7 @@ public sealed class PurchaseForecastService(
                 request.PeriodId,
                 dimensions,
                 request.Value,
+                request.ValueKind,
                 cancellationToken);
         }
 
@@ -301,6 +311,7 @@ public sealed class PurchaseForecastService(
         Guid periodId,
         IReadOnlyList<DimensionSelection> baseDimensions,
         decimal purchaseAmount,
+        ValueKind valueKind,
         CancellationToken ct)
     {
         var costDimension = await db.Dimensions.AsNoTracking()
@@ -324,13 +335,21 @@ public sealed class PurchaseForecastService(
                 .Where(x => x.VersionId == context.VersionId
                     && x.PeriodId == periodId
                     && x.MeasureId == rateMeasureId
-                    && x.ValueKind == ValueKind.Forecast
+                    && x.ValueKind == valueKind
                     && x.CoordinateHash == hash)
                 .Select(x => (decimal?)x.Value)
                 .SingleOrDefaultAsync(ct);
             if (rate.HasValue)
                 await UpsertRateDrivenCostAmountAsync(
-                    context, periodId, baseDimensions, costDimension.Id, costTypeId, purchaseAmount, rate.Value, ct);
+                    context,
+                    periodId,
+                    baseDimensions,
+                    costDimension.Id,
+                    costTypeId,
+                    purchaseAmount,
+                    rate.Value,
+                    valueKind,
+                    ct);
         }
     }
 
@@ -342,21 +361,23 @@ public sealed class PurchaseForecastService(
         Guid costTypeId,
         decimal purchaseAmount,
         decimal rate,
+        ValueKind valueKind,
         CancellationToken ct)
     {
         var amountMeasure = await db.Measures.AsNoTracking()
             .SingleAsync(x => x.BudgetModelId == context.ModelId && x.Code == CostAmountMeasureCode, ct);
         var dimensions = baseDimensions.Concat([new DimensionSelection(costDimensionId, costTypeId)]).ToList();
         var calculatedAmount = decimal.Round(purchaseAmount * rate / 100m, 2, MidpointRounding.AwayFromZero);
+        var source = valueKind == ValueKind.Budget ? "PurchaseBudgetRate" : "PurchaseForecastRate";
         await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
             context.VersionId,
             periodId,
             amountMeasure.Id,
-            ValueKind.Forecast,
+            valueKind,
             calculatedAmount,
             await GetBaseCurrencyAsync(context.TenantId, ct),
             dimensions,
-            "PurchaseForecastRate",
+            source,
             $"Calculated from purchase amount using {rate}% purchase cost rate."), ct);
     }
 
@@ -365,6 +386,7 @@ public sealed class PurchaseForecastService(
         Guid periodId,
         Guid modelId,
         IReadOnlyList<DimensionSelection> dimensions,
+        ValueKind valueKind,
         CancellationToken ct)
     {
         var amountMeasureId = await db.Measures.AsNoTracking()
@@ -376,7 +398,7 @@ public sealed class PurchaseForecastService(
             .Where(x => x.VersionId == versionId
                 && x.PeriodId == periodId
                 && x.MeasureId == amountMeasureId
-                && x.ValueKind == ValueKind.Forecast
+                && x.ValueKind == valueKind
                 && x.CoordinateHash == hash)
             .Select(x => (decimal?)x.Value)
             .SingleOrDefaultAsync(ct) ?? 0m;
@@ -397,7 +419,7 @@ public sealed class PurchaseForecastService(
         if (context.TenantId != user.TenantId)
             throw new UnauthorizedAccessException("Budget version is outside the current tenant.");
         if (!string.Equals(context.ModelCode, TradeModelCode, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Purchase forecast can only be recorded in the TRADE budget model.");
+            throw new ArgumentException("Purchase planning can only be recorded in the TRADE budget model.");
         return context;
     }
 
@@ -423,7 +445,7 @@ public sealed class PurchaseForecastService(
         if (modelDimensions.Any(x => x.IsRequired && !suppliedIds.Contains(x.DimensionId)))
             throw new ArgumentException("One or more required TRADE dimensions are missing.");
         if (modelDimensions.Any(x => x.Code == ProductDimensionCode && !suppliedIds.Contains(x.DimensionId)))
-            throw new ArgumentException("PRODUCT is required for purchase forecasting.");
+            throw new ArgumentException("PRODUCT is required for purchase planning.");
         var costDimensionId = modelDimensions.Where(x => x.Code == CostDimensionCode)
             .Select(x => (Guid?)x.DimensionId).SingleOrDefault();
         if (costDimensionId.HasValue && suppliedIds.Contains(costDimensionId.Value))
@@ -470,6 +492,12 @@ public sealed class PurchaseForecastService(
         if (code.Length is < 2 or > 64 || code.Any(ch => !(char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.')))
             throw new ArgumentException("Cost type code must contain 2-64 letters, numbers, underscore, dash or dot characters.");
         return code;
+    }
+
+    private static void ValidatePlanningKind(ValueKind valueKind)
+    {
+        if (valueKind is not (ValueKind.Budget or ValueKind.Forecast))
+            throw new ArgumentException("Purchase planning supports only Budget or Forecast value kinds.");
     }
 
     private void EnsureCompany(Guid companyId)
