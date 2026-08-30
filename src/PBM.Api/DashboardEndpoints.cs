@@ -39,6 +39,15 @@ public static class DashboardEndpoints
             CancellationToken ct) =>
             service.GetDrilldownAsync(companyId, fiscalYearId, measureCode, dimensionId, take ?? 50, ct));
 
+        api.MapGet("/dashboard/purchase", (
+            Guid companyId,
+            Guid fiscalYearId,
+            Guid? dimensionId,
+            int? take,
+            IPurchaseDashboardService service,
+            CancellationToken ct) =>
+            service.GetAsync(companyId, fiscalYearId, dimensionId, take ?? 50, ct));
+
         return api;
     }
 }
