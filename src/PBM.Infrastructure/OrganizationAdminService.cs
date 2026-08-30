@@ -7,6 +7,11 @@ namespace PBM.Infrastructure;
 
 public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user) : IOrganizationAdminService
 {
+    private static readonly HashSet<string> AllowedUnitTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Holding", "Division", "Department", "Unit", "CostCenter", "Position"
+    };
+
     public async Task<IReadOnlyList<AdminCompanyDto>> GetCompaniesAsync(CancellationToken cancellationToken = default)
     {
         EnsureAdmin();
@@ -87,8 +92,12 @@ public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user)
         var unitType = NormalizeUnitType(request.UnitType);
         if (await db.OrganizationUnits.AnyAsync(x => x.CompanyId == request.CompanyId && x.Code == code, cancellationToken))
             throw new InvalidOperationException("An organization unit with this code already exists in the company.");
-        if (request.ParentId.HasValue && !await db.OrganizationUnits.AnyAsync(x => x.Id == request.ParentId && x.CompanyId == request.CompanyId, cancellationToken))
-            throw new ArgumentException("Parent organization unit is invalid.");
+
+        OrganizationUnit? parent = null;
+        if (request.ParentId.HasValue)
+            parent = await db.OrganizationUnits.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ParentId && x.CompanyId == request.CompanyId, cancellationToken)
+                ?? throw new ArgumentException("Parent organization unit is invalid.");
+        ValidateParentForType(unitType, parent);
 
         var unit = new OrganizationUnit { CompanyId = request.CompanyId, ParentId = request.ParentId, Code = code, Name = name, UnitType = unitType };
         db.OrganizationUnits.Add(unit);
@@ -104,17 +113,28 @@ public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user)
         var unit = await db.OrganizationUnits.SingleOrDefaultAsync(x => x.Id == unitId && x.Company!.TenantId == user.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException("Organization unit was not found.");
         if (request.ParentId == unit.Id) throw new ArgumentException("An organization unit cannot be its own parent.");
+
+        var unitType = NormalizeUnitType(request.UnitType);
+        OrganizationUnit? parent = null;
         if (request.ParentId.HasValue)
         {
-            var parent = await db.OrganizationUnits.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ParentId && x.CompanyId == unit.CompanyId, cancellationToken)
+            parent = await db.OrganizationUnits.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ParentId && x.CompanyId == unit.CompanyId, cancellationToken)
                 ?? throw new ArgumentException("Parent organization unit is invalid.");
             if (await WouldCreateCycleAsync(unit.Id, parent.Id, cancellationToken)) throw new InvalidOperationException("The selected parent would create an organization hierarchy cycle.");
+        }
+        ValidateParentForType(unitType, parent);
+
+        if (!string.Equals(unitType, "Position", StringComparison.OrdinalIgnoreCase))
+        {
+            var hasPositionParentedChildren = await db.OrganizationUnits.AnyAsync(x => x.ParentId == unit.Id && x.UnitType == "Position" && x.IsActive, cancellationToken);
+            if (string.Equals(unit.UnitType, "Position", StringComparison.OrdinalIgnoreCase) && hasPositionParentedChildren)
+                throw new InvalidOperationException("A position that has child positions cannot be converted to an organization unit.");
         }
 
         var old = new { unit.ParentId, unit.Name, unit.UnitType, unit.IsActive };
         unit.ParentId = request.ParentId;
         unit.Name = NormalizeName(request.Name, "Organization unit name");
-        unit.UnitType = NormalizeUnitType(request.UnitType);
+        unit.UnitType = unitType;
         unit.IsActive = request.IsActive;
         unit.UpdatedAtUtc = DateTime.UtcNow;
         await SyncDepartmentDimensionAsync(unit, cancellationToken);
@@ -130,9 +150,22 @@ public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user)
         if (dimension is null) return;
         var externalKey = $"ORG:{unit.Id}";
         var member = await db.DimensionMembers.FirstOrDefaultAsync(x => x.DimensionId == dimension.Id && x.CompanyId == unit.CompanyId && x.ExternalKey == externalKey, ct);
+
+        if (string.Equals(unit.UnitType, "Position", StringComparison.OrdinalIgnoreCase))
+        {
+            if (member is not null)
+            {
+                member.IsActive = false;
+                member.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            return;
+        }
+
         Guid? parentMemberId = null;
         if (unit.ParentId.HasValue)
-            parentMemberId = await db.DimensionMembers.Where(x => x.DimensionId == dimension.Id && x.CompanyId == unit.CompanyId && x.ExternalKey == $"ORG:{unit.ParentId.Value}").Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+            parentMemberId = await db.DimensionMembers
+                .Where(x => x.DimensionId == dimension.Id && x.CompanyId == unit.CompanyId && x.ExternalKey == $"ORG:{unit.ParentId.Value}" && x.IsActive)
+                .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
 
         if (member is null)
         {
@@ -146,6 +179,20 @@ public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user)
             member.IsActive = unit.IsActive;
             member.UpdatedAtUtc = DateTime.UtcNow;
         }
+    }
+
+    private static void ValidateParentForType(string unitType, OrganizationUnit? parent)
+    {
+        if (string.Equals(unitType, "Position", StringComparison.OrdinalIgnoreCase))
+        {
+            if (parent is null) throw new ArgumentException("برای تعریف سمت، انتخاب دپارتمان یا واحد بالادست الزامی است.");
+            if (string.Equals(parent.UnitType, "Position", StringComparison.OrdinalIgnoreCase) || string.Equals(parent.UnitType, "CostCenter", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("سمت باید زیر یک دپارتمان، معاونت یا واحد سازمانی تعریف شود.");
+            return;
+        }
+
+        if (parent is not null && string.Equals(parent.UnitType, "Position", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("واحد سازمانی نمی‌تواند زیر یک سمت تعریف شود.");
     }
 
     private async Task<bool> WouldCreateCycleAsync(Guid unitId, Guid proposedParentId, CancellationToken ct)
@@ -190,7 +237,9 @@ public sealed class OrganizationAdminService(PbmDbContext db, IUserContext user)
     private static string NormalizeUnitType(string? value)
     {
         var type = string.IsNullOrWhiteSpace(value) ? "Department" : value.Trim();
-        return type.Length <= 64 ? type : throw new ArgumentException("Unit type must be at most 64 characters.");
+        if (!AllowedUnitTypes.Contains(type))
+            throw new ArgumentException("Organization unit type is not supported.");
+        return AllowedUnitTypes.First(x => string.Equals(x, type, StringComparison.OrdinalIgnoreCase));
     }
 
     private void AddAudit(string entityType, Guid entityId, string action, object? oldValue, object? newValue) => db.AuditLogs.Add(new AuditLog
