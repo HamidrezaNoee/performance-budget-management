@@ -9,6 +9,8 @@ type Company = { id: string; code: string; name: string; industry?: string; isAc
 type Unit = { id: string; companyId: string; parentId?: string; code: string; name: string; unitType: string; isActive: boolean }
 type LicenseUsage = { maxUsers: number; activeUsers: number; maxCompanies: number; activeCompanies: number; expiresAtUtc: string; isActive: boolean }
 
+const notifyWorkspaceChanged = () => window.dispatchEvent(new Event('pbm:workspace-data-changed'))
+
 export default function OrganizationAdmin() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [companyId, setCompanyId] = useState('')
@@ -42,23 +44,42 @@ export default function OrganizationAdmin() {
     catch { setError('دریافت ساختار سازمانی ناموفق بود.') }
   }
 
-  useEffect(() => { reloadCompanies() }, [])
-  useEffect(() => { reloadUnits() }, [companyId])
+  useEffect(() => { void reloadCompanies() }, [])
+  useEffect(() => { void reloadUnits() }, [companyId])
 
   const createCompany = async () => {
     if (!code.trim() || !name.trim()) return
     setBusy(true); setError('')
     try {
       const { data } = await api.post<Company>('/admin/organization/companies', { code, name, industry: industry || null })
-      setCode(''); setName(''); setIndustry(''); await reloadCompanies(); setCompanyId(data.id)
+      setCode(''); setName(''); setIndustry(''); await reloadCompanies(); setCompanyId(data.id); notifyWorkspaceChanged()
     } catch (e: any) { setError(e?.response?.data?.detail ?? 'ایجاد شرکت ناموفق بود.') }
+    finally { setBusy(false) }
+  }
+
+  const editCompany = async (company: Company) => {
+    const nextName = window.prompt('نام شرکت:', company.name)
+    if (nextName === null || !nextName.trim()) return
+    const nextIndustry = window.prompt('صنعت / حوزه فعالیت (اختیاری):', company.industry ?? '')
+    if (nextIndustry === null) return
+    setBusy(true); setError('')
+    try {
+      await api.put(`/admin/organization/companies/${company.id}`, {
+        name: nextName.trim(),
+        industry: nextIndustry.trim() || null,
+        isActive: company.isActive
+      })
+      await reloadCompanies(); notifyWorkspaceChanged()
+    } catch (e: any) { setError(e?.response?.data?.detail ?? 'ویرایش شرکت ناموفق بود.') }
     finally { setBusy(false) }
   }
 
   const toggleCompany = async (company: Company) => {
     setBusy(true); setError('')
-    try { await api.put(`/admin/organization/companies/${company.id}`, { name: company.name, industry: company.industry ?? null, isActive: !company.isActive }); await reloadCompanies() }
-    catch (e: any) { setError(e?.response?.data?.detail ?? 'تغییر وضعیت شرکت ناموفق بود.') }
+    try {
+      await api.put(`/admin/organization/companies/${company.id}`, { name: company.name, industry: company.industry ?? null, isActive: !company.isActive })
+      await reloadCompanies(); notifyWorkspaceChanged()
+    } catch (e: any) { setError(e?.response?.data?.detail ?? 'تغییر وضعیت شرکت ناموفق بود.') }
     finally { setBusy(false) }
   }
 
@@ -88,33 +109,33 @@ export default function OrganizationAdmin() {
 
     <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>تعریف شرکت</Typography>
-      <Typography color="text.secondary" mb={2}>ایجاد شرکت جدید تحت Tenant جاری با کنترل سقف لایسنس.</Typography>
+      <Typography color="text.secondary" mb={2}>هر نوع شرکت با هر حوزه فعالیت می‌تواند مستقل تعریف شود و بودجه، سال مالی و داده‌های پایه خودش را داشته باشد.</Typography>
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}>
         <TextField size="small" label="کد شرکت" value={code} onChange={e => setCode(e.target.value)} placeholder="COMP-02" />
-        <TextField size="small" label="نام شرکت" value={name} onChange={e => setName(e.target.value)} />
-        <TextField size="small" label="صنعت / حوزه فعالیت" value={industry} onChange={e => setIndustry(e.target.value)} />
+        <TextField size="small" label="نام شرکت" value={name} onChange={e => setName(e.target.value)} placeholder="نام شرکت" />
+        <TextField size="small" label="صنعت / حوزه فعالیت" value={industry} onChange={e => setIndustry(e.target.value)} placeholder="اختیاری" />
         <Button variant="contained" onClick={createCompany} disabled={busy || !code.trim() || !name.trim() || !!(license && license.activeCompanies >= license.maxCompanies)}>ایجاد شرکت</Button>
       </Stack>
     </CardContent></Card>
 
     <Card elevation={0}><CardContent sx={{ p: 0 }}>
-      <Box p={2.5}><Typography variant="h6" fontWeight={900}>شرکت‌ها</Typography></Box><Divider />
+      <Box p={2.5}><Typography variant="h6" fontWeight={900}>شرکت‌ها</Typography><Typography color="text.secondary" variant="body2">برای تغییر نام یا حوزه فعالیت از دکمه «ویرایش» استفاده کنید. تغییرات بلافاصله در انتخابگر شرکت بالای سامانه بازخوانی می‌شود.</Typography></Box><Divider />
       <TableContainer><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>نام</TableCell><TableCell>حوزه</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell></TableRow></TableHead><TableBody>
-        {companies.map(company => <TableRow key={company.id} hover selected={company.id === companyId} onClick={() => setCompanyId(company.id)} sx={{ cursor: 'pointer' }}><TableCell>{company.code}</TableCell><TableCell><Typography fontWeight={800}>{company.name}</Typography></TableCell><TableCell>{company.industry ?? '-'}</TableCell><TableCell><Chip size="small" color={company.isActive ? 'success' : 'default'} label={company.isActive ? 'فعال' : 'غیرفعال'} /></TableCell><TableCell><Button size="small" color={company.isActive ? 'warning' : 'primary'} onClick={e => { e.stopPropagation(); toggleCompany(company) }}>{company.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</Button></TableCell></TableRow>)}
+        {companies.map(company => <TableRow key={company.id} hover selected={company.id === companyId} onClick={() => setCompanyId(company.id)} sx={{ cursor: 'pointer' }}><TableCell>{company.code}</TableCell><TableCell><Typography fontWeight={800}>{company.name}</Typography></TableCell><TableCell>{company.industry ?? '-'}</TableCell><TableCell><Chip size="small" color={company.isActive ? 'success' : 'default'} label={company.isActive ? 'فعال' : 'غیرفعال'} /></TableCell><TableCell><Stack direction="row" spacing={.5}><Button size="small" onClick={e => { e.stopPropagation(); void editCompany(company) }}>ویرایش</Button><Button size="small" color={company.isActive ? 'warning' : 'primary'} onClick={e => { e.stopPropagation(); void toggleCompany(company) }}>{company.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</Button></Stack></TableCell></TableRow>)}
       </TableBody></Table></TableContainer>
     </CardContent></Card>
 
     {selectedCompany && <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>ساختار سازمانی — {selectedCompany.name}</Typography>
-      <Typography color="text.secondary" mb={2}>واحدهای ایجادشده همزمان با Dimension «واحد سازمانی» همگام می‌شوند تا مستقیماً در بودجه قابل استفاده باشند.</Typography>
+      <Typography color="text.secondary" mb={2}>واحدهای ایجادشده همزمان با Dimension «واحد سازمانی» همگام می‌شوند تا در صورت نیاز در بودجه قابل استفاده باشند.</Typography>
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} mb={2}>
-        <TextField size="small" label="کد واحد" value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="FIN" />
+        <TextField size="small" label="کد واحد" value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="UNIT-01" />
         <TextField size="small" label="نام واحد" value={unitName} onChange={e => setUnitName(e.target.value)} />
         <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>نوع</InputLabel><Select value={unitType} label="نوع" onChange={e => setUnitType(e.target.value)}><MenuItem value="Holding">هلدینگ</MenuItem><MenuItem value="Division">معاونت</MenuItem><MenuItem value="Department">مدیریت / دپارتمان</MenuItem><MenuItem value="Unit">واحد</MenuItem><MenuItem value="CostCenter">مرکز هزینه</MenuItem></Select></FormControl>
         <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>واحد بالادست</InputLabel><Select value={parentId} label="واحد بالادست" onChange={e => setParentId(e.target.value)}><MenuItem value="">بدون بالادست</MenuItem>{units.filter(x => x.isActive).map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
         <Button variant="contained" onClick={createUnit} disabled={busy || !unitCode.trim() || !unitName.trim()}>افزودن واحد</Button>
       </Stack>
-      <TableContainer sx={{ border: '1px solid #e8eef5', borderRadius: 2 }}><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>نام</TableCell><TableCell>نوع</TableCell><TableCell>بالادست</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell></TableRow></TableHead><TableBody>{units.map(unit => <TableRow key={unit.id}><TableCell>{unit.code}</TableCell><TableCell><Typography fontWeight={800}>{unit.name}</Typography></TableCell><TableCell>{unit.unitType}</TableCell><TableCell>{parentName(unit.parentId)}</TableCell><TableCell><Chip size="small" color={unit.isActive ? 'success' : 'default'} label={unit.isActive ? 'فعال' : 'غیرفعال'} /></TableCell><TableCell><Button size="small" onClick={() => toggleUnit(unit)}>{unit.isActive ? 'غیرفعال' : 'فعال'}</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>
+      <TableContainer sx={{ border: '1px solid #e8eef5', borderRadius: 2 }}><Table size="small"><TableHead><TableRow><TableCell>کد</TableCell><TableCell>نام</TableCell><TableCell>نوع</TableCell><TableCell>بالادست</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell></TableRow></TableHead><TableBody>{units.map(unit => <TableRow key={unit.id}><TableCell>{unit.code}</TableCell><TableCell><Typography fontWeight={800}>{unit.name}</Typography></TableCell><TableCell>{unit.unitType}</TableCell><TableCell>{parentName(unit.parentId)}</TableCell><TableCell><Chip size="small" color={unit.isActive ? 'success' : 'default'} label={unit.isActive ? 'فعال' : 'غیرفعال'} /></TableCell><TableCell><Button size="small" onClick={() => void toggleUnit(unit)}>{unit.isActive ? 'غیرفعال' : 'فعال'}</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>}
   </Stack>
 }
