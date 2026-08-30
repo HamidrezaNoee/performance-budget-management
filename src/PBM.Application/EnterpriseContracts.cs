@@ -3,6 +3,7 @@ using PBM.Domain;
 namespace PBM.Application;
 
 public sealed record CurrencyDto(Guid Id, string Code, string Name, string? Symbol, bool IsBaseCurrency, bool IsActive);
+public sealed record UpsertCurrencyRequest(Guid? Id, string Code, string Name, string? Symbol, bool IsBaseCurrency, bool IsActive);
 public sealed record FxRateSourceDto(Guid Id, string Code, string Name, bool IsActive);
 public sealed record FxRateDto(Guid Id, Guid SourceId, string SourceName, Guid FromCurrencyId, string FromCurrencyCode, Guid ToCurrencyId, string ToCurrencyCode, DateTime RateDate, decimal Rate, string? Note);
 public sealed record UpsertFxRateRequest(Guid? Id, Guid SourceId, Guid FromCurrencyId, Guid ToCurrencyId, DateTime RateDate, decimal Rate, string? Note);
@@ -15,6 +16,8 @@ public sealed record AuditLogDto(Guid Id, Guid? UserId, string EntityType, strin
 public interface IReferenceDataService
 {
     Task<IReadOnlyList<CurrencyDto>> GetCurrenciesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CurrencyDto>> GetCurrencyCatalogAsync(CancellationToken cancellationToken = default);
+    Task<CurrencyDto> UpsertCurrencyAsync(UpsertCurrencyRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<FxRateSourceDto>> GetFxRateSourcesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<FxRateDto>> GetFxRatesAsync(DateTime? fromDate, DateTime? toDate, CancellationToken cancellationToken = default);
     Task<FxRateDto> UpsertFxRateAsync(UpsertFxRateRequest request, CancellationToken cancellationToken = default);
