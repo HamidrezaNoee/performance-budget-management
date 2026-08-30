@@ -5,10 +5,13 @@ public sealed record ExpenseDashboardMonthlyDto(
     string PeriodName,
     int Sequence,
     decimal BudgetExpense,
+    decimal ActualExpense,
     decimal ForecastExpense,
     decimal BudgetIncome,
+    decimal ActualIncome,
     decimal ForecastIncome,
     decimal BudgetNetCost,
+    decimal ActualNetCost,
     decimal ForecastNetCost);
 
 public sealed record ExpenseDashboardClassRowDto(
@@ -16,20 +19,26 @@ public sealed record ExpenseDashboardClassRowDto(
     string Code,
     string Name,
     decimal BudgetAmount,
+    decimal ActualAmount,
     decimal ForecastAmount,
-    decimal VarianceAmount);
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount);
 
 public sealed record ExpenseDashboardDrilldownRowDto(
     Guid MemberId,
     string Code,
     string Name,
     decimal BudgetExpense,
+    decimal ActualExpense,
     decimal ForecastExpense,
     decimal BudgetIncome,
+    decimal ActualIncome,
     decimal ForecastIncome,
     decimal BudgetNetCost,
+    decimal ActualNetCost,
     decimal ForecastNetCost,
-    decimal VarianceAmount);
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount);
 
 public sealed record ExpenseDashboardDto(
     Guid VersionId,
@@ -37,12 +46,16 @@ public sealed record ExpenseDashboardDto(
     string VersionName,
     string CurrencyCode,
     decimal BudgetExpense,
+    decimal ActualExpense,
     decimal ForecastExpense,
     decimal BudgetIncome,
+    decimal ActualIncome,
     decimal ForecastIncome,
     decimal BudgetNetCost,
+    decimal ActualNetCost,
     decimal ForecastNetCost,
-    decimal VarianceAmount,
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount,
     IReadOnlyList<ExpenseDashboardMonthlyDto> Monthly,
     IReadOnlyList<ExpenseDashboardClassRowDto> Classes,
     IReadOnlyList<DashboardDimensionOptionDto> Dimensions,
