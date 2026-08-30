@@ -5,7 +5,7 @@ namespace PBM.Infrastructure;
 
 public static class EnterpriseSeedData
 {
-    public static async Task InitializeAsync(PbmDbContext db, bool includeWorkbookReferenceMembers = false, CancellationToken cancellationToken = default)
+    public static async Task InitializeAsync(PbmDbContext db, CancellationToken cancellationToken = default)
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(cancellationToken);
         if (tenant is null) return;
@@ -34,12 +34,11 @@ public static class EnterpriseSeedData
 
         await db.SaveChangesAsync(cancellationToken);
         await EnsureEnterpriseBudgetModelsAsync(db, tenant.Id, cancellationToken);
-        await EnsureTradeImportMeasuresAsync(db, tenant.Id, cancellationToken);
-        if (includeWorkbookReferenceMembers) await EnsureWorkbookReferenceMembersAsync(db, tenant.Id, cancellationToken);
+        await EnsureTradeMeasuresAsync(db, tenant.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task EnsureTradeImportMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
+    private static async Task EnsureTradeMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
     {
         var trade = await db.BudgetModels.Include(x => x.Measures).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "TRADE", ct);
         if (trade is null) return;
@@ -47,21 +46,14 @@ public static class EnterpriseSeedData
         var additions = new[]
         {
             Measure(trade, "UNIT_COST", "بهای تمام‌شده واحد", "ریال", MeasureValueType.Rate, 16, MeasureAggregation.Average),
-            Measure(trade, "GROSS_MARGIN_PERCENT", "درصد مارژین", "%", MeasureValueType.Percentage, 17, MeasureAggregation.Average),
+            Measure(trade, "GROSS_MARGIN_PERCENT", "درصد حاشیه سود", "%", MeasureValueType.Percentage, 17, MeasureAggregation.Average),
             Measure(trade, "PURCHASE_QTY", "تعداد خرید", "عدد", MeasureValueType.Quantity, 18),
             Measure(trade, "PURCHASE_FX", "مبلغ ارزی خرید", "ارز", MeasureValueType.Amount, 19),
             Measure(trade, "PURCHASE_IRR", "مبلغ ریالی خرید", "ریال", MeasureValueType.Amount, 20)
         };
         foreach (var measure in additions)
         {
-            if (!existing.Contains(measure.Code))
-            {
-                // These entities already have application-assigned Guid keys. Adding them only through
-                // the navigation collection of an already tracked BudgetModel can make EF infer an
-                // existing row and issue UPDATE statements. Register them explicitly as Added so the
-                // first-production bootstrap always emits INSERTs and remains restart-safe.
-                db.Measures.Add(measure);
-            }
+            if (!existing.Contains(measure.Code)) db.Measures.Add(measure);
         }
     }
 
@@ -74,11 +66,17 @@ public static class EnterpriseSeedData
             && dimensions.TryGetValue("COSTCENTER", out var costCenter)
             && dimensions.TryGetValue("ACCOUNT", out var account))
         {
-            var model = new BudgetModel { TenantId = tenantId, Code = "EXPENSE", Name = "هزینه‌های عملیاتی و ستادی", Description = "مدل بودجه ماهانه هزینه واحدها، مارکتینگ، فروش، اداری و پرسنلی" };
+            var model = new BudgetModel
+            {
+                TenantId = tenantId,
+                Code = "EXPENSE",
+                Name = "هزینه‌ها و درآمدهای عملیاتی",
+                Description = "مدل عمومی بودجه ماهانه هزینه‌ها و درآمدها به تفکیک ابعاد سازمانی"
+            };
             model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = department.Id, Sequence = 1 });
             model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = account.Id, Sequence = 2 });
             model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = costCenter.Id, Sequence = 3, IsRequired = false });
-            model.Measures.Add(Measure(model, "EXPENSE_AMOUNT", "مبلغ هزینه", "ریال", MeasureValueType.Amount, 1));
+            model.Measures.Add(Measure(model, "EXPENSE_AMOUNT", "مبلغ هزینه / درآمد", "ریال", MeasureValueType.Amount, 1));
             db.BudgetModels.Add(model);
         }
 
@@ -94,7 +92,9 @@ public static class EnterpriseSeedData
         }
 
         if (!await db.BudgetModels.AnyAsync(x => x.TenantId == tenantId && x.Code == "FINANCE", ct)
-            && dimensions.TryGetValue("ACCOUNT", out account) && dimensions.TryGetValue("CONTRACT", out var contract) && dimensions.TryGetValue("CURRENCY", out var currency))
+            && dimensions.TryGetValue("ACCOUNT", out account)
+            && dimensions.TryGetValue("CONTRACT", out var contract)
+            && dimensions.TryGetValue("CURRENCY", out var currency))
         {
             var model = new BudgetModel { TenantId = tenantId, Code = "FINANCE", Name = "تامین مالی، مطالبات و بدهی‌ها", Description = "تسهیلات، بازپرداخت اصل و سود، مطالبات، بدهی و دریافت/پرداخت" };
             model.Dimensions.Add(new BudgetModelDimension { BudgetModelId = model.Id, DimensionId = account.Id, Sequence = 1 });
@@ -112,44 +112,6 @@ public static class EnterpriseSeedData
             model.Measures.Add(Measure(model, "STATEMENT_AMOUNT", "مبلغ صورت مالی", "ریال", MeasureValueType.Amount, 1));
             model.Measures.Add(Measure(model, "FINANCIAL_RATIO", "نسبت مالی", "%", MeasureValueType.Percentage, 2, MeasureAggregation.Average));
             db.BudgetModels.Add(model);
-        }
-    }
-
-    private static async Task EnsureWorkbookReferenceMembersAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
-    {
-        var companyId = await db.Companies.Where(x => x.TenantId == tenantId).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
-        var dimensions = await db.Dimensions.Where(x => x.TenantId == tenantId && (x.Code == "DEPARTMENT" || x.Code == "ACCOUNT")).ToDictionaryAsync(x => x.Code, ct);
-
-        if (dimensions.TryGetValue("DEPARTMENT", out var department))
-        {
-            var existing = await db.DimensionMembers.Where(x => x.DimensionId == department.Id).Select(x => x.Code).ToHashSetAsync(ct);
-            foreach (var (code, name) in new[]
-            {
-                ("MKT-HOSP", "مارکتینگ - بیمارستانی"), ("MKT-RX", "مارکتینگ - رکورداتی"), ("MEDICAL", "مدیکال"),
-                ("MKT-EYE", "مارکتینگ - چشمی"), ("DIGITAL-MKT", "دیجیتال مارکتینگ"), ("MANAGEMENT", "مدیریت"),
-                ("FINANCE", "مالی"), ("COMMERCIAL", "بازرگانی"), ("REGULATORY", "رگولاتوری"),
-                ("HR", "منابع انسانی"), ("SALES", "فروش"), ("SALES-LENS", "فروش - لنز و رنیو")
-            }) if (!existing.Contains(code)) db.DimensionMembers.Add(new DimensionMember { DimensionId = department.Id, CompanyId = companyId, Code = code, Name = name });
-        }
-
-        if (dimensions.TryGetValue("ACCOUNT", out var account))
-        {
-            var existing = await db.DimensionMembers.Where(x => x.DimensionId == account.Id).Select(x => x.Code).ToHashSetAsync(ct);
-            var accounts = new[]
-            {
-                ("SALARY_BASE", "حقوق پایه"), ("FOOD_ALLOWANCE", "حق خواروبار"), ("HOUSING_ALLOWANCE", "حق مسکن"), ("CHILD_ALLOWANCE", "حق اولاد"),
-                ("OVERTIME", "هزینه اضافه کاری"), ("MISSION", "حق ماموریت"), ("TRANSPORT", "ایاب و ذهاب"), ("PHONE", "کمک هزینه تلفن"),
-                ("SENIORITY", "پایه سنوات"), ("BONUS", "هزینه پاداش"), ("EMPLOYER_INSURANCE", "هزینه بیمه سهم کارفرما"), ("SUPPLEMENTARY_INSURANCE", "بیمه تکمیلی سهم کارفرما"),
-                ("GROSS_SALES", "فروش ناخالص کالای تجاری"), ("SALES_DISCOUNT", "تخفیفات فروش"), ("NET_SALES", "فروش خالص"), ("COGS", "قیمت تمام شده کالای تجاری فروش رفته"),
-                ("GROSS_PROFIT", "سود (زیان) ناخالص"), ("ADMIN_EXPENSE", "سایر هزینه های اداری و عمومی"), ("OPERATING_PROFIT", "سود (زیان) عملیاتی"),
-                ("FINANCE_COST", "هزینه های مالی"), ("PROFIT_BEFORE_TAX", "سود (زیان) ویژه قبل از مالیات"), ("TAX", "مالیات"), ("NET_PROFIT", "سود خالص پس از کسر مالیات"),
-                ("CASH_BANK", "موجودی نقد و بانک"), ("TRADE_RECEIVABLE", "حسابها و اسناد دریافتنی تجاری"), ("INVENTORY", "موجودی مواد و کالا"),
-                ("CURRENT_ASSETS", "جمع داراییهای جاری"), ("TOTAL_ASSETS", "جمع داراییها"), ("TRADE_PAYABLE", "حسابها و اسناد پرداختنی تجاری"),
-                ("CURRENT_LIABILITIES", "جمع بدهی های جاری"), ("EQUITY", "جمع حقوق صاحبان سهام"), ("TOTAL_LIAB_EQUITY", "جمع بدهیها و حقوق صاحبان سهام"),
-                ("CFO", "جریان خالص نقد حاصل از فعالیت های عملیاتی"), ("CFI", "جریان خالص نقد حاصل از فعالیت های سرمایه گذاری"),
-                ("CFF", "جریان خالص نقد حاصل از فعالیت های تامین مالی"), ("ENDING_CASH", "مانده موجودی نقد در پایان سال")
-            };
-            foreach (var (code, name) in accounts) if (!existing.Contains(code)) db.DimensionMembers.Add(new DimensionMember { DimensionId = account.Id, CompanyId = companyId, Code = code, Name = name });
         }
     }
 
