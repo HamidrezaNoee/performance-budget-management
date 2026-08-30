@@ -34,7 +34,7 @@ jobs:
 
       - name: Generate operational master-data migration
         run: >-
-          dotnet ef migrations add OperationalMasterData
+          $HOME/.dotnet/tools/dotnet-ef migrations add OperationalMasterData
           --project src/PBM.Infrastructure/PBM.Infrastructure.csproj
           --startup-project src/PBM.Api/PBM.Api.csproj
           --context PbmDbContext
@@ -42,7 +42,7 @@ jobs:
 
       - name: Verify model snapshot is current
         run: >-
-          dotnet ef migrations has-pending-model-changes
+          $HOME/.dotnet/tools/dotnet-ef migrations has-pending-model-changes
           --project src/PBM.Infrastructure/PBM.Infrastructure.csproj
           --startup-project src/PBM.Api/PBM.Api.csproj
           --context PbmDbContext
