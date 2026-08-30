@@ -48,59 +48,59 @@ public sealed class SalesDashboardService(
         if (codes.Any(code => !measures.ContainsKey(code))) throw new InvalidOperationException("Sales dashboard measures are not fully initialized.");
 
         var currency = await GetBaseCurrencyAsync(tenantId, cancellationToken);
-        var supportedKinds = new[] { ValueKind.Budget, ValueKind.Forecast };
+        var supportedKinds = new[] { ValueKind.Budget, ValueKind.Actual, ValueKind.Forecast };
         var measureIds = measures.Values.Select(x => x.Id).ToArray();
         var amountIds = measures.Values.Where(x => x.ValueType == MeasureValueType.Amount).Select(x => x.Id).ToHashSet();
         var facts = await db.BudgetFacts.AsNoTracking()
             .Where(x => x.VersionId == version.Id && measureIds.Contains(x.MeasureId) && supportedKinds.Contains(x.ValueKind)
                 && (!amountIds.Contains(x.MeasureId) || x.CurrencyCode == currency))
-            .Select(x => new SalesFact(x.Id, x.PeriodId, x.MeasureId, x.ValueKind, x.Value))
+            .Select(x => new SalesFact(x.PeriodId, x.MeasureId, x.ValueKind, x.Value))
             .ToListAsync(cancellationToken);
 
         Guid Id(string code) => measures[code].Id;
         decimal Sum(string code, ValueKind kind, IReadOnlyList<SalesFact>? source = null) => (source ?? facts)
             .Where(x => x.MeasureId == Id(code) && x.ValueKind == kind).Sum(x => x.Value);
+        SalesTotals Totals(ValueKind kind, IReadOnlyList<SalesFact>? source = null)
+        {
+            var gross = Sum("GROSS_SALES", kind, source);
+            var discount = Sum("SALES_DISCOUNT", kind, source) + Sum("FOC_SALES_AMOUNT", kind, source);
+            var salesReturn = Sum("SALES_RETURN", kind, source);
+            var net = Sum("NET_SALES", kind, source);
+            var cogs = Sum("SALES_COGS_TOTAL", kind, source);
+            var companyDiscount = Sum("PURCHASE_COMPANY_DISCOUNT", kind, source);
+            return new SalesTotals(
+                Sum("SALES_QTY", kind, source),
+                Sum("FREE_SALES_QTY", kind, source),
+                gross,
+                discount,
+                salesReturn,
+                net,
+                cogs,
+                companyDiscount,
+                net - cogs + companyDiscount);
+        }
 
-        var bQty = Sum("SALES_QTY", ValueKind.Budget);
-        var fQty = Sum("SALES_QTY", ValueKind.Forecast);
-        var bFree = Sum("FREE_SALES_QTY", ValueKind.Budget);
-        var fFree = Sum("FREE_SALES_QTY", ValueKind.Forecast);
-        var bGross = Sum("GROSS_SALES", ValueKind.Budget);
-        var fGross = Sum("GROSS_SALES", ValueKind.Forecast);
-        var bDiscount = Sum("SALES_DISCOUNT", ValueKind.Budget) + Sum("FOC_SALES_AMOUNT", ValueKind.Budget);
-        var fDiscount = Sum("SALES_DISCOUNT", ValueKind.Forecast) + Sum("FOC_SALES_AMOUNT", ValueKind.Forecast);
-        var bReturn = Sum("SALES_RETURN", ValueKind.Budget);
-        var fReturn = Sum("SALES_RETURN", ValueKind.Forecast);
-        var bNet = Sum("NET_SALES", ValueKind.Budget);
-        var fNet = Sum("NET_SALES", ValueKind.Forecast);
-        var bCogs = Sum("SALES_COGS_TOTAL", ValueKind.Budget);
-        var fCogs = Sum("SALES_COGS_TOTAL", ValueKind.Forecast);
-        var bCompanyDiscount = Sum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
-        var fCompanyDiscount = Sum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
-        var bProfit = bNet - bCogs + bCompanyDiscount;
-        var fProfit = fNet - fCogs + fCompanyDiscount;
+        var budget = Totals(ValueKind.Budget);
+        var actual = Totals(ValueKind.Actual);
+        var forecast = Totals(ValueKind.Forecast);
 
         var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYearId)
             .OrderBy(x => x.Sequence).Select(x => new { x.Id, x.Name, x.Sequence }).ToListAsync(cancellationToken);
         var monthly = periods.Select(period =>
         {
-            var pf = facts.Where(x => x.PeriodId == period.Id).ToList();
-            decimal PSum(string code, ValueKind kind) => Sum(code, kind, pf);
-            var bg = PSum("GROSS_SALES", ValueKind.Budget);
-            var fg = PSum("GROSS_SALES", ValueKind.Forecast);
-            var bd = PSum("SALES_DISCOUNT", ValueKind.Budget) + PSum("FOC_SALES_AMOUNT", ValueKind.Budget);
-            var fd = PSum("SALES_DISCOUNT", ValueKind.Forecast) + PSum("FOC_SALES_AMOUNT", ValueKind.Forecast);
-            var br = PSum("SALES_RETURN", ValueKind.Budget);
-            var fr = PSum("SALES_RETURN", ValueKind.Forecast);
-            var bn = PSum("NET_SALES", ValueKind.Budget);
-            var fn = PSum("NET_SALES", ValueKind.Forecast);
-            var bc = PSum("SALES_COGS_TOTAL", ValueKind.Budget);
-            var fc = PSum("SALES_COGS_TOTAL", ValueKind.Forecast);
-            var bcd = PSum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
-            var fcd = PSum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
-            return new SalesDashboardMonthlyDto(period.Id, period.Name, period.Sequence,
-                PSum("SALES_QTY", ValueKind.Budget), PSum("SALES_QTY", ValueKind.Forecast),
-                bg, fg, bd, fd, br, fr, bn, fn, bc, fc, bn - bc + bcd, fn - fc + fcd);
+            var periodFacts = facts.Where(x => x.PeriodId == period.Id).ToList();
+            var b = Totals(ValueKind.Budget, periodFacts);
+            var a = Totals(ValueKind.Actual, periodFacts);
+            var f = Totals(ValueKind.Forecast, periodFacts);
+            return new SalesDashboardMonthlyDto(
+                period.Id, period.Name, period.Sequence,
+                b.Quantity, a.Quantity, f.Quantity,
+                b.GrossSales, a.GrossSales, f.GrossSales,
+                b.Discount, a.Discount, f.Discount,
+                b.Return, a.Return, f.Return,
+                b.NetSales, a.NetSales, f.NetSales,
+                b.Cogs, a.Cogs, f.Cogs,
+                b.GrossProfit, a.GrossProfit, f.GrossProfit);
         }).ToList();
 
         var dimensions = await db.BudgetModelDimensions.AsNoTracking()
@@ -112,13 +112,22 @@ public sealed class SalesDashboardService(
             ? dimensions.FirstOrDefault(x => x.Id == dimensionId.Value) ?? throw new ArgumentException("Selected dimension is not available for sales drill-down.")
             : dimensions.FirstOrDefault(x => x.Code == ProductDimensionCode) ?? dimensions.FirstOrDefault();
         var drilldown = selected is null ? [] : await BuildDrilldownAsync(
-            version.Id, companyId, selected.Id, measures, currency,
-            bQty, fQty, bGross, fGross, bNet, fNet, bCogs, fCogs, bCompanyDiscount, fCompanyDiscount,
+            version.Id, companyId, selected.Id, measures, currency, budget, actual, forecast,
             Math.Clamp(take, 1, 500), cancellationToken);
 
-        return new SalesDashboardDto(version.Id, version.VersionNumber, version.Name, currency,
-            bQty, fQty, bFree, fFree, bGross, fGross, bDiscount, fDiscount, bReturn, fReturn,
-            bNet, fNet, bCogs, fCogs, bCompanyDiscount, fCompanyDiscount, bProfit, fProfit, fNet - bNet,
+        return new SalesDashboardDto(
+            version.Id, version.VersionNumber, version.Name, currency,
+            budget.Quantity, actual.Quantity, forecast.Quantity,
+            budget.FreeQuantity, actual.FreeQuantity, forecast.FreeQuantity,
+            budget.GrossSales, actual.GrossSales, forecast.GrossSales,
+            budget.Discount, actual.Discount, forecast.Discount,
+            budget.Return, actual.Return, forecast.Return,
+            budget.NetSales, actual.NetSales, forecast.NetSales,
+            budget.Cogs, actual.Cogs, forecast.Cogs,
+            budget.CompanyDiscount, actual.CompanyDiscount, forecast.CompanyDiscount,
+            budget.GrossProfit, actual.GrossProfit, forecast.GrossProfit,
+            actual.NetSales - budget.NetSales,
+            forecast.NetSales - budget.NetSales,
             monthly, dimensions, selected?.Id, drilldown);
     }
 
@@ -128,16 +137,9 @@ public sealed class SalesDashboardService(
         Guid dimensionId,
         IReadOnlyDictionary<string, MeasureRef> measures,
         string currency,
-        decimal totalBQ,
-        decimal totalFQ,
-        decimal totalBGross,
-        decimal totalFGross,
-        decimal totalBNet,
-        decimal totalFNet,
-        decimal totalBCogs,
-        decimal totalFCogs,
-        decimal totalBCompanyDiscount,
-        decimal totalFCompanyDiscount,
+        SalesTotals totalBudget,
+        SalesTotals totalActual,
+        SalesTotals totalForecast,
         int take,
         CancellationToken ct)
     {
@@ -148,7 +150,7 @@ public sealed class SalesDashboardService(
             .Where(x => x.DimensionId == dimensionId
                 && x.BudgetFact!.VersionId == versionId
                 && tracked.Contains(x.BudgetFact.MeasureId)
-                && (x.BudgetFact.ValueKind == ValueKind.Budget || x.BudgetFact.ValueKind == ValueKind.Forecast)
+                && (x.BudgetFact.ValueKind == ValueKind.Budget || x.BudgetFact.ValueKind == ValueKind.Actual || x.BudgetFact.ValueKind == ValueKind.Forecast)
                 && (x.BudgetFact.MeasureId == quantityId || x.BudgetFact.CurrencyCode == currency))
             .Select(x => new { x.MemberId, x.BudgetFact!.MeasureId, x.BudgetFact.ValueKind, x.BudgetFact.Value })
             .ToListAsync(ct);
@@ -161,36 +163,62 @@ public sealed class SalesDashboardService(
         {
             var member = members[group.Key];
             decimal S(string code, ValueKind kind) => group.Where(x => x.MeasureId == ids[code] && x.ValueKind == kind).Sum(x => x.Value);
-            var bNet = S("NET_SALES", ValueKind.Budget);
-            var fNet = S("NET_SALES", ValueKind.Forecast);
-            var bCogs = S("SALES_COGS_TOTAL", ValueKind.Budget);
-            var fCogs = S("SALES_COGS_TOTAL", ValueKind.Forecast);
-            var bCd = S("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
-            var fCd = S("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
-            return new SalesDashboardDrilldownRowDto(member.Id, member.Code, member.Name,
-                S("SALES_QTY", ValueKind.Budget), S("SALES_QTY", ValueKind.Forecast),
-                S("GROSS_SALES", ValueKind.Budget), S("GROSS_SALES", ValueKind.Forecast),
-                bNet, fNet, bCogs, fCogs, bNet - bCogs + bCd, fNet - fCogs + fCd, fNet - bNet);
+            SalesTotals T(ValueKind kind)
+            {
+                var net = S("NET_SALES", kind);
+                var cogs = S("SALES_COGS_TOTAL", kind);
+                var cd = S("PURCHASE_COMPANY_DISCOUNT", kind);
+                return new SalesTotals(S("SALES_QTY", kind), 0, S("GROSS_SALES", kind), 0, 0, net, cogs, cd, net - cogs + cd);
+            }
+            var b = T(ValueKind.Budget); var a = T(ValueKind.Actual); var f = T(ValueKind.Forecast);
+            return new SalesDashboardDrilldownRowDto(
+                member.Id, member.Code, member.Name,
+                b.Quantity, a.Quantity, f.Quantity,
+                b.GrossSales, a.GrossSales, f.GrossSales,
+                b.NetSales, a.NetSales, f.NetSales,
+                b.Cogs, a.Cogs, f.Cogs,
+                b.GrossProfit, a.GrossProfit, f.GrossProfit,
+                a.NetSales - b.NetSales, f.NetSales - b.NetSales);
         }).ToList();
 
-        decimal Alloc(Func<SalesDashboardDrilldownRowDto, decimal> selector) => rows.Sum(selector);
-        var ubq = totalBQ - Alloc(x => x.BudgetQuantity);
-        var ufq = totalFQ - Alloc(x => x.ForecastQuantity);
-        var ubg = totalBGross - Alloc(x => x.BudgetGrossSales);
-        var ufg = totalFGross - Alloc(x => x.ForecastGrossSales);
-        var ubn = totalBNet - Alloc(x => x.BudgetNetSales);
-        var ufn = totalFNet - Alloc(x => x.ForecastNetSales);
-        var ubc = totalBCogs - Alloc(x => x.BudgetCogs);
-        var ufc = totalFCogs - Alloc(x => x.ForecastCogs);
-        var allocatedBCd = links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
-        var allocatedFCd = links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
-        var ubp = ubn - ubc + (totalBCompanyDiscount - allocatedBCd);
-        var ufp = ufn - ufc + (totalFCompanyDiscount - allocatedFCd);
-        if (ubq != 0 || ufq != 0 || ubg != 0 || ufg != 0 || ubn != 0 || ufn != 0 || ubc != 0 || ufc != 0 || ubp != 0 || ufp != 0)
-            rows.Add(new SalesDashboardDrilldownRowDto(Guid.Empty, "UNALLOCATED", "بدون تفکیک", ubq, ufq, ubg, ufg, ubn, ufn, ubc, ufc, ubp, ufp, ufn - ubn));
+        SalesTotals Allocated(ValueKind kind) => new(
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetQuantity : kind == ValueKind.Actual ? x.ActualQuantity : x.ForecastQuantity),
+            0,
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetGrossSales : kind == ValueKind.Actual ? x.ActualGrossSales : x.ForecastGrossSales),
+            0,
+            0,
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetNetSales : kind == ValueKind.Actual ? x.ActualNetSales : x.ForecastNetSales),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetCogs : kind == ValueKind.Actual ? x.ActualCogs : x.ForecastCogs),
+            links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == kind).Sum(x => x.Value),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetGrossProfit : kind == ValueKind.Actual ? x.ActualGrossProfit : x.ForecastGrossProfit));
+        SalesTotals Remaining(SalesTotals total, SalesTotals allocated) => new(
+            total.Quantity - allocated.Quantity,
+            0,
+            total.GrossSales - allocated.GrossSales,
+            0,
+            0,
+            total.NetSales - allocated.NetSales,
+            total.Cogs - allocated.Cogs,
+            total.CompanyDiscount - allocated.CompanyDiscount,
+            total.GrossProfit - allocated.GrossProfit);
 
-        return rows.OrderByDescending(x => x.ForecastNetSales).ThenByDescending(x => x.BudgetNetSales).Take(take).ToList();
+        var ub = Remaining(totalBudget, Allocated(ValueKind.Budget));
+        var ua = Remaining(totalActual, Allocated(ValueKind.Actual));
+        var uf = Remaining(totalForecast, Allocated(ValueKind.Forecast));
+        if (HasValues(ub) || HasValues(ua) || HasValues(uf))
+            rows.Add(new SalesDashboardDrilldownRowDto(
+                Guid.Empty, "UNALLOCATED", "بدون تفکیک",
+                ub.Quantity, ua.Quantity, uf.Quantity,
+                ub.GrossSales, ua.GrossSales, uf.GrossSales,
+                ub.NetSales, ua.NetSales, uf.NetSales,
+                ub.Cogs, ua.Cogs, uf.Cogs,
+                ub.GrossProfit, ua.GrossProfit, uf.GrossProfit,
+                ua.NetSales - ub.NetSales, uf.NetSales - ub.NetSales));
+
+        return rows.OrderByDescending(x => x.ActualNetSales).ThenByDescending(x => x.ForecastNetSales).ThenByDescending(x => x.BudgetNetSales).Take(take).ToList();
     }
+
+    private static bool HasValues(SalesTotals x) => x.Quantity != 0 || x.GrossSales != 0 || x.NetSales != 0 || x.Cogs != 0 || x.CompanyDiscount != 0 || x.GrossProfit != 0;
 
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
@@ -203,5 +231,15 @@ public sealed class SalesDashboardService(
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";
 
     private sealed record MeasureRef(Guid Id, string Code, MeasureValueType ValueType);
-    private sealed record SalesFact(Guid Id, Guid PeriodId, Guid MeasureId, ValueKind ValueKind, decimal Value);
+    private sealed record SalesFact(Guid PeriodId, Guid MeasureId, ValueKind ValueKind, decimal Value);
+    private sealed record SalesTotals(
+        decimal Quantity,
+        decimal FreeQuantity,
+        decimal GrossSales,
+        decimal Discount,
+        decimal Return,
+        decimal NetSales,
+        decimal Cogs,
+        decimal CompanyDiscount,
+        decimal GrossProfit);
 }
