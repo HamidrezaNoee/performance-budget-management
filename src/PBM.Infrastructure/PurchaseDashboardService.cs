@@ -122,8 +122,8 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
         var costDimension = modelDimensions.FirstOrDefault(x => x.Code == CostDimensionCode);
         var drillDimensions = modelDimensions.Where(x => x.Code != CostDimensionCode).ToList();
 
-        var costs = costDimension is null
-            ? BuildUnallocatedCostRows([], budgetCostAmount, forecastCostAmount)
+        IReadOnlyList<PurchaseDashboardCostDto> costs = costDimension is null
+            ? BuildUnallocatedCostRows(Array.Empty<PurchaseDashboardCostDto>(), budgetCostAmount, forecastCostAmount)
             : await BuildCostBreakdownAsync(
                 version.Id,
                 companyId,
@@ -146,8 +146,8 @@ public sealed class PurchaseDashboardService(PbmDbContext db, IUserContext user)
                 ?? drillDimensions.FirstOrDefault();
         }
 
-        var drilldown = selectedDimension is null
-            ? []
+        IReadOnlyList<PurchaseDashboardDrilldownRowDto> drilldown = selectedDimension is null
+            ? Array.Empty<PurchaseDashboardDrilldownRowDto>()
             : await BuildDrilldownAsync(
                 version.Id,
                 companyId,
