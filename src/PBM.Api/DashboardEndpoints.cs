@@ -48,6 +48,24 @@ public static class DashboardEndpoints
             CancellationToken ct) =>
             service.GetAsync(companyId, fiscalYearId, dimensionId, take ?? 50, ct));
 
+        api.MapGet("/dashboard/sales", (
+            Guid companyId,
+            Guid fiscalYearId,
+            Guid? dimensionId,
+            int? take,
+            ISalesDashboardService service,
+            CancellationToken ct) =>
+            service.GetAsync(companyId, fiscalYearId, dimensionId, take ?? 50, ct));
+
+        api.MapGet("/dashboard/expenses", (
+            Guid companyId,
+            Guid fiscalYearId,
+            Guid? dimensionId,
+            int? take,
+            IExpenseDashboardService service,
+            CancellationToken ct) =>
+            service.GetAsync(companyId, fiscalYearId, dimensionId, take ?? 50, ct));
+
         return api;
     }
 }
