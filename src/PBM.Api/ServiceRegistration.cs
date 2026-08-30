@@ -60,6 +60,7 @@ public static class ServiceRegistration
         services.AddScoped<IVarianceAnalysisService, VarianceAnalysisService>();
         services.AddScoped<IFinancialReportService, FinancialReportService>();
         services.AddScoped<IPortfolioFinancialService, PortfolioFinancialService>();
+        services.AddScoped<IPortfolioDimensionService, PortfolioDimensionService>();
         services.AddScoped<IFiscalCalendarService, FiscalCalendarService>();
         services.AddScoped<SecurityAdminService>();
         services.AddScoped<ISecurityAdminService, GovernedSecurityAdminService>();
