@@ -13,6 +13,24 @@ public static class PortfolioFinancialEndpoints
             CancellationToken ct) =>
             service.GetAsync(companyId, fiscalYearId, ct));
 
+        api.MapGet("/dashboard/portfolio/sales-dimension", (
+            Guid companyId,
+            Guid fiscalYearId,
+            string dimensionCode,
+            int? take,
+            IPortfolioDimensionService service,
+            CancellationToken ct) =>
+            service.GetSalesAsync(companyId, fiscalYearId, dimensionCode, take ?? 50, ct));
+
+        api.MapGet("/dashboard/portfolio/expense-dimension", (
+            Guid companyId,
+            Guid fiscalYearId,
+            string dimensionCode,
+            int? take,
+            IPortfolioDimensionService service,
+            CancellationToken ct) =>
+            service.GetExpensesAsync(companyId, fiscalYearId, dimensionCode, take ?? 50, ct));
+
         return api;
     }
 }
