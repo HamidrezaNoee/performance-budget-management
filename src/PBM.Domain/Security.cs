@@ -50,8 +50,10 @@ public sealed class UserCompanyAccess
 {
     public Guid UserId { get; set; }
     public Guid CompanyId { get; set; }
+    public Guid? OrganizationUnitId { get; set; }
     public bool CanRead { get; set; } = true;
     public bool CanWrite { get; set; }
     public AppUser? User { get; set; }
     public Company? Company { get; set; }
+    public OrganizationUnit? OrganizationUnit { get; set; }
 }
