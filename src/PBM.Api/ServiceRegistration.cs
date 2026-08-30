@@ -20,10 +20,15 @@ public static class ServiceRegistration
         services.AddHostedService<OutboxDispatcherBackgroundService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<CommercialPlanningProvisioner>();
         services.AddScoped<BudgetService>();
         services.AddScoped<IBudgetService, GovernedBudgetService>();
         services.AddScoped<IPurchaseForecastService, PurchaseForecastService>();
         services.AddScoped<IPurchaseDashboardService, PurchaseDashboardService>();
+        services.AddScoped<ISalesPlanningService, SalesPlanningService>();
+        services.AddScoped<ISalesDashboardService, SalesDashboardService>();
+        services.AddScoped<IExpensePlanningService, ExpensePlanningService>();
+        services.AddScoped<IExpenseDashboardService, ExpenseDashboardService>();
         services.AddScoped<SqlApplicationLock>();
         services.AddScoped<ActualLedgerValidationService>();
         services.AddScoped<ActualLedgerProjectionService>();
