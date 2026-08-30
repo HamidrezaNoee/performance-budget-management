@@ -1,95 +1,57 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Divider, FormControl, InputLabel, MenuItem, Select, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography } from '@mui/material'
+import { Alert, Box, Card, CardContent, Divider, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Typography } from '@mui/material'
 import { api } from './api'
-import FiscalCalendarAdmin from './FiscalCalendarAdmin'
-import ScenarioAdmin from './ScenarioAdmin'
-import AssumptionsAdmin from './AssumptionsAdmin'
-import DriverTemplatesAdmin from './DriverTemplatesAdmin'
-import FormulaDesigner from './FormulaDesigner'
-import StrategyAdmin from './StrategyAdmin'
-import ReservationReconciliationAdmin from './ReservationReconciliationAdmin'
+import SecurityAdmin from './SecurityAdmin'
+import LicenseAdmin from './LicenseAdmin'
+import IntegrationCredentialsAdmin from './IntegrationCredentialsAdmin'
 import IdempotencyAdmin from './IdempotencyAdmin'
 import OutboxAdmin from './OutboxAdmin'
-import SecurityAdmin from './SecurityAdmin'
-import IntegrationCredentialsAdmin from './IntegrationCredentialsAdmin'
 
-type Currency = { id: string; code: string; name: string; symbol?: string; isBaseCurrency: boolean }
-type Source = { id: string; code: string; name: string }
-type FxRate = { id: string; sourceId: string; sourceName: string; fromCurrencyId: string; fromCurrencyCode: string; toCurrencyId: string; toCurrencyCode: string; rateDate: string; rate: number; note?: string }
 type Audit = { id: string; userId?: string; entityType: string; entityId: string; action: string; oldValueJson?: string; newValueJson?: string; ipAddress?: string; createdAtUtc: string }
-
-const faNumber = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 6 })
 const faDateTime = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { dateStyle: 'short', timeStyle: 'short' })
 
 export default function ReferenceAdmin({ companyId, roles }: { companyId: string; roles: string[] }) {
   const [tab, setTab] = useState(0)
-  const [currencies, setCurrencies] = useState<Currency[]>([])
-  const [sources, setSources] = useState<Source[]>([])
-  const [rates, setRates] = useState<FxRate[]>([])
   const [audit, setAudit] = useState<Audit[]>([])
   const [error, setError] = useState('')
-  const [sourceId, setSourceId] = useState(''); const [fromCurrencyId, setFromCurrencyId] = useState(''); const [toCurrencyId, setToCurrencyId] = useState(''); const [rate, setRate] = useState(0); const [rateDate, setRateDate] = useState(new Date().toISOString().slice(0, 10))
-
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const canManageSecurity = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN')
-  const canEditFx = canManageSecurity || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
-  const canManageScenarios = canEditFx
-  const canManageAssumptions = canEditFx
-  const canManageTemplates = canEditFx
-  const canManageFormulas = canEditFx
-  const canManageStrategy = canManageSecurity || roleSet.has('BUDGET_MANAGER')
-  const canViewReconciliation = canEditFx || roleSet.has('AUDITOR')
   const canViewIdempotency = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO')
   const canViewOutbox = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
   const canViewAudit = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
 
-  const reload = async () => {
-    setError('')
-    try {
-      const [currencyResponse, sourceResponse, rateResponse] = await Promise.all([
-        api.get<Currency[]>('/reference/currencies'), api.get<Source[]>('/reference/fx-rate-sources'), api.get<FxRate[]>('/reference/fx-rates')
-      ])
-      setCurrencies(currencyResponse.data); setSources(sourceResponse.data); setRates(rateResponse.data)
-      const base = currencyResponse.data.find(x => x.isBaseCurrency)
-      setSourceId(x => x || sourceResponse.data[0]?.id || ''); setFromCurrencyId(x => x || currencyResponse.data.find(c => !c.isBaseCurrency)?.id || ''); setToCurrencyId(x => x || base?.id || '')
-      if (canViewAudit) {
-        try { const response = await api.get<Audit[]>('/audit/recent', { params: { take: 200 } }); setAudit(response.data) }
-        catch { setAudit([]) }
-      } else setAudit([])
-    } catch { setError('دریافت تنظیمات مالی ناموفق بود.') }
-  }
-  useEffect(() => { void reload() }, [canViewAudit])
-
-  const saveRate = async () => {
-    if (!canEditFx) return
-    try {
-      await api.post('/reference/fx-rates', { id: null, sourceId, fromCurrencyId, toCurrencyId, rateDate, rate, note: null }); setRate(0); await reload()
-    } catch (e: any) { setError(e?.response?.data?.detail ?? 'ثبت نرخ ارز ناموفق بود.') }
-  }
-  const selectedFrom = useMemo(() => currencies.find(x => x.id === fromCurrencyId), [currencies, fromCurrencyId]); const selectedTo = useMemo(() => currencies.find(x => x.id === toCurrencyId), [currencies, toCurrencyId])
+  useEffect(() => {
+    if (!canViewAudit) { setAudit([]); return }
+    api.get<Audit[]>('/audit/recent', { params: { take: 200 } })
+      .then(r => setAudit(r.data))
+      .catch(() => setError('دریافت تاریخچه تغییرات ناموفق بود.'))
+  }, [canViewAudit])
 
   return <Stack spacing={2.5}>
     <Alert severity="info">
-      این بخش فقط برای تنظیمات سامانه، قواعد بودجه، تقویم مالی، امنیت و یکپارچه‌سازی است. شرکت، کالا، تأمین‌کننده، مشتری، مرکز هزینه و سایر داده‌های عملیاتی از منوی «اطلاعات پایه» مدیریت می‌شوند.
+      تنظیمات فقط برای مدیریت کاربران و سطح دسترسی، لایسنس نرم‌افزار، اتصال ERP/حسابداری، کنترل درخواست‌های Idempotent و Retry، Outbox/Dead-letter و تاریخچه تغییرات است. اطلاعات پایه عملیاتی و بودجه‌ای در منوی «اطلاعات پایه» قرار دارند.
     </Alert>
 
-    <Card elevation={0}><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto"><Tab label="ارز و نرخ ارز" /><Tab label="تقویم مالی" /><Tab label="سناریوهای بودجه" /><Tab label="فرضیات و Driverها" /><Tab label="Templateهای Driver" /><Tab label="طراح فرمول" /><Tab label="اهداف راهبردی و KPI" /><Tab label="تطبیق رزرو و Actual" disabled={!canViewReconciliation} /><Tab label="کاربران و دسترسی" disabled={!canManageSecurity} /><Tab label="Service Account و ERP" disabled={!canManageSecurity} /><Tab label="تطبیق Retryهای مبهم" disabled={!canViewIdempotency} /><Tab label="Outbox و Dead-letter" disabled={!canViewOutbox} /><Tab label="تاریخچه تغییرات" disabled={!canViewAudit} /></Tabs></Card>
-    {error && tab === 0 && <Alert severity="error">{error}</Alert>}
-    {tab === 0 && <>
-      {canEditFx ? <Card elevation={0}><CardContent><Typography variant="h6" fontWeight={900}>ثبت نرخ ارز</Typography><Typography color="text.secondary" mb={2}>چند منبع نرخ مستقل قابل نگهداری است؛ تاریخ در دیتابیس میلادی ذخیره و در نماهای کاربری به تقویم فارسی نمایش داده می‌شود.</Typography><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5}><FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>منبع نرخ</InputLabel><Select label="منبع نرخ" value={sourceId} onChange={e => setSourceId(e.target.value)}>{sources.map(x => <MenuItem value={x.id} key={x.id}>{x.name}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>از ارز</InputLabel><Select label="از ارز" value={fromCurrencyId} onChange={e => setFromCurrencyId(e.target.value)}>{currencies.map(x => <MenuItem value={x.id} key={x.id}>{x.code} — {x.name}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>به ارز</InputLabel><Select label="به ارز" value={toCurrencyId} onChange={e => setToCurrencyId(e.target.value)}>{currencies.map(x => <MenuItem value={x.id} key={x.id}>{x.code} — {x.name}</MenuItem>)}</Select></FormControl><TextField size="small" type="date" label="تاریخ" InputLabelProps={{ shrink: true }} value={rateDate} onChange={e => setRateDate(e.target.value)} /><TextField size="small" type="number" label={`نرخ ${selectedFrom?.code ?? ''}/${selectedTo?.code ?? ''}`} value={rate} onChange={e => setRate(Number(e.target.value))} /><Button variant="contained" onClick={saveRate} disabled={!sourceId || !fromCurrencyId || !toCurrencyId || rate <= 0}>ثبت نرخ</Button></Stack></CardContent></Card> : <Alert severity="info">شما دسترسی مشاهده نرخ ارز دارید؛ ثبت و تغییر نرخ فقط برای مدیر سامانه، مدیر مالی و مدیر بودجه فعال است.</Alert>}
-      <Card elevation={0}><CardContent sx={{ p: 0 }}><Box p={2.5}><Typography variant="h6" fontWeight={900}>نرخ‌های ثبت‌شده</Typography></Box><Divider /><TableContainer><Table size="small"><TableHead><TableRow><TableCell>تاریخ</TableCell><TableCell>منبع</TableCell><TableCell>از</TableCell><TableCell>به</TableCell><TableCell align="left">نرخ</TableCell></TableRow></TableHead><TableBody>{rates.map(x => <TableRow key={x.id}><TableCell>{new Intl.DateTimeFormat('fa-IR-u-ca-persian').format(new Date(x.rateDate))}</TableCell><TableCell>{x.sourceName}</TableCell><TableCell>{x.fromCurrencyCode}</TableCell><TableCell>{x.toCurrencyCode}</TableCell><TableCell align="left">{faNumber.format(x.rate)}</TableCell></TableRow>)}</TableBody></Table></TableContainer></CardContent></Card>
-    </>}
-    {tab === 1 && companyId && <FiscalCalendarAdmin companyId={companyId} />}
-    {tab === 2 && <ScenarioAdmin canManage={canManageScenarios} />}
-    {tab === 3 && companyId && <AssumptionsAdmin companyId={companyId} canManage={canManageAssumptions} />}
-    {tab === 4 && companyId && <DriverTemplatesAdmin companyId={companyId} canManage={canManageTemplates} />}
-    {tab === 5 && companyId && <FormulaDesigner companyId={companyId} canManage={canManageFormulas} />}
-    {tab === 6 && <StrategyAdmin canManage={canManageStrategy} />}
-    {tab === 7 && companyId && canViewReconciliation && <ReservationReconciliationAdmin companyId={companyId} />}
-    {tab === 8 && canManageSecurity && <SecurityAdmin />}
-    {tab === 9 && canManageSecurity && <IntegrationCredentialsAdmin companyId={companyId} />}
-    {tab === 10 && canViewIdempotency && <IdempotencyAdmin roles={roles} />}
-    {tab === 11 && canViewOutbox && <OutboxAdmin roles={roles} />}
-    {tab === 12 && canViewAudit && <Card elevation={0}><CardContent sx={{ p: 0 }}><Box p={2.5}><Typography variant="h6" fontWeight={900}>Audit Trail</Typography><Typography color="text.secondary">ثبت ایجاد و تغییر مقادیر حساس بودجه، اهداف راهبردی و Mapping KPI، Templateهای Driver، فرمول‌ها، فرضیات، KPI، Actual Ledger، Service Accountهای Integration، Outbox/Dead-letter، عملیات Idempotency، کاربران، سناریوها، اطلاعات پایه و نرخ ارز.</Typography></Box><Divider /><TableContainer sx={{ maxHeight: '65vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>زمان</TableCell><TableCell>موجودیت</TableCell><TableCell>عملیات</TableCell><TableCell>شناسه</TableCell><TableCell>مقدار جدید</TableCell></TableRow></TableHead><TableBody>{audit.map(x => <TableRow key={x.id}><TableCell sx={{ whiteSpace: 'nowrap' }}>{faDateTime.format(new Date(x.createdAtUtc))}</TableCell><TableCell>{x.entityType}</TableCell><TableCell>{x.action}</TableCell><TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.entityId}</TableCell><TableCell sx={{ maxWidth: 520, direction: 'ltr', fontFamily: 'monospace', fontSize: 12 }}>{x.newValueJson ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></CardContent></Card>}
+    <Card elevation={0}><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
+      <Tab label="کاربران و سطح دسترسی" disabled={!canManageSecurity} />
+      <Tab label="لایسنس نرم‌افزار" disabled={!canManageSecurity} />
+      <Tab label="Service Account برای ERP / حسابداری" disabled={!canManageSecurity} />
+      <Tab label="Idempotency و Retry" disabled={!canViewIdempotency} />
+      <Tab label="Outbox و Dead-letter" disabled={!canViewOutbox} />
+      <Tab label="تاریخچه تغییرات" disabled={!canViewAudit} />
+    </Tabs></Card>
+
+    {error && <Alert severity="error">{error}</Alert>}
+    {tab === 0 && canManageSecurity && <SecurityAdmin showLicense={false} />}
+    {tab === 1 && canManageSecurity && <LicenseAdmin />}
+    {tab === 2 && canManageSecurity && <IntegrationCredentialsAdmin companyId={companyId} />}
+    {tab === 3 && canViewIdempotency && <IdempotencyAdmin roles={roles} />}
+    {tab === 4 && canViewOutbox && <OutboxAdmin roles={roles} />}
+    {tab === 5 && canViewAudit && <Card elevation={0}><CardContent sx={{ p: 0 }}>
+      <Box p={2.5}><Typography variant="h6" fontWeight={900}>تاریخچه تغییرات (Audit Trail)</Typography><Typography color="text.secondary">تغییرات حساس کاربران، بودجه، اطلاعات پایه، یکپارچه‌سازی و عملیات سیستمی برای ردیابی و ممیزی نگهداری می‌شوند.</Typography></Box><Divider />
+      <TableContainer sx={{ maxHeight: '65vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>زمان</TableCell><TableCell>موجودیت</TableCell><TableCell>عملیات</TableCell><TableCell>شناسه</TableCell><TableCell>مقدار جدید</TableCell></TableRow></TableHead><TableBody>
+        {audit.map(x => <TableRow key={x.id}><TableCell sx={{ whiteSpace: 'nowrap' }}>{faDateTime.format(new Date(x.createdAtUtc))}</TableCell><TableCell>{x.entityType}</TableCell><TableCell>{x.action}</TableCell><TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.entityId}</TableCell><TableCell sx={{ maxWidth: 520, direction: 'ltr', fontFamily: 'monospace', fontSize: 12 }}>{x.newValueJson ?? '-'}</TableCell></TableRow>)}
+      </TableBody></Table></TableContainer>
+    </CardContent></Card>}
   </Stack>
 }
