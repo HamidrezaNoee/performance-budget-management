@@ -1,17 +1,16 @@
 using System.Data.Common;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PBM.Application;
 using PBM.Domain;
 using PBM.Infrastructure;
-using Xunit;
 
 namespace PBM.Integration.Tests;
 
 public sealed class PbmSqlFixture : IAsyncLifetime
 {
-    private readonly string? connectionString = Environment.GetEnvironmentVariable("PBM_INTEGRATION_SQL");
+    private readonly string _connectionString;
 
-    public bool IsEnabled => !string.IsNullOrWhiteSpace(connectionString);
     public Guid TenantId { get; private set; }
     public Guid CompanyId { get; private set; }
     public Guid FiscalYearId { get; private set; }
@@ -21,52 +20,36 @@ public sealed class PbmSqlFixture : IAsyncLifetime
     public IReadOnlyList<DimensionSelection> Dimensions { get; private set; } = [];
     public IReadOnlyDictionary<int, Guid> PeriodIds { get; private set; } = new Dictionary<int, Guid>();
 
-    public async Task InitializeAsync()
+    public PbmSqlFixture()
     {
-        if (!IsEnabled) return;
-        EnsureSafeDatabaseName(connectionString!);
+        _connectionString = Environment.GetEnvironmentVariable("PBM_INTEGRATION_SQL")
+            ?? "Server=localhost,1433;Database=PBM_Integration_Tests;User Id=sa;Password=PbmIntegration_2026!Strong;Encrypt=False;TrustServerCertificate=True";
+        EnsureSafeDatabaseName(_connectionString);
+    }
+
+    public async ValueTask InitializeAsync()
+    {
         await WaitForSqlAndCreateDatabaseAsync();
         await SeedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (!IsEnabled) return;
         await using var db = CreateContext();
         await db.Database.EnsureDeletedAsync();
     }
 
     public PbmDbContext CreateContext()
     {
-        if (!IsEnabled) throw new InvalidOperationException("PBM_INTEGRATION_SQL is not configured.");
-        // Keep integration-test transaction semantics aligned with the production API.
-        // Production currently uses UseSqlServer(connectionString) without EnableRetryOnFailure;
-        // enabling retries here makes EF reject the service's explicit Serializable transactions.
         var options = new DbContextOptionsBuilder<PbmDbContext>()
-            .UseSqlServer(connectionString!)
+            .UseSqlServer(_connectionString)
             .Options;
         return new PbmDbContext(options);
     }
 
-    public TestUserContext CreateUserContext() => new(
-        UserId,
-        TenantId,
-        new HashSet<Guid> { CompanyId },
-        new HashSet<Guid> { CompanyId },
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "INTEGRATION" });
-
-    public ActualLedgerService CreateLedgerService(PbmDbContext db)
+    public async Task<DateTime> PostingDateForPeriodAsync(Guid periodId)
     {
-        var user = CreateUserContext();
-        var calculation = new CalculationService(db, user, new FormulaEngine());
-        var validation = new ActualLedgerValidationService(db, user);
-        var projection = new ActualLedgerProjectionService(db, user, calculation);
-        return new ActualLedgerService(db, user, validation, projection, new SqlApplicationLock(db));
-    }
-
-    public async Task<DateTime> GetPostingDateAsync(PbmDbContext db, int sequence)
-    {
-        var periodId = PeriodIds[sequence];
+        await using var db = CreateContext();
         var period = await db.FiscalPeriods.AsNoTracking().SingleAsync(x => x.Id == periodId);
         return period.StartDate.Date.AddDays(1);
     }
@@ -103,8 +86,8 @@ public sealed class PbmSqlFixture : IAsyncLifetime
         await SecuritySeedData.InitializeAsync(db);
 
         var tenant = await db.Tenants.SingleAsync();
-        var company = await db.Companies.SingleAsync(x => x.TenantId == tenant.Id && x.Code == "PHARMA-01");
-        var fiscalYear = await db.FiscalYears.SingleAsync(x => x.CompanyId == company.Id && x.Code == "1405");
+        var company = await db.Companies.SingleAsync(x => x.TenantId == tenant.Id);
+        var fiscalYear = await db.FiscalYears.SingleAsync(x => x.CompanyId == company.Id);
         var version = await db.BudgetVersions
             .Include(x => x.BudgetPlan)
             .SingleAsync(x => x.BudgetPlan!.CompanyId == company.Id && x.BudgetPlan.FiscalYearId == fiscalYear.Id);
@@ -179,37 +162,4 @@ public sealed class PbmSqlFixture : IAsyncLifetime
             throw new InvalidOperationException(
                 "PBM_INTEGRATION_SQL must target a disposable database whose name starts with 'PBM_Integration'.");
     }
-}
-
-public sealed class TestUserContext : IUserContext
-{
-    private readonly HashSet<string> roles;
-
-    public TestUserContext(
-        Guid userId,
-        Guid tenantId,
-        IReadOnlySet<Guid> companyIds,
-        IReadOnlySet<Guid> writableCompanyIds,
-        IReadOnlySet<string> roles)
-    {
-        UserId = userId;
-        TenantId = tenantId;
-        CompanyIds = companyIds;
-        WritableCompanyIds = writableCompanyIds;
-        this.roles = new HashSet<string>(roles, StringComparer.OrdinalIgnoreCase);
-    }
-
-    public Guid UserId { get; }
-    public Guid TenantId { get; }
-    public IReadOnlySet<Guid> CompanyIds { get; }
-    public IReadOnlySet<Guid> WritableCompanyIds { get; }
-    public IReadOnlySet<string> Roles => roles;
-    public bool IsInRole(string role) => roles.Contains(role);
-    public bool CanAccessCompany(Guid companyId) => CompanyIds.Contains(companyId);
-    public bool CanWriteCompany(Guid companyId) => WritableCompanyIds.Contains(companyId);
-}
-
-[CollectionDefinition("PBM SQL Integration", DisableParallelization = true)]
-public sealed class SqlIntegrationCollection : ICollectionFixture<PbmSqlFixture>
-{
 }
