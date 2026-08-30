@@ -116,7 +116,7 @@ public sealed class SalesPlanningService(
 
         var measure = await db.Measures.AsNoTracking()
             .SingleAsync(x => x.BudgetModelId == context.ModelId && x.Code == code, cancellationToken);
-        var currency = measure.ValueType == MeasureValueType.Amount
+        var currency = measure.ValueType == MeasureValueType.Amount || code == "SALES_PRICE"
             ? await GetBaseCurrencyAsync(context.TenantId, cancellationToken)
             : null;
         return await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
