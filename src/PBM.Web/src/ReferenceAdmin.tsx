@@ -13,6 +13,7 @@ import OutboxAdmin from './OutboxAdmin'
 import OrganizationAdmin from './OrganizationAdmin'
 import SecurityAdmin from './SecurityAdmin'
 import IntegrationCredentialsAdmin from './IntegrationCredentialsAdmin'
+import MasterDataAdmin from './MasterDataAdmin'
 
 type Currency = { id: string; code: string; name: string; symbol?: string; isBaseCurrency: boolean }
 type Source = { id: string; code: string; name: string }
@@ -70,6 +71,8 @@ export default function ReferenceAdmin({ companyId, roles }: { companyId: string
   const selectedFrom = useMemo(() => currencies.find(x => x.id === fromCurrencyId), [currencies, fromCurrencyId]); const selectedTo = useMemo(() => currencies.find(x => x.id === toCurrencyId), [currencies, toCurrencyId])
 
   return <Stack spacing={2.5}>
+    {companyId && <MasterDataAdmin companyId={companyId} roles={roles} />}
+
     <Card elevation={0}><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto"><Tab label="ارز و نرخ ارز" /><Tab label="تقویم مالی" /><Tab label="سناریوهای بودجه" /><Tab label="فرضیات و Driverها" /><Tab label="Templateهای Driver" /><Tab label="طراح فرمول" /><Tab label="اهداف راهبردی و KPI" /><Tab label="تطبیق رزرو و Actual" disabled={!canViewReconciliation} /><Tab label="شرکت و ساختار سازمانی" disabled={!canManageSecurity} /><Tab label="کاربران و دسترسی" disabled={!canManageSecurity} /><Tab label="Service Account و ERP" disabled={!canManageSecurity} /><Tab label="تطبیق Retryهای مبهم" disabled={!canViewIdempotency} /><Tab label="Outbox و Dead-letter" disabled={!canViewOutbox} /><Tab label="تاریخچه تغییرات" disabled={!canViewAudit} /></Tabs></Card>
     {error && tab === 0 && <Alert severity="error">{error}</Alert>}
     {tab === 0 && <>
@@ -88,6 +91,6 @@ export default function ReferenceAdmin({ companyId, roles }: { companyId: string
     {tab === 10 && canManageSecurity && <IntegrationCredentialsAdmin companyId={companyId} />}
     {tab === 11 && canViewIdempotency && <IdempotencyAdmin roles={roles} />}
     {tab === 12 && canViewOutbox && <OutboxAdmin roles={roles} />}
-    {tab === 13 && canViewAudit && <Card elevation={0}><CardContent sx={{ p: 0 }}><Box p={2.5}><Typography variant="h6" fontWeight={900}>Audit Trail</Typography><Typography color="text.secondary">ثبت ایجاد و تغییر مقادیر حساس بودجه، اهداف راهبردی و Mapping KPI، Templateهای Driver، فرمول‌ها، فرضیات، KPI، Actual Ledger، Service Accountهای Integration، Outbox/Dead-letter، عملیات Idempotency، کاربران، ساختار سازمانی، سناریوها و نرخ ارز.</Typography></Box><Divider /><TableContainer sx={{ maxHeight: '65vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>زمان</TableCell><TableCell>موجودیت</TableCell><TableCell>عملیات</TableCell><TableCell>شناسه</TableCell><TableCell>مقدار جدید</TableCell></TableRow></TableHead><TableBody>{audit.map(x => <TableRow key={x.id}><TableCell sx={{ whiteSpace: 'nowrap' }}>{faDateTime.format(new Date(x.createdAtUtc))}</TableCell><TableCell>{x.entityType}</TableCell><TableCell>{x.action}</TableCell><TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.entityId}</TableCell><TableCell sx={{ maxWidth: 520, direction: 'ltr', fontFamily: 'monospace', fontSize: 12 }}>{x.newValueJson ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></CardContent></Card>}
+    {tab === 13 && canViewAudit && <Card elevation={0}><CardContent sx={{ p: 0 }}><Box p={2.5}><Typography variant="h6" fontWeight={900}>Audit Trail</Typography><Typography color="text.secondary">ثبت ایجاد و تغییر مقادیر حساس بودجه، اهداف راهبردی و Mapping KPI، Templateهای Driver، فرمول‌ها، فرضیات، KPI، Actual Ledger، Service Accountهای Integration، Outbox/Dead-letter، عملیات Idempotency، کاربران، ساختار سازمانی، سناریوها، داده‌های پایه و نرخ ارز.</Typography></Box><Divider /><TableContainer sx={{ maxHeight: '65vh' }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>زمان</TableCell><TableCell>موجودیت</TableCell><TableCell>عملیات</TableCell><TableCell>شناسه</TableCell><TableCell>مقدار جدید</TableCell></TableRow></TableHead><TableBody>{audit.map(x => <TableRow key={x.id}><TableCell sx={{ whiteSpace: 'nowrap' }}>{faDateTime.format(new Date(x.createdAtUtc))}</TableCell><TableCell>{x.entityType}</TableCell><TableCell>{x.action}</TableCell><TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.entityId}</TableCell><TableCell sx={{ maxWidth: 520, direction: 'ltr', fontFamily: 'monospace', fontSize: 12 }}>{x.newValueJson ?? '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></CardContent></Card>}
   </Stack>
 }
