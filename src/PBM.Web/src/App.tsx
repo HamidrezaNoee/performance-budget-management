@@ -47,8 +47,10 @@ import CashPlanning from './CashPlanning'
 import CapexProjects from './CapexProjects'
 import FinancialReports from './FinancialReports'
 import ActualLedgerWorkspace from './ActualLedgerWorkspace'
-import ReferenceAdmin from './ReferenceAdmin'
-import MasterDataWorkspace from './MasterDataWorkspace'
+import SidebarTree from './SidebarTree'
+import { masterDataTree, settingsTree } from './NavigationTrees'
+import StructuredMasterDataWorkspace from './StructuredMasterDataWorkspace'
+import SystemSettingsWorkspace from './SystemSettingsWorkspace'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import NotificationCenter from './NotificationCenter'
 import ExecutiveDashboard from './ExecutiveDashboard'
@@ -64,7 +66,8 @@ const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast'
 
 function viewIndexFromHash() {
   const hash = window.location.hash.replace(/^#/, '').toLowerCase()
-  const index = viewHashes.findIndex(x => x === hash)
+  const root = hash.split('/')[0]
+  const index = viewHashes.findIndex(x => x === root)
   return index >= 0 ? index : 0
 }
 
@@ -165,23 +168,47 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeView, setActiveView] = useState(viewIndexFromHash)
+  const [currentHash, setCurrentHash] = useState(() => window.location.hash.replace(/^#/, '').toLowerCase())
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const [budgetMenuOpen, setBudgetMenuOpen] = useState(true)
   const [controlMenuOpen, setControlMenuOpen] = useState(false)
   const [operationsMenuOpen, setOperationsMenuOpen] = useState(false)
+  const [masterDataMenuOpen, setMasterDataMenuOpen] = useState(activeView === 18)
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(activeView === 17)
 
   const budgetViews = [2, 4, 5, 6, 13, 14, 7, 8, 12]
   const controlViews = [1, 10, 11, 15]
   const operationsViews = [3, 16, 9]
 
-  useEffect(() => { const onHashChange = () => setActiveView(viewIndexFromHash()); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange) }, [])
+  useEffect(() => {
+    const onHashChange = () => {
+      setActiveView(viewIndexFromHash())
+      setCurrentHash(window.location.hash.replace(/^#/, '').toLowerCase())
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
   useEffect(() => {
     if (budgetViews.includes(activeView)) setBudgetMenuOpen(true)
     if (controlViews.includes(activeView)) setControlMenuOpen(true)
     if (operationsViews.includes(activeView)) setOperationsMenuOpen(true)
+    if (activeView === 18) setMasterDataMenuOpen(true)
+    if (activeView === 17) setSettingsMenuOpen(true)
   }, [activeView])
 
-  const selectView = (index: number) => { setActiveView(index); const hash = viewHashes[index] ?? viewHashes[0]; if (window.location.hash !== `#${hash}`) window.location.hash = hash }
+  const selectView = (index: number) => {
+    setActiveView(index)
+    const hash = viewHashes[index] ?? viewHashes[0]
+    setCurrentHash(hash)
+    if (window.location.hash !== `#${hash}`) window.location.hash = hash
+  }
+  const selectNestedView = (index: number, root: 'master-data' | 'settings', path: string) => {
+    const hash = `${root}/${path}`
+    setActiveView(index); setCurrentHash(hash)
+    if (window.location.hash !== `#${hash}`) window.location.hash = hash
+  }
+  const selectedMasterPath = currentHash.startsWith('master-data/') ? currentHash.slice('master-data/'.length) : ''
+  const selectedSettingsPath = currentHash.startsWith('settings/') ? currentHash.slice('settings/'.length) : ''
 
   const loadCompanies = async () => {
     try {
@@ -302,8 +329,8 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
           </List></Collapse>
 
           <Divider sx={{ borderColor: 'rgba(255,255,255,.08)', my: 1 }} />
-          {navItem(18, 'اطلاعات پایه', <Inventory2RoundedIcon />)}
-          {navItem(17, 'تنظیمات', <SettingsRoundedIcon />)}
+          <SidebarTree title="اطلاعات پایه" icon={<Inventory2RoundedIcon />} selectedPath={selectedMasterPath} nodes={masterDataTree} open={masterDataMenuOpen} onToggle={() => setMasterDataMenuOpen(x => !x)} onSelect={path => selectNestedView(18, 'master-data', path)} />
+          <SidebarTree title="تنظیمات" icon={<SettingsRoundedIcon />} selectedPath={selectedSettingsPath} nodes={settingsTree} open={settingsMenuOpen} onToggle={() => setSettingsMenuOpen(x => !x)} onSelect={path => selectNestedView(17, 'settings', path)} />
         </List>
         <Box flexGrow={1} /><List sx={{ p: 1 }}><ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
       </Drawer>
@@ -318,7 +345,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         </Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {!loading && companies.length === 0 && <Alert severity="warning" sx={{ mb: 2 }}>هیچ شرکت فعالی برای این کاربر در دسترس نیست. از «اطلاعات پایه» شرکت را تعریف کنید یا دسترسی کاربر را بررسی کنید.</Alert>}
-        {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «تنظیمات ← تقویم مالی» سال مالی را ایجاد کنید.</Alert>}
+        {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «اطلاعات پایه ← برنامه‌ریزی و مالی ← تقویم» سال مالی را ایجاد کنید.</Alert>}
         {writeSensitiveView && companyId && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
         {!loading && companyId && yearId && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
@@ -338,8 +365,8 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && companyId && yearId && activeView === 14 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {!loading && companyId && yearId && activeView === 15 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
         {!loading && companyId && yearId && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 17 && <ReferenceAdmin companyId={companyId} roles={roles} />}
-        {!loading && activeView === 18 && <MasterDataWorkspace companyId={companyId} roles={roles} />}
+        {!loading && activeView === 17 && <SystemSettingsWorkspace companyId={companyId} roles={roles} section={selectedSettingsPath} />}
+        {!loading && activeView === 18 && <StructuredMasterDataWorkspace companyId={companyId} roles={roles} section={selectedMasterPath} />}
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
