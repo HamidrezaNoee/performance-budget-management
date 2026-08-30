@@ -9,6 +9,8 @@ import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
 import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded'
 import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded'
 import ShoppingCartCheckoutRoundedIcon from '@mui/icons-material/ShoppingCartCheckoutRounded'
+import PointOfSaleRoundedIcon from '@mui/icons-material/PointOfSaleRounded'
+import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
 import RequestQuoteRoundedIcon from '@mui/icons-material/RequestQuoteRounded'
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
@@ -30,6 +32,8 @@ import BudgetInbox from './BudgetInbox'
 import BudgetPlanning from './BudgetPlanning'
 import TradeSupplyChain from './TradeSupplyChain'
 import PurchaseForecastPlanner from './PurchaseForecastPlanner'
+import SalesPlanner from './SalesPlanner'
+import ExpensePlanner from './ExpensePlanner'
 import BudgetReservations from './BudgetReservations'
 import BudgetTransfers from './BudgetTransfers'
 import WorkbookImport from './WorkbookImport'
@@ -52,7 +56,7 @@ type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds:
 
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
+const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'sales', 'expenses', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
 
 function viewIndexFromHash() {
   const hash = window.location.hash.replace(/^#/, '').toLowerCase()
@@ -120,10 +124,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }
     setBusy(true); setError('')
     try {
       const { data } = await api.post<LoginResponse>('/auth/login', { userName, password }, {
-        headers: {
-          'X-PBM-Captcha-Id': captchaId,
-          'X-PBM-Captcha-Answer': captchaAnswer.trim()
-        }
+        headers: { 'X-PBM-Captcha-Id': captchaId, 'X-PBM-Captcha-Answer': captchaAnswer.trim() }
       })
       onLoggedIn(data)
     } catch (requestError: any) {
@@ -137,59 +138,18 @@ function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }
   }
 
   return <Box className="login-shell">
-    <Box className="login-visual" aria-hidden="true">
-      <Box className="login-visual-copy">
-        <Typography className="login-visual-kicker">PBM Intelligence Platform</Typography>
-        <Typography variant="h4" fontWeight={900}>بودجه هوشمند، تصمیم دقیق</Typography>
-        <Typography>برنامه‌ریزی، پایش عملکرد و تحلیل مالی در یک محیط یکپارچه و چندشرکتی</Typography>
-      </Box>
-    </Box>
-    <Box className="login-panel">
-      <Card className="login-card" elevation={0}>
-        <CardContent sx={{ p: { xs: 3, sm: 4.5 } }}>
-          <Box className="login-brand-row">
-            <Box className="brand-mark">PBM</Box>
-            <Box>
-              <Typography variant="h5" fontWeight={900}>مدیریت بودجه و عملکرد</Typography>
-              <Typography className="login-subtitle">سامانه بودجه‌ریزی چندشرکتی و پایش عملکرد</Typography>
-            </Box>
-          </Box>
-
-          {error && <Alert severity="error" className="login-alert">{error}</Alert>}
-
-          <Stack spacing={2.1}>
-            <TextField className="login-field" label="نام کاربری" value={userName} onChange={e => setUserName(e.target.value)} autoComplete="username" fullWidth />
-            <TextField className="login-field" label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" fullWidth />
-
-            <Box className="captcha-section">
-              <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                <ShieldRoundedIcon fontSize="small" />
-                <Typography fontWeight={800}>کد امنیتی</Typography>
-                <Typography variant="caption" className="captcha-expiry">اعتبار ۲ دقیقه</Typography>
-              </Stack>
-              <Box className="captcha-row">
-                <Box className="captcha-challenge" dir="ltr">
-                  {captchaLoading ? <CircularProgress size={22} color="inherit" /> : (captchaChallenge || '—')}
-                </Box>
-                <IconButton className="captcha-refresh" onClick={() => void loadCaptcha()} disabled={captchaLoading || busy} aria-label="دریافت کد امنیتی جدید">
-                  <RefreshRoundedIcon />
-                </IconButton>
-                <TextField className="login-field captcha-answer" label="پاسخ" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} disabled={captchaLoading} inputProps={{ inputMode: 'numeric', dir: 'ltr' }} onKeyDown={e => e.key === 'Enter' && submit()} />
-              </Box>
-            </Box>
-
-            <Button className="login-submit" variant="contained" size="large" startIcon={<LoginRoundedIcon />} onClick={submit} disabled={busy || captchaLoading || !captchaId}>
-              {busy ? <CircularProgress size={24} color="inherit" /> : 'ورود به سامانه'}
-            </Button>
-          </Stack>
-
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" mt={2.5} className="login-security-note">
-            <ShieldRoundedIcon sx={{ fontSize: 16 }} />
-            <Typography variant="caption">ورود امن با کپچای یک‌بارمصرف و نشست کنترل‌شده</Typography>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Box>
+    <Box className="login-visual" aria-hidden="true"><Box className="login-visual-copy"><Typography className="login-visual-kicker">PBM Intelligence Platform</Typography><Typography variant="h4" fontWeight={900}>بودجه هوشمند، تصمیم دقیق</Typography><Typography>برنامه‌ریزی، پایش عملکرد و تحلیل مالی در یک محیط یکپارچه و چندشرکتی</Typography></Box></Box>
+    <Box className="login-panel"><Card className="login-card" elevation={0}><CardContent sx={{ p: { xs: 3, sm: 4.5 } }}>
+      <Box className="login-brand-row"><Box className="brand-mark">PBM</Box><Box><Typography variant="h5" fontWeight={900}>مدیریت بودجه و عملکرد</Typography><Typography className="login-subtitle">سامانه بودجه‌ریزی چندشرکتی و پایش عملکرد</Typography></Box></Box>
+      {error && <Alert severity="error" className="login-alert">{error}</Alert>}
+      <Stack spacing={2.1}>
+        <TextField className="login-field" label="نام کاربری" value={userName} onChange={e => setUserName(e.target.value)} autoComplete="username" fullWidth />
+        <TextField className="login-field" label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" fullWidth />
+        <Box className="captcha-section"><Stack direction="row" alignItems="center" spacing={1} mb={1}><ShieldRoundedIcon fontSize="small" /><Typography fontWeight={800}>کد امنیتی</Typography><Typography variant="caption" className="captcha-expiry">اعتبار ۲ دقیقه</Typography></Stack><Box className="captcha-row"><Box className="captcha-challenge" dir="ltr">{captchaLoading ? <CircularProgress size={22} color="inherit" /> : (captchaChallenge || '—')}</Box><IconButton className="captcha-refresh" onClick={() => void loadCaptcha()} disabled={captchaLoading || busy} aria-label="دریافت کد امنیتی جدید"><RefreshRoundedIcon /></IconButton><TextField className="login-field captcha-answer" label="پاسخ" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} disabled={captchaLoading} inputProps={{ inputMode: 'numeric', dir: 'ltr' }} onKeyDown={e => e.key === 'Enter' && submit()} /></Box></Box>
+        <Button className="login-submit" variant="contained" size="large" startIcon={<LoginRoundedIcon />} onClick={submit} disabled={busy || captchaLoading || !captchaId}>{busy ? <CircularProgress size={24} color="inherit" /> : 'ورود به سامانه'}</Button>
+      </Stack>
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" mt={2.5} className="login-security-note"><ShieldRoundedIcon sx={{ fontSize: 16 }} /><Typography variant="caption">ورود امن با کپچای یک‌بارمصرف و نشست کنترل‌شده</Typography></Stack>
+    </CardContent></Card></Box>
   </Box>
 }
 
@@ -203,78 +163,43 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [activeView, setActiveView] = useState(viewIndexFromHash)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
 
-  useEffect(() => {
-    const onHashChange = () => setActiveView(viewIndexFromHash())
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
-  }, [])
-
-  const selectView = (index: number) => {
-    setActiveView(index)
-    const hash = viewHashes[index] ?? viewHashes[0]
-    if (window.location.hash !== `#${hash}`) window.location.hash = hash
-  }
-
-  useEffect(() => {
-    api.get<Company[]>('/companies').then(response => {
-      setCompanies(response.data); if (response.data.length) setCompanyId(response.data[0].id)
-    }).catch(() => setError('دریافت فهرست شرکت‌ها ناموفق بود.')).finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    if (!companyId) return
-    setYearId('')
-    api.get<FiscalYear[]>('/reference/fiscal-years', { params: { companyId } }).then(response => {
-      setYears(response.data); if (response.data.length) setYearId(response.data[0].id)
-    }).catch(() => setError('دریافت سال مالی ناموفق بود.'))
-  }, [companyId])
+  useEffect(() => { const onHashChange = () => setActiveView(viewIndexFromHash()); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange) }, [])
+  const selectView = (index: number) => { setActiveView(index); const hash = viewHashes[index] ?? viewHashes[0]; if (window.location.hash !== `#${hash}`) window.location.hash = hash }
+  useEffect(() => { api.get<Company[]>('/companies').then(response => { setCompanies(response.data); if (response.data.length) setCompanyId(response.data[0].id) }).catch(() => setError('دریافت فهرست شرکت‌ها ناموفق بود.')).finally(() => setLoading(false)) }, [])
+  useEffect(() => { if (!companyId) return; setYearId(''); api.get<FiscalYear[]>('/reference/fiscal-years', { params: { companyId } }).then(response => { setYears(response.data); if (response.data.length) setYearId(response.data[0].id) }).catch(() => setError('دریافت سال مالی ناموفق بود.')) }, [companyId])
 
   const selectedCompany = useMemo(() => companies.find(x => x.id === companyId), [companies, companyId])
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const canWriteCompany = roleSet.has('SUPERADMIN') || writableCompanyIds.includes(companyId)
   const menu = [
-    ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />],
-    ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />], ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />],
-    ['پیش‌بینی خرید چندبعدی', <ShoppingCartCheckoutRoundedIcon />], ['رزرو و تعهدات', <RequestQuoteRoundedIcon />],
-    ['جابجایی بودجه', <SwapHorizRoundedIcon />], ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />],
-    ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />],
-    ['پیش‌بینی', <AutoGraphRoundedIcon />], ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />],
-    ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
+    ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
+    ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />], ['بودجه و Forecast خرید', <ShoppingCartCheckoutRoundedIcon />],
+    ['بودجه و Forecast فروش', <PointOfSaleRoundedIcon />], ['هزینه‌ها و مراکز هزینه', <ReceiptLongRoundedIcon />],
+    ['رزرو و تعهدات', <RequestQuoteRoundedIcon />], ['جابجایی بودجه', <SwapHorizRoundedIcon />], ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />],
+    ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />], ['پیش‌بینی', <AutoGraphRoundedIcon />],
+    ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />], ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
     ['Actual و اتصال ERP', <SyncAltRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
   const titles = [
     'داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه',
-    'خرید از مبدا، واردات، تحویل انبار و فروش', 'پیش‌بینی خرید تعدادی، مبلغی و هزینه‌ها',
+    'خرید از مبدا، واردات، تحویل انبار و فروش', 'بودجه و پیش‌بینی خرید تعدادی، مبلغی و هزینه‌ها',
+    'بودجه و پیش‌بینی فروش تعدادی و مبلغی', 'حقوق، هزینه‌ها و مراکز هزینه',
     'رزرو بودجه و مدیریت تعهدات', 'جابجایی و بازتخصیص بودجه', 'ورود و نگاشت اکسل',
     'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'برنامه نقدینگی و خزانه‌داری',
-    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری',
-    'تنظیمات و داده‌های پایه'
+    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری', 'تنظیمات و داده‌های پایه'
   ]
-  const writeSensitiveView = (activeView >= 1 && activeView <= 12) || activeView === 14
+  const writeSensitiveView = (activeView >= 1 && activeView <= 14) || activeView === 16
 
   return <>
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}>
-        <Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><NotificationCenter /><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar>
-      </AppBar>
+      <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}><Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><NotificationCenter /><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar></AppBar>
       <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
-        <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box>
-        <Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
+        <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box><Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
         <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => selectView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
-        <Box flexGrow={1} />
-        <List sx={{ p: 1 }}>
-          <ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton>
-          <ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton>
-        </List>
+        <Box flexGrow={1} /><List sx={{ p: 1 }}><ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}>
-          <Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box>
-          <Stack direction="row" spacing={1.5}>
-            <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl>
-            <FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.jalaliYear}</MenuItem>)}</Select></FormControl>
-          </Stack>
-        </Stack>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}><Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box><Stack direction="row" spacing={1.5}><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" onChange={e => setCompanyId(e.target.value)}>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 160 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" onChange={e => setYearId(e.target.value)}>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.jalaliYear}</MenuItem>)}</Select></FormControl></Stack></Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {writeSensitiveView && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
@@ -283,17 +208,19 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
         {!loading && activeView === 3 && <TradeSupplyChain companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
         {!loading && activeView === 4 && <PurchaseForecastPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 5 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 6 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 7 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 8 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 9 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 10 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 11 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 12 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 13 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 14 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 15 && <ReferenceAdmin companyId={companyId} roles={roles} />}
+        {!loading && activeView === 5 && <SalesPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 6 && <ExpensePlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 7 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 8 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 9 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 10 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 11 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 12 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 13 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 14 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 15 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 17 && <ReferenceAdmin companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
