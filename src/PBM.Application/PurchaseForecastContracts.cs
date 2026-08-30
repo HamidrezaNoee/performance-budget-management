@@ -42,7 +42,8 @@ public sealed record CreatePurchaseCostTypeRequest(
 
 public sealed record PurchaseForecastQueryRequest(
     Guid VersionId,
-    IReadOnlyList<DimensionSelection> Dimensions);
+    IReadOnlyList<DimensionSelection> Dimensions,
+    ValueKind ValueKind = ValueKind.Forecast);
 
 public sealed record PurchaseForecastPeriodValueDto(
     Guid PeriodId,
@@ -71,7 +72,8 @@ public sealed record UpsertPurchaseForecastCellRequest(
     decimal Value,
     IReadOnlyList<DimensionSelection> Dimensions,
     Guid? CostTypeId = null,
-    string? Note = null);
+    string? Note = null,
+    ValueKind ValueKind = ValueKind.Forecast);
 
 public interface IPurchaseForecastService
 {
