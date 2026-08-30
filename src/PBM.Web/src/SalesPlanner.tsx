@@ -20,6 +20,7 @@ type Series = { measureCode: string; name: string; unit?: string | null; isCalcu
 type Data = { periods: Period[]; series: Series[] }
 type PlanningKind = 0 | 1 | 3
 
+const primaryDimensionCodes = new Set(['PRODUCT', 'SUPPLIER', 'BRAND', 'CURRENCY'])
 const number = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 })
 const compact = new Intl.NumberFormat('fa-IR', { notation: 'compact', maximumFractionDigits: 1 })
 
@@ -38,8 +39,9 @@ export default function SalesPlanner({ companyId, fiscalYearId, canWrite }: { co
   const version = versions.find(x => x.id === versionId) ?? versions[0]
   const isActual = valueKind === 1
   const editable = canWrite && !isActual && !!version && version.status === 0 && !version.isLocked
-  const selectedDimensions = useMemo(() => !setup ? [] : setup.dimensions.filter(d => !!selections[d.id]).map(d => ({ dimensionId: d.id, memberId: selections[d.id] })), [setup, selections])
-  const requiredReady = useMemo(() => !!setup && setup.dimensions.filter(d => d.isRequired || d.code.toUpperCase() === 'PRODUCT').every(d => !!selections[d.id]), [setup, selections])
+  const visibleDimensions = useMemo(() => setup?.dimensions.filter(d => primaryDimensionCodes.has(d.code.toUpperCase())) ?? [], [setup])
+  const selectedDimensions = useMemo(() => visibleDimensions.filter(d => !!selections[d.id]).map(d => ({ dimensionId: d.id, memberId: selections[d.id] })), [visibleDimensions, selections])
+  const requiredReady = useMemo(() => !!setup && visibleDimensions.filter(d => d.isRequired || d.code.toUpperCase() === 'PRODUCT').every(d => !!selections[d.id]), [setup, visibleDimensions, selections])
 
   const loadSetup = async () => {
     if (!companyId || !fiscalYearId) return
@@ -48,7 +50,7 @@ export default function SalesPlanner({ companyId, fiscalYearId, canWrite }: { co
       const [s, p] = await Promise.all([api.get<Setup>('/sales-planning/setup', { params: { companyId } }), api.get<Plan[]>('/budget/plans', { params: { companyId, fiscalYearId } })])
       setSetup(s.data); const current = p.data.find(x => x.budgetModelId === s.data.modelId) ?? null; setPlan(current)
       const latest = [...(current?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)[0]; setVersionId(latest?.id ?? '')
-      const defaults: Record<string, string> = {}; s.data.dimensions.forEach(d => { if ((d.isRequired || d.code.toUpperCase() === 'PRODUCT') && d.members.length) defaults[d.id] = d.members[0].id }); setSelections(defaults)
+      setSelections({})
     } catch (e) { setError(apiError(e, 'دریافت تنظیمات فروش ناموفق بود.')) } finally { setBusy(false) }
   }
   useEffect(() => { void loadSetup() }, [companyId, fiscalYearId])
@@ -80,9 +82,35 @@ export default function SalesPlanner({ companyId, fiscalYearId, canWrite }: { co
 
   return <Stack spacing={2.5}>
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-    <Card elevation={0} sx={{ background: 'linear-gradient(135deg, rgba(2,132,199,.08), rgba(124,58,237,.06))' }}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ md: 'center' }}><Box><Stack direction="row" spacing={1} alignItems="center"><PointOfSaleRoundedIcon color="primary" /><Typography variant="h5" fontWeight={900}>Budget / Actual / Forecast چندبعدی فروش</Typography></Stack><Typography color="text.secondary" mt={1}>جزئیات ماهانه مشابه فایل بودجه: تعداد، آفر، نرخ، فروش ناخالص، تخفیف ریالی و جنسی، فروش خالص و بهای تمام‌شده عادی/جایزه.</Typography></Box><Button startIcon={<RefreshRoundedIcon />} onClick={() => void loadSetup()} disabled={busy}>بازخوانی</Button></Stack></CardContent></Card>
+    <Card elevation={0} sx={{ background: 'linear-gradient(135deg, rgba(2,132,199,.08), rgba(124,58,237,.06))' }}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ md: 'center' }}><Box><Stack direction="row" spacing={1} alignItems="center"><PointOfSaleRoundedIcon color="primary" /><Typography variant="h5" fontWeight={900}>Budget / Actual / Forecast چندبعدی فروش</Typography></Stack><Typography color="text.secondary" mt={1}>فعلاً فرم فروش فقط بر کالا، تأمین‌کننده، برند و ارز متمرکز است؛ سایر Dimensionها در اطلاعات پایه نگهداری می‌شوند و بعداً به فرم عملیاتی اضافه می‌شوند.</Typography></Box><Button startIcon={<RefreshRoundedIcon />} onClick={() => void loadSetup()} disabled={busy}>بازخوانی</Button></Stack></CardContent></Card>
     {!plan && <Alert severity="info" action={canWrite ? <Button color="inherit" onClick={createPlan}>ایجاد برنامه</Button> : undefined}>برای سال مالی انتخاب‌شده برنامه TRADE وجود ندارد.</Alert>}
-    {setup && <Card elevation={0}><CardContent><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.3} flexWrap="wrap" useFlexGap alignItems={{ lg: 'center' }}><ToggleButtonGroup exclusive size="small" value={valueKind} onChange={(_, v: PlanningKind | null) => v !== null && setValueKind(v)}><ToggleButton value={0}>بودجه فروش</ToggleButton><ToggleButton value={1}>عملکرد واقعی</ToggleButton><ToggleButton value={3}>Forecast فروش</ToggleButton></ToggleButtonGroup>{setup.dimensions.map(d => <FormControl key={d.id} size="small" sx={{ minWidth: 205 }}><InputLabel>{d.name}{d.isRequired || d.code === 'PRODUCT' ? ' *' : ''}</InputLabel><Select value={selections[d.id] ?? ''} label={`${d.name}${d.isRequired || d.code === 'PRODUCT' ? ' *' : ''}`} onChange={e => setSelections(x => ({ ...x, [d.id]: e.target.value }))}>{!d.isRequired && d.code !== 'PRODUCT' && <MenuItem value=""><em>بدون تفکیک</em></MenuItem>}{d.members.map(m => <MenuItem key={m.id} value={m.id}>{m.name} — {m.code}</MenuItem>)}</Select></FormControl>)}{plan && <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>نسخه</InputLabel><Select value={version?.id ?? ''} label="نسخه" onChange={e => setVersionId(e.target.value)}>{versions.map(v => <MenuItem key={v.id} value={v.id}>{v.name} — نسخه {v.versionNumber.toLocaleString('fa-IR')}</MenuItem>)}</Select></FormControl>}</Stack>{!requiredReady && <Alert severity="warning" sx={{ mt: 2 }}>کالا و تمام Dimensionهای اجباری را انتخاب کنید.</Alert>}{isActual && <Alert severity="info" sx={{ mt: 2 }}>عملکرد واقعی فقط خواندنی است و از Actual Ledger، ERP یا Import کنترل‌شده وارد می‌شود؛ از این فرم قابل تغییر نیست.</Alert>}{version && !isActual && !editable && <Alert severity="warning" sx={{ mt: 2 }}>نسخه انتخاب‌شده Draft باز نیست و فقط قابل مشاهده است.</Alert>}</CardContent></Card>}
+    {setup && <Card elevation={0}><CardContent>
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.3} flexWrap="wrap" useFlexGap alignItems={{ lg: 'center' }}>
+        <ToggleButtonGroup exclusive size="small" value={valueKind} onChange={(_, v: PlanningKind | null) => v !== null && setValueKind(v)}><ToggleButton value={0}>بودجه فروش</ToggleButton><ToggleButton value={1}>عملکرد واقعی</ToggleButton><ToggleButton value={3}>Forecast فروش</ToggleButton></ToggleButtonGroup>
+        {visibleDimensions.map(d => <FormControl key={d.id} size="small" sx={{ minWidth: 205 }}>
+          <InputLabel>{d.name}{d.isRequired || d.code.toUpperCase() === 'PRODUCT' ? ' *' : ''}</InputLabel>
+          <Select
+            displayEmpty
+            value={selections[d.id] ?? ''}
+            label={`${d.name}${d.isRequired || d.code.toUpperCase() === 'PRODUCT' ? ' *' : ''}`}
+            onChange={e => setSelections(x => ({ ...x, [d.id]: e.target.value }))}
+            renderValue={selected => {
+              if (!selected) return <Typography component="span" color="text.secondary">انتخاب کنید</Typography>
+              const member = d.members.find(m => m.id === selected)
+              return member ? `${member.name} — ${member.code}` : ''
+            }}
+          >
+            <MenuItem value=""><em>انتخاب کنید</em></MenuItem>
+            {d.members.map(m => <MenuItem key={m.id} value={m.id}>{m.name} — {m.code}</MenuItem>)}
+          </Select>
+        </FormControl>)}
+        {plan && <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>نسخه</InputLabel><Select value={version?.id ?? ''} label="نسخه" onChange={e => setVersionId(e.target.value)}>{versions.map(v => <MenuItem key={v.id} value={v.id}>{v.name} — نسخه {v.versionNumber.toLocaleString('fa-IR')}</MenuItem>)}</Select></FormControl>}
+      </Stack>
+      {!requiredReady && <Alert severity="warning" sx={{ mt: 2 }}>برای ادامه ابتدا کالا را انتخاب کنید.</Alert>}
+      <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>نسخه یک Dimension نیست؛ نسخه اولیه با برنامه ایجاد می‌شود و اصلاحیه‌ها از گردش نسخه بودجه مدیریت می‌شوند.</Typography>
+      {isActual && <Alert severity="info" sx={{ mt: 2 }}>عملکرد واقعی فقط خواندنی است و از Actual Ledger، ERP یا Import کنترل‌شده وارد می‌شود؛ از این فرم قابل تغییر نیست.</Alert>}
+      {version && !isActual && !editable && <Alert severity="warning" sx={{ mt: 2 }}>نسخه انتخاب‌شده Draft باز نیست و فقط قابل مشاهده است.</Alert>}
+    </CardContent></Card>}
 
     {data && <>
       <Box className="kpi-grid">{[
