@@ -23,6 +23,7 @@ public static class ServiceRegistration
         services.AddScoped<BudgetService>();
         services.AddScoped<IBudgetService, GovernedBudgetService>();
         services.AddScoped<IPurchaseForecastService, PurchaseForecastService>();
+        services.AddScoped<IPurchaseDashboardService, PurchaseDashboardService>();
         services.AddScoped<SqlApplicationLock>();
         services.AddScoped<ActualLedgerValidationService>();
         services.AddScoped<ActualLedgerProjectionService>();
