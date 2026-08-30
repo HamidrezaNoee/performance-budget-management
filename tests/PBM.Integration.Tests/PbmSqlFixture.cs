@@ -1,5 +1,4 @@
 using System.Data.Common;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PBM.Application;
 using PBM.Domain;
@@ -28,13 +27,13 @@ public sealed class PbmSqlFixture : IAsyncLifetime
         EnsureSafeDatabaseName(_connectionString);
     }
 
-    public async ValueTask InitializeAsync()
+    public async Task InitializeAsync()
     {
         await WaitForSqlAndCreateDatabaseAsync();
         await SeedAsync();
     }
 
-    public async ValueTask DisposeAsync()
+    public async Task DisposeAsync()
     {
         await using var db = CreateContext();
         await db.Database.EnsureDeletedAsync();
