@@ -18,6 +18,8 @@ public static class EndpointRegistration
         api.MapPerformanceBudgetingEndpoints();
         api.MapForecastEndpoints();
         api.MapPurchaseForecastEndpoints();
+        api.MapSalesPlanningEndpoints();
+        api.MapExpensePlanningEndpoints();
         api.MapBudgetWorkflowEndpoints();
         api.MapBudgetInboxEndpoints();
         api.MapBudgetAttachmentEndpoints();
