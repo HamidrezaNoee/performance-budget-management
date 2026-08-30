@@ -38,8 +38,8 @@ public sealed class SalesDashboardService(
 
         var codes = new[]
         {
-            "SALES_QTY", "FREE_SALES_QTY", "GROSS_SALES", "SALES_DISCOUNT", "SALES_RETURN",
-            "NET_SALES", "COGS_AMOUNT", "PURCHASE_COMPANY_DISCOUNT"
+            "SALES_QTY", "FREE_SALES_QTY", "GROSS_SALES", "SALES_DISCOUNT", "FOC_SALES_AMOUNT", "SALES_RETURN",
+            "NET_SALES", "SALES_COGS_TOTAL", "PURCHASE_COMPANY_DISCOUNT"
         };
         var measures = await db.Measures.AsNoTracking()
             .Where(x => x.BudgetModelId == version.ModelId && codes.Contains(x.Code))
@@ -67,14 +67,14 @@ public sealed class SalesDashboardService(
         var fFree = Sum("FREE_SALES_QTY", ValueKind.Forecast);
         var bGross = Sum("GROSS_SALES", ValueKind.Budget);
         var fGross = Sum("GROSS_SALES", ValueKind.Forecast);
-        var bDiscount = Sum("SALES_DISCOUNT", ValueKind.Budget);
-        var fDiscount = Sum("SALES_DISCOUNT", ValueKind.Forecast);
+        var bDiscount = Sum("SALES_DISCOUNT", ValueKind.Budget) + Sum("FOC_SALES_AMOUNT", ValueKind.Budget);
+        var fDiscount = Sum("SALES_DISCOUNT", ValueKind.Forecast) + Sum("FOC_SALES_AMOUNT", ValueKind.Forecast);
         var bReturn = Sum("SALES_RETURN", ValueKind.Budget);
         var fReturn = Sum("SALES_RETURN", ValueKind.Forecast);
         var bNet = Sum("NET_SALES", ValueKind.Budget);
         var fNet = Sum("NET_SALES", ValueKind.Forecast);
-        var bCogs = Sum("COGS_AMOUNT", ValueKind.Budget);
-        var fCogs = Sum("COGS_AMOUNT", ValueKind.Forecast);
+        var bCogs = Sum("SALES_COGS_TOTAL", ValueKind.Budget);
+        var fCogs = Sum("SALES_COGS_TOTAL", ValueKind.Forecast);
         var bCompanyDiscount = Sum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
         var fCompanyDiscount = Sum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
         var bProfit = bNet - bCogs + bCompanyDiscount;
@@ -88,14 +88,14 @@ public sealed class SalesDashboardService(
             decimal PSum(string code, ValueKind kind) => Sum(code, kind, pf);
             var bg = PSum("GROSS_SALES", ValueKind.Budget);
             var fg = PSum("GROSS_SALES", ValueKind.Forecast);
-            var bd = PSum("SALES_DISCOUNT", ValueKind.Budget);
-            var fd = PSum("SALES_DISCOUNT", ValueKind.Forecast);
+            var bd = PSum("SALES_DISCOUNT", ValueKind.Budget) + PSum("FOC_SALES_AMOUNT", ValueKind.Budget);
+            var fd = PSum("SALES_DISCOUNT", ValueKind.Forecast) + PSum("FOC_SALES_AMOUNT", ValueKind.Forecast);
             var br = PSum("SALES_RETURN", ValueKind.Budget);
             var fr = PSum("SALES_RETURN", ValueKind.Forecast);
             var bn = PSum("NET_SALES", ValueKind.Budget);
             var fn = PSum("NET_SALES", ValueKind.Forecast);
-            var bc = PSum("COGS_AMOUNT", ValueKind.Budget);
-            var fc = PSum("COGS_AMOUNT", ValueKind.Forecast);
+            var bc = PSum("SALES_COGS_TOTAL", ValueKind.Budget);
+            var fc = PSum("SALES_COGS_TOTAL", ValueKind.Forecast);
             var bcd = PSum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
             var fcd = PSum("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
             return new SalesDashboardMonthlyDto(period.Id, period.Name, period.Sequence,
@@ -143,7 +143,7 @@ public sealed class SalesDashboardService(
     {
         var ids = measures.ToDictionary(x => x.Key, x => x.Value.Id, StringComparer.OrdinalIgnoreCase);
         var quantityId = ids["SALES_QTY"];
-        var tracked = new[] { quantityId, ids["GROSS_SALES"], ids["NET_SALES"], ids["COGS_AMOUNT"], ids["PURCHASE_COMPANY_DISCOUNT"] };
+        var tracked = new[] { quantityId, ids["GROSS_SALES"], ids["NET_SALES"], ids["SALES_COGS_TOTAL"], ids["PURCHASE_COMPANY_DISCOUNT"] };
         var links = await db.BudgetFactDimensions.AsNoTracking()
             .Where(x => x.DimensionId == dimensionId
                 && x.BudgetFact!.VersionId == versionId
@@ -163,8 +163,8 @@ public sealed class SalesDashboardService(
             decimal S(string code, ValueKind kind) => group.Where(x => x.MeasureId == ids[code] && x.ValueKind == kind).Sum(x => x.Value);
             var bNet = S("NET_SALES", ValueKind.Budget);
             var fNet = S("NET_SALES", ValueKind.Forecast);
-            var bCogs = S("COGS_AMOUNT", ValueKind.Budget);
-            var fCogs = S("COGS_AMOUNT", ValueKind.Forecast);
+            var bCogs = S("SALES_COGS_TOTAL", ValueKind.Budget);
+            var fCogs = S("SALES_COGS_TOTAL", ValueKind.Forecast);
             var bCd = S("PURCHASE_COMPANY_DISCOUNT", ValueKind.Budget);
             var fCd = S("PURCHASE_COMPANY_DISCOUNT", ValueKind.Forecast);
             return new SalesDashboardDrilldownRowDto(member.Id, member.Code, member.Name,
