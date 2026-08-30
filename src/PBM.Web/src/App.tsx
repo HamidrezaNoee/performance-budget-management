@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Alert, AppBar, Box, Button, Card, CardContent, CircularProgress, Container, Divider, Drawer,
+  Alert, AppBar, Box, Button, Card, CardContent, CircularProgress, Collapse, Container, Divider, Drawer,
   FormControl, IconButton, InputLabel, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Select,
   Stack, TextField, Toolbar, Typography
 } from '@mui/material'
@@ -22,6 +22,9 @@ import BusinessCenterRoundedIcon from '@mui/icons-material/BusinessCenterRounded
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded'
 import SyncAltRoundedIcon from '@mui/icons-material/SyncAltRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
+import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded'
+import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded'
+import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
@@ -45,6 +48,7 @@ import CapexProjects from './CapexProjects'
 import FinancialReports from './FinancialReports'
 import ActualLedgerWorkspace from './ActualLedgerWorkspace'
 import ReferenceAdmin from './ReferenceAdmin'
+import MasterDataWorkspace from './MasterDataWorkspace'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import NotificationCenter from './NotificationCenter'
 import ExecutiveDashboard from './ExecutiveDashboard'
@@ -54,9 +58,9 @@ type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
 type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[]; writableCompanyIds: string[] }
 type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds: number }
 
-const drawerWidth = 236
+const drawerWidth = 280
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'sales', 'expenses', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
+const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'sales', 'expenses', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings', 'master-data'] as const
 
 function viewIndexFromHash() {
   const hash = window.location.hash.replace(/^#/, '').toLowerCase()
@@ -162,8 +166,21 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const [error, setError] = useState('')
   const [activeView, setActiveView] = useState(viewIndexFromHash)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [budgetMenuOpen, setBudgetMenuOpen] = useState(true)
+  const [controlMenuOpen, setControlMenuOpen] = useState(false)
+  const [operationsMenuOpen, setOperationsMenuOpen] = useState(false)
+
+  const budgetViews = [2, 4, 5, 6, 13, 14, 7, 8, 12]
+  const controlViews = [1, 10, 11, 15]
+  const operationsViews = [3, 16, 9]
 
   useEffect(() => { const onHashChange = () => setActiveView(viewIndexFromHash()); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange) }, [])
+  useEffect(() => {
+    if (budgetViews.includes(activeView)) setBudgetMenuOpen(true)
+    if (controlViews.includes(activeView)) setControlMenuOpen(true)
+    if (operationsViews.includes(activeView)) setOperationsMenuOpen(true)
+  }, [activeView])
+
   const selectView = (index: number) => { setActiveView(index); const hash = viewHashes[index] ?? viewHashes[0]; if (window.location.hash !== `#${hash}`) window.location.hash = hash }
 
   const loadCompanies = async () => {
@@ -222,31 +239,72 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const canWriteCompany = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || writableCompanyIds.includes(companyId)
   const showCompanySelector = companies.length > 1
-  const menu = [
-    ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
-    ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />], ['بودجه و Forecast خرید', <ShoppingCartCheckoutRoundedIcon />],
-    ['بودجه و Forecast فروش', <PointOfSaleRoundedIcon />], ['هزینه‌ها و مراکز هزینه', <ReceiptLongRoundedIcon />],
-    ['رزرو و تعهدات', <RequestQuoteRoundedIcon />], ['جابجایی بودجه', <SwapHorizRoundedIcon />], ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />],
-    ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />], ['پیش‌بینی', <AutoGraphRoundedIcon />],
-    ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />], ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
-    ['Actual و اتصال ERP', <SyncAltRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
-  ] as const
   const titles = [
-    'داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه',
-    'خرید از مبدا، واردات، تحویل انبار و فروش', 'بودجه و پیش‌بینی خرید تعدادی، مبلغی و هزینه‌ها',
-    'بودجه و پیش‌بینی فروش تعدادی و مبلغی', 'حقوق، هزینه‌ها و مراکز هزینه',
+    'داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'ایجاد و ثبت بودجه',
+    'زنجیره خرید، واردات، تحویل انبار و فروش', 'بودجه و پیش‌بینی خرید',
+    'بودجه و پیش‌بینی فروش', 'هزینه‌ها و مراکز هزینه',
     'رزرو بودجه و مدیریت تعهدات', 'جابجایی و بازتخصیص بودجه', 'ورود و نگاشت اکسل',
     'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'برنامه نقدینگی و خزانه‌داری',
-    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری', 'تنظیمات و داده‌های پایه'
+    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری', 'تنظیمات سامانه', 'اطلاعات پایه'
   ]
   const writeSensitiveView = (activeView >= 1 && activeView <= 14) || activeView === 16
+
+  const navItem = (index: number, label: string, icon: React.ReactNode, nested = false) => <ListItemButton
+    key={`${index}-${label}`}
+    selected={index === activeView}
+    onClick={() => selectView(index)}
+    sx={{ borderRadius: 2, mb: .35, py: nested ? .65 : .85, pr: nested ? 4.5 : 1.5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.22)' } }}
+  >
+    <ListItemIcon sx={{ color: 'inherit', minWidth: nested ? 34 : 40 }}>{icon}</ListItemIcon>
+    <ListItemText primary={label} primaryTypographyProps={{ fontSize: nested ? 13.5 : 14, fontWeight: index === activeView ? 800 : 600 }} />
+  </ListItemButton>
 
   return <>
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar position="fixed" elevation={0} sx={{ width: `calc(100% - ${drawerWidth}px)`, mr: `${drawerWidth}px`, bgcolor: '#071a2f' }}><Toolbar><Typography fontWeight={800} flexGrow={1}>Performance Budget Management</Typography><Stack direction="row" spacing={1} alignItems="center"><NotificationCenter /><Typography variant="caption" sx={{ opacity: .75 }}>{roles.join('، ')}</Typography><Typography variant="body2">{displayName}</Typography></Stack></Toolbar></AppBar>
-      <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0 } }}>
+      <Drawer variant="permanent" anchor="right" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', bgcolor: '#0b2038', color: '#dce8f7', border: 0, overflowX: 'hidden' } }}>
         <Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={900}>PBM</Typography><Typography variant="caption" sx={{ opacity: .7 }}>بودجه و عملکرد سازمانی</Typography></Box><Divider sx={{ borderColor: 'rgba(255,255,255,.1)' }} />
-        <List sx={{ px: 1 }}>{menu.map(([label, icon], index) => <ListItemButton key={label} selected={index === activeView} onClick={() => selectView(index)} sx={{ borderRadius: 2, mb: .5, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.18)' } }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{icon}</ListItemIcon><ListItemText primary={label} /></ListItemButton>)}</List>
+        <List sx={{ px: 1, pb: 1 }}>
+          {navItem(0, 'داشبورد', <DashboardRoundedIcon />)}
+
+          <ListItemButton selected={budgetViews.includes(activeView)} onClick={() => setBudgetMenuOpen(x => !x)} sx={{ borderRadius: 2, mt: .5, mb: .35, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.12)' } }}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><AccountBalanceWalletRoundedIcon /></ListItemIcon><ListItemText primary="مدیریت بودجه" primaryTypographyProps={{ fontWeight: 900 }} />{budgetMenuOpen ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+          </ListItemButton>
+          <Collapse in={budgetMenuOpen} timeout="auto" unmountOnExit><List disablePadding>
+            {navItem(2, 'ایجاد و ثبت بودجه', <AccountBalanceWalletRoundedIcon />, true)}
+            {navItem(4, 'بودجه خرید', <ShoppingCartCheckoutRoundedIcon />, true)}
+            {navItem(5, 'بودجه فروش', <PointOfSaleRoundedIcon />, true)}
+            {navItem(6, 'هزینه‌ها و مراکز هزینه', <ReceiptLongRoundedIcon />, true)}
+            {navItem(13, 'نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />, true)}
+            {navItem(14, 'پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />, true)}
+            {navItem(7, 'رزرو و تعهدات', <RequestQuoteRoundedIcon />, true)}
+            {navItem(8, 'جابه‌جایی بودجه', <SwapHorizRoundedIcon />, true)}
+            {navItem(12, 'پیش‌بینی', <AutoGraphRoundedIcon />, true)}
+          </List></Collapse>
+
+          <ListItemButton selected={controlViews.includes(activeView)} onClick={() => setControlMenuOpen(x => !x)} sx={{ borderRadius: 2, mt: .5, mb: .35, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.12)' } }}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><InsightsRoundedIcon /></ListItemIcon><ListItemText primary="کنترل، عملکرد و گزارش" primaryTypographyProps={{ fontWeight: 900 }} />{controlMenuOpen ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+          </ListItemButton>
+          <Collapse in={controlMenuOpen} timeout="auto" unmountOnExit><List disablePadding>
+            {navItem(1, 'کارتابل تأیید', <FactCheckRoundedIcon />, true)}
+            {navItem(10, 'عملکرد و KPI', <InsightsRoundedIcon />, true)}
+            {navItem(11, 'تحلیل انحراف', <DifferenceRoundedIcon />, true)}
+            {navItem(15, 'گزارش‌ها', <AssessmentRoundedIcon />, true)}
+          </List></Collapse>
+
+          <ListItemButton selected={operationsViews.includes(activeView)} onClick={() => setOperationsMenuOpen(x => !x)} sx={{ borderRadius: 2, mt: .5, mb: .35, '&.Mui-selected': { bgcolor: 'rgba(56,139,253,.12)' } }}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LocalShippingRoundedIcon /></ListItemIcon><ListItemText primary="عملیات و یکپارچه‌سازی" primaryTypographyProps={{ fontWeight: 900 }} />{operationsMenuOpen ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+          </ListItemButton>
+          <Collapse in={operationsMenuOpen} timeout="auto" unmountOnExit><List disablePadding>
+            {navItem(3, 'زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />, true)}
+            {navItem(16, 'Actual و اتصال ERP', <SyncAltRoundedIcon />, true)}
+            {navItem(9, 'ورود اطلاعات اکسل', <UploadFileRoundedIcon />, true)}
+          </List></Collapse>
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,.08)', my: 1 }} />
+          {navItem(18, 'اطلاعات پایه', <Inventory2RoundedIcon />)}
+          {navItem(17, 'تنظیمات', <SettingsRoundedIcon />)}
+        </List>
         <Box flexGrow={1} /><List sx={{ p: 1 }}><ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
@@ -259,8 +317,8 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
           </Stack>
         </Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!loading && companies.length === 0 && <Alert severity="warning" sx={{ mb: 2 }}>هیچ شرکت فعالی برای این کاربر در دسترس نیست. از تنظیمات، شرکت را تعریف یا دسترسی کاربر را بررسی کنید.</Alert>}
-        {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «تنظیمات و داده‌های پایه ← تقویم مالی» سال مالی را ایجاد کنید.</Alert>}
+        {!loading && companies.length === 0 && <Alert severity="warning" sx={{ mb: 2 }}>هیچ شرکت فعالی برای این کاربر در دسترس نیست. از «اطلاعات پایه» شرکت را تعریف کنید یا دسترسی کاربر را بررسی کنید.</Alert>}
+        {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «تنظیمات ← تقویم مالی» سال مالی را ایجاد کنید.</Alert>}
         {writeSensitiveView && companyId && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
         {!loading && companyId && yearId && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
@@ -281,6 +339,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && companyId && yearId && activeView === 15 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
         {!loading && companyId && yearId && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {!loading && activeView === 17 && <ReferenceAdmin companyId={companyId} roles={roles} />}
+        {!loading && activeView === 18 && <MasterDataWorkspace companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
