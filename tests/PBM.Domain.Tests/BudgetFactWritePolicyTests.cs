@@ -8,10 +8,8 @@ public sealed class BudgetFactWritePolicyTests
 {
     [Theory]
     [InlineData(ValueKind.Budget)]
-    [InlineData(ValueKind.Actual)]
-    [InlineData(ValueKind.Commitment)]
     [InlineData(ValueKind.Forecast)]
-    public void Unlocked_draft_accepts_all_fact_kinds(ValueKind kind)
+    public void Unlocked_draft_accepts_planning_fact_kinds(ValueKind kind)
     {
         var result = BudgetFactWritePolicy.Evaluate(BudgetStatus.Draft, false, kind);
         Assert.True(result.IsAllowed);
@@ -21,10 +19,21 @@ public sealed class BudgetFactWritePolicyTests
     [Theory]
     [InlineData(ValueKind.Actual)]
     [InlineData(ValueKind.Commitment)]
+    public void Unlocked_draft_rejects_execution_fact_kinds(ValueKind kind)
+    {
+        var result = BudgetFactWritePolicy.Evaluate(BudgetStatus.Draft, false, kind);
+        Assert.False(result.IsAllowed);
+        Assert.False(string.IsNullOrWhiteSpace(result.DenialReason));
+    }
+
+    [Theory]
+    [InlineData(ValueKind.Actual)]
+    [InlineData(ValueKind.Commitment)]
     public void Approved_version_accepts_execution_fact_kinds(ValueKind kind)
     {
         var result = BudgetFactWritePolicy.Evaluate(BudgetStatus.Approved, true, kind);
         Assert.True(result.IsAllowed);
+        Assert.Null(result.DenialReason);
     }
 
     [Theory]
@@ -44,17 +53,20 @@ public sealed class BudgetFactWritePolicyTests
     [InlineData(BudgetStatus.Rejected)]
     [InlineData(BudgetStatus.Revised)]
     [InlineData(BudgetStatus.Closed)]
-    public void Non_editable_workflow_states_reject_execution_writes(BudgetStatus status)
+    public void Non_editable_workflow_states_reject_all_fact_kinds(BudgetStatus status)
     {
-        var result = BudgetFactWritePolicy.Evaluate(status, true, ValueKind.Actual);
-        Assert.False(result.IsAllowed);
-        Assert.False(string.IsNullOrWhiteSpace(result.DenialReason));
+        foreach (var kind in Enum.GetValues<ValueKind>())
+        {
+            var result = BudgetFactWritePolicy.Evaluate(status, true, kind);
+            Assert.False(result.IsAllowed);
+            Assert.False(string.IsNullOrWhiteSpace(result.DenialReason));
+        }
     }
 
     [Fact]
-    public void Locked_draft_is_rejected()
+    public void Locked_draft_rejects_all_fact_kinds()
     {
-        var result = BudgetFactWritePolicy.Evaluate(BudgetStatus.Draft, true, ValueKind.Budget);
-        Assert.False(result.IsAllowed);
+        foreach (var kind in Enum.GetValues<ValueKind>())
+            Assert.False(BudgetFactWritePolicy.Evaluate(BudgetStatus.Draft, true, kind).IsAllowed);
     }
 }
