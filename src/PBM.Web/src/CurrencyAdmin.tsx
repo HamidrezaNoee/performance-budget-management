@@ -59,7 +59,7 @@ export default function CurrencyAdmin({ roles }: { roles: string[] }) {
 
   return <Stack spacing={2.5}>
     {error && <Alert severity="error">{error}</Alert>}
-    <Alert severity="info">تعریف کد ارز جزو اطلاعات پایه عملیاتی است. نرخ تبدیل نیز در همین بخش نگهداری می‌شود تا خرید، فروش و گزارش‌های مالی از یک مرجع واحد استفاده کنند.</Alert>
+    <Alert severity="info">این صفحه فقط برای ثبت و نگهداری نرخ تبدیل ارز است. تعریف ارزهایی مانند ریال، دلار، یوان و یورو از منوی «ارزها» انجام می‌شود.</Alert>
     {canEdit ? <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>ثبت نرخ ارز</Typography>
       <Typography color="text.secondary" mb={2}>چند منبع نرخ مستقل قابل نگهداری است؛ تاریخ در دیتابیس میلادی ذخیره و در نماهای کاربری به تقویم فارسی نمایش داده می‌شود.</Typography>
