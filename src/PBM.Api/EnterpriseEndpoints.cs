@@ -8,6 +8,8 @@ public static class EnterpriseEndpoints
     {
         var reference = api.MapGroup("/reference");
         reference.MapGet("/currencies", (IReferenceDataService service, CancellationToken ct) => service.GetCurrenciesAsync(ct));
+        reference.MapGet("/currency-catalog", (IReferenceDataService service, CancellationToken ct) => service.GetCurrencyCatalogAsync(ct));
+        reference.MapPost("/currencies", (UpsertCurrencyRequest request, IReferenceDataService service, CancellationToken ct) => service.UpsertCurrencyAsync(request, ct));
         reference.MapGet("/fx-rate-sources", (IReferenceDataService service, CancellationToken ct) => service.GetFxRateSourcesAsync(ct));
         reference.MapGet("/fx-rates", (DateTime? fromDate, DateTime? toDate, IReferenceDataService service, CancellationToken ct) => service.GetFxRatesAsync(fromDate, toDate, ct));
         reference.MapPost("/fx-rates", (UpsertFxRateRequest request, IReferenceDataService service, CancellationToken ct) => service.UpsertFxRateAsync(request, ct));
