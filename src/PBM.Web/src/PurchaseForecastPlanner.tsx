@@ -352,7 +352,7 @@ export default function PurchaseForecastPlanner({
             })}</TableBody>
           </Table>
         </TableContainer>
-      </Card>
+      </CardContent></Card>
     </>}
   </Stack>
 }
