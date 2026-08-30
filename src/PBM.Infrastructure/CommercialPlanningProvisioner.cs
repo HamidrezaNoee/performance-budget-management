@@ -45,17 +45,32 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         EnsureMeasure(trade, "SALES_RETURN", "برگشت از فروش", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "FOC_SALES_AMOUNT", "تخفیف / جایزه جنسی فروش", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "NET_SALES", "فروش خالص", "ریال", MeasureValueType.Amount, ref order,
-            formula: "[GROSS_SALES] - [SALES_DISCOUNT] - [SALES_RETURN]");
-        EnsureMeasure(trade, "COGS_AMOUNT", "قیمت تمام‌شده کالای تجاری فروش‌رفته", "ریال", MeasureValueType.Amount, ref order);
+            formula: "[GROSS_SALES] - [SALES_DISCOUNT] - [FOC_SALES_AMOUNT] - [SALES_RETURN]");
+        EnsureMeasure(trade, "COGS_AMOUNT", "بهای تمام‌شده فروش عادی", "ریال", MeasureValueType.Amount, ref order);
+        EnsureMeasure(trade, "FOC_COST", "بهای تمام‌شده جایزه جنسی", "ریال", MeasureValueType.Amount, ref order);
+        EnsureMeasure(trade, "SALES_COGS_TOTAL", "قیمت تمام‌شده کالای تجاری فروش‌رفته", "ریال", MeasureValueType.Amount, ref order,
+            formula: "[COGS_AMOUNT] + [FOC_COST]");
         EnsureMeasure(trade, "PURCHASE_COMPANY_DISCOUNT", "تخفیفات کمپانی (خرید)", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "SALES_GROSS_MARGIN", "سود ناخالص فروش", "ریال", MeasureValueType.Amount, ref order,
-            formula: "[NET_SALES] - [COGS_AMOUNT] + [PURCHASE_COMPANY_DISCOUNT]");
+            formula: "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]");
 
         var netSales = trade.Measures.FirstOrDefault(x => x.Code == "NET_SALES");
         if (netSales is not null)
         {
             netSales.IsCalculated = true;
-            netSales.FormulaExpression = "[GROSS_SALES] - [SALES_DISCOUNT] - [SALES_RETURN]";
+            netSales.FormulaExpression = "[GROSS_SALES] - [SALES_DISCOUNT] - [FOC_SALES_AMOUNT] - [SALES_RETURN]";
+        }
+        var salesCogs = trade.Measures.FirstOrDefault(x => x.Code == "SALES_COGS_TOTAL");
+        if (salesCogs is not null)
+        {
+            salesCogs.IsCalculated = true;
+            salesCogs.FormulaExpression = "[COGS_AMOUNT] + [FOC_COST]";
+        }
+        var margin = trade.Measures.FirstOrDefault(x => x.Code == "SALES_GROSS_MARGIN");
+        if (margin is not null)
+        {
+            margin.IsCalculated = true;
+            margin.FormulaExpression = "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]";
         }
         await db.SaveChangesAsync(ct);
     }
