@@ -17,13 +17,14 @@ public sealed class SalesPlanningService(
     private static readonly string[] SeriesCodes =
     [
         "SALES_QTY", "FREE_SALES_QTY", "SALES_PRICE", "GROSS_SALES", "SALES_DISCOUNT", "SALES_RETURN",
-        "FOC_SALES_AMOUNT", "NET_SALES", "COGS_AMOUNT", "PURCHASE_COMPANY_DISCOUNT", "SALES_GROSS_MARGIN"
+        "FOC_SALES_AMOUNT", "NET_SALES", "COGS_AMOUNT", "FOC_COST", "SALES_COGS_TOTAL",
+        "PURCHASE_COMPANY_DISCOUNT", "SALES_GROSS_MARGIN"
     ];
 
     private static readonly HashSet<string> EditableCodes = new(StringComparer.OrdinalIgnoreCase)
     {
         "SALES_QTY", "FREE_SALES_QTY", "SALES_PRICE", "SALES_DISCOUNT", "SALES_RETURN",
-        "FOC_SALES_AMOUNT", "COGS_AMOUNT", "PURCHASE_COMPANY_DISCOUNT"
+        "FOC_SALES_AMOUNT", "COGS_AMOUNT", "FOC_COST", "PURCHASE_COMPANY_DISCOUNT"
     };
 
     public async Task<SalesPlanningSetupDto> GetSetupAsync(Guid companyId, CancellationToken cancellationToken = default)
