@@ -5,12 +5,16 @@ public sealed record PurchaseDashboardMonthlyDto(
     string PeriodName,
     int Sequence,
     decimal BudgetQuantity,
+    decimal ActualQuantity,
     decimal ForecastQuantity,
     decimal BudgetPurchaseAmount,
+    decimal ActualPurchaseAmount,
     decimal ForecastPurchaseAmount,
     decimal BudgetCostAmount,
+    decimal ActualCostAmount,
     decimal ForecastCostAmount,
     decimal BudgetTotalAmount,
+    decimal ActualTotalAmount,
     decimal ForecastTotalAmount);
 
 public sealed record PurchaseDashboardCostDto(
@@ -18,22 +22,29 @@ public sealed record PurchaseDashboardCostDto(
     string Code,
     string Name,
     decimal BudgetAmount,
+    decimal ActualAmount,
     decimal ForecastAmount,
-    decimal VarianceAmount);
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount);
 
 public sealed record PurchaseDashboardDrilldownRowDto(
     Guid MemberId,
     string Code,
     string Name,
     decimal BudgetQuantity,
+    decimal ActualQuantity,
     decimal ForecastQuantity,
     decimal BudgetPurchaseAmount,
+    decimal ActualPurchaseAmount,
     decimal ForecastPurchaseAmount,
     decimal BudgetCostAmount,
+    decimal ActualCostAmount,
     decimal ForecastCostAmount,
     decimal BudgetTotalAmount,
+    decimal ActualTotalAmount,
     decimal ForecastTotalAmount,
-    decimal VarianceAmount);
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount);
 
 public sealed record PurchaseDashboardDto(
     Guid VersionId,
@@ -41,14 +52,19 @@ public sealed record PurchaseDashboardDto(
     string VersionName,
     string CurrencyCode,
     decimal BudgetQuantity,
+    decimal ActualQuantity,
     decimal ForecastQuantity,
     decimal BudgetPurchaseAmount,
+    decimal ActualPurchaseAmount,
     decimal ForecastPurchaseAmount,
     decimal BudgetCostAmount,
+    decimal ActualCostAmount,
     decimal ForecastCostAmount,
     decimal BudgetTotalAmount,
+    decimal ActualTotalAmount,
     decimal ForecastTotalAmount,
-    decimal VarianceAmount,
+    decimal ActualVarianceAmount,
+    decimal ForecastVarianceAmount,
     IReadOnlyList<PurchaseDashboardMonthlyDto> Monthly,
     IReadOnlyList<PurchaseDashboardCostDto> Costs,
     IReadOnlyList<DashboardDimensionOptionDto> Dimensions,
