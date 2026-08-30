@@ -18,6 +18,7 @@ public sealed class SecurityAdminService(
             .Where(x => x.TenantId == currentUser.TenantId)
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
             .Include(x => x.CompanyAccess).ThenInclude(x => x.Company)
+            .Include(x => x.CompanyAccess).ThenInclude(x => x.OrganizationUnit)
             .OrderBy(x => x.DisplayName)
             .ToListAsync(cancellationToken);
         return users.Select(MapUser).ToList();
@@ -68,10 +69,22 @@ public sealed class SecurityAdminService(
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         foreach (var role in roles) user.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
         foreach (var item in companies)
-            user.CompanyAccess.Add(new UserCompanyAccess { UserId = user.Id, CompanyId = item.Company.Id, CanRead = item.Input.CanRead, CanWrite = item.Input.CanWrite });
+            user.CompanyAccess.Add(new UserCompanyAccess
+            {
+                UserId = user.Id,
+                CompanyId = item.Company.Id,
+                OrganizationUnitId = item.Position?.Id,
+                CanRead = item.Input.CanRead,
+                CanWrite = item.Input.CanWrite
+            });
 
         db.Users.Add(user);
-        AddAudit("AppUser", user.Id, "CREATE", new { user.UserName, user.DisplayName, user.Email, Roles = roles.Select(x => x.Code), Companies = companies.Select(x => new { x.Company.Code, x.Input.CanRead, x.Input.CanWrite }) });
+        AddAudit("AppUser", user.Id, "CREATE", new
+        {
+            user.UserName, user.DisplayName, user.Email,
+            Roles = roles.Select(x => x.Code),
+            Companies = companies.Select(x => new { x.Company.Code, Position = x.Position?.Code, x.Input.CanRead, x.Input.CanWrite })
+        });
         await db.SaveChangesAsync(cancellationToken);
         return await GetUserAsync(user.Id, cancellationToken);
     }
@@ -97,20 +110,17 @@ public sealed class SecurityAdminService(
 
         var oldRoleIds = user.UserRoles.Select(x => x.RoleId).OrderBy(x => x).ToArray();
         var newRoleIds = roles.Select(x => x.Id).OrderBy(x => x).ToArray();
-        var oldCompanyAccess = user.CompanyAccess.Select(x => (x.CompanyId, x.CanRead, x.CanWrite)).OrderBy(x => x.CompanyId).ToArray();
-        var newCompanyAccess = companies.Select(x => (x.Company.Id, x.Input.CanRead, x.Input.CanWrite)).OrderBy(x => x.Id).ToArray();
+        var oldCompanyAccess = user.CompanyAccess.Select(x => (x.CompanyId, x.OrganizationUnitId, x.CanRead, x.CanWrite)).OrderBy(x => x.CompanyId).ToArray();
+        var newCompanyAccess = companies.Select(x => (x.Company.Id, x.Position?.Id, x.Input.CanRead, x.Input.CanWrite)).OrderBy(x => x.Id).ToArray();
         var authorizationChanged = user.IsActive != request.IsActive
             || !oldRoleIds.SequenceEqual(newRoleIds)
             || !oldCompanyAccess.SequenceEqual(newCompanyAccess);
 
         var old = new
         {
-            user.DisplayName,
-            user.Email,
-            user.IsActive,
-            user.TokenVersion,
+            user.DisplayName, user.Email, user.IsActive, user.TokenVersion,
             RoleIds = user.UserRoles.Select(x => x.RoleId).ToArray(),
-            CompanyIds = user.CompanyAccess.Select(x => new { x.CompanyId, x.CanRead, x.CanWrite }).ToArray()
+            CompanyIds = user.CompanyAccess.Select(x => new { x.CompanyId, x.OrganizationUnitId, x.CanRead, x.CanWrite }).ToArray()
         };
 
         user.DisplayName = request.DisplayName.Trim();
@@ -124,17 +134,21 @@ public sealed class SecurityAdminService(
         user.CompanyAccess.Clear();
         foreach (var role in roles) user.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
         foreach (var item in companies)
-            user.CompanyAccess.Add(new UserCompanyAccess { UserId = user.Id, CompanyId = item.Company.Id, CanRead = item.Input.CanRead, CanWrite = item.Input.CanWrite });
+            user.CompanyAccess.Add(new UserCompanyAccess
+            {
+                UserId = user.Id,
+                CompanyId = item.Company.Id,
+                OrganizationUnitId = item.Position?.Id,
+                CanRead = item.Input.CanRead,
+                CanWrite = item.Input.CanWrite
+            });
 
         AddAudit("AppUser", user.Id, "UPDATE", new
         {
-            user.DisplayName,
-            user.Email,
-            user.IsActive,
-            user.TokenVersion,
+            user.DisplayName, user.Email, user.IsActive, user.TokenVersion,
             AuthorizationChanged = authorizationChanged,
             Roles = roles.Select(x => x.Code),
-            Companies = companies.Select(x => new { x.Company.Code, x.Input.CanRead, x.Input.CanWrite })
+            Companies = companies.Select(x => new { x.Company.Code, Position = x.Position?.Code, x.Input.CanRead, x.Input.CanWrite })
         }, JsonSerializer.Serialize(old));
         await db.SaveChangesAsync(cancellationToken);
         return await GetUserAsync(user.Id, cancellationToken);
@@ -177,6 +191,7 @@ public sealed class SecurityAdminService(
             .Where(x => x.Id == userId && x.TenantId == currentUser.TenantId)
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
             .Include(x => x.CompanyAccess).ThenInclude(x => x.Company)
+            .Include(x => x.CompanyAccess).ThenInclude(x => x.OrganizationUnit)
             .SingleAsync(ct);
         return MapUser(user);
     }
@@ -188,7 +203,15 @@ public sealed class SecurityAdminService(
         user.Email,
         user.IsActive,
         user.UserRoles.Where(x => x.Role is not null).Select(x => new SecurityRoleDto(x.RoleId, x.Role!.Code, x.Role.Name)).OrderBy(x => x.Name).ToList(),
-        user.CompanyAccess.Where(x => x.Company is not null).Select(x => new UserCompanyAccessDto(x.CompanyId, x.Company!.Code, x.Company.Name, x.CanRead, x.CanWrite)).OrderBy(x => x.CompanyName).ToList());
+        user.CompanyAccess.Where(x => x.Company is not null).Select(x => new UserCompanyAccessDto(
+            x.CompanyId,
+            x.Company!.Code,
+            x.Company.Name,
+            x.OrganizationUnitId,
+            x.OrganizationUnit?.Code,
+            x.OrganizationUnit?.Name,
+            x.CanRead,
+            x.CanWrite)).OrderBy(x => x.CompanyName).ToList());
 
     private async Task<IReadOnlyList<Role>> ResolveRolesAsync(IReadOnlyList<Guid> roleIds, CancellationToken ct)
     {
@@ -199,13 +222,33 @@ public sealed class SecurityAdminService(
         return roles;
     }
 
-    private async Task<IReadOnlyList<(Company Company, UserCompanyAccessInput Input)>> ResolveCompanyAccessAsync(IReadOnlyList<UserCompanyAccessInput> inputs, CancellationToken ct)
+    private async Task<IReadOnlyList<(Company Company, OrganizationUnit? Position, UserCompanyAccessInput Input)>> ResolveCompanyAccessAsync(IReadOnlyList<UserCompanyAccessInput> inputs, CancellationToken ct)
     {
         var normalized = (inputs ?? []).GroupBy(x => x.CompanyId).Select(g => g.Last()).ToArray();
         var ids = normalized.Select(x => x.CompanyId).ToArray();
         var companies = await db.Companies.Where(x => x.TenantId == currentUser.TenantId && ids.Contains(x.Id) && x.IsActive).ToDictionaryAsync(x => x.Id, ct);
         if (companies.Count != ids.Length) throw new ArgumentException("One or more selected companies are invalid.");
-        return normalized.Select(x => (companies[x.CompanyId], new UserCompanyAccessInput(x.CompanyId, x.CanRead || x.CanWrite, x.CanWrite))).ToList();
+
+        var positionIds = normalized.Where(x => x.OrganizationUnitId.HasValue).Select(x => x.OrganizationUnitId!.Value).Distinct().ToArray();
+        var positions = await db.OrganizationUnits.AsNoTracking()
+            .Where(x => positionIds.Contains(x.Id) && x.IsActive && x.UnitType == "Position")
+            .ToDictionaryAsync(x => x.Id, ct);
+        if (positions.Count != positionIds.Length)
+            throw new ArgumentException("یک یا چند سمت انتخاب‌شده معتبر یا فعال نیستند.");
+
+        var result = new List<(Company, OrganizationUnit?, UserCompanyAccessInput)>();
+        foreach (var input in normalized)
+        {
+            OrganizationUnit? position = null;
+            if (input.OrganizationUnitId.HasValue)
+            {
+                position = positions[input.OrganizationUnitId.Value];
+                if (position.CompanyId != input.CompanyId)
+                    throw new ArgumentException("سمت انتخاب‌شده باید متعلق به همان شرکت باشد.");
+            }
+            result.Add((companies[input.CompanyId], position, new UserCompanyAccessInput(input.CompanyId, position?.Id, input.CanRead || input.CanWrite, input.CanWrite)));
+        }
+        return result;
     }
 
     private async Task EnsureLicenseAllowsAnotherUserAsync(CancellationToken ct)
