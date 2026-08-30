@@ -5,9 +5,39 @@ import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, T
 import { api } from './api'
 
 type Dim = { id: string; code: string; name: string; sequence: number }
-type Month = { periodId: string; periodName: string; sequence: number; budgetQuantity: number; forecastQuantity: number; budgetGrossSales: number; forecastGrossSales: number; budgetDiscount: number; forecastDiscount: number; budgetReturn: number; forecastReturn: number; budgetNetSales: number; forecastNetSales: number; budgetCogs: number; forecastCogs: number; budgetGrossProfit: number; forecastGrossProfit: number }
-type Row = { memberId: string; code: string; name: string; budgetQuantity: number; forecastQuantity: number; budgetGrossSales: number; forecastGrossSales: number; budgetNetSales: number; forecastNetSales: number; budgetCogs: number; forecastCogs: number; budgetGrossProfit: number; forecastGrossProfit: number; netSalesVariance: number }
-type Data = { versionId: string; versionNumber: number; versionName: string; currencyCode: string; budgetQuantity: number; forecastQuantity: number; budgetFreeQuantity: number; forecastFreeQuantity: number; budgetGrossSales: number; forecastGrossSales: number; budgetDiscount: number; forecastDiscount: number; budgetReturn: number; forecastReturn: number; budgetNetSales: number; forecastNetSales: number; budgetCogs: number; forecastCogs: number; budgetCompanyDiscount: number; forecastCompanyDiscount: number; budgetGrossProfit: number; forecastGrossProfit: number; netSalesVariance: number; monthly: Month[]; dimensions: Dim[]; selectedDimensionId?: string | null; drilldown: Row[] }
+type Month = {
+  periodId: string; periodName: string; sequence: number
+  budgetQuantity: number; actualQuantity: number; forecastQuantity: number
+  budgetGrossSales: number; actualGrossSales: number; forecastGrossSales: number
+  budgetDiscount: number; actualDiscount: number; forecastDiscount: number
+  budgetReturn: number; actualReturn: number; forecastReturn: number
+  budgetNetSales: number; actualNetSales: number; forecastNetSales: number
+  budgetCogs: number; actualCogs: number; forecastCogs: number
+  budgetGrossProfit: number; actualGrossProfit: number; forecastGrossProfit: number
+}
+type Row = {
+  memberId: string; code: string; name: string
+  budgetQuantity: number; actualQuantity: number; forecastQuantity: number
+  budgetGrossSales: number; actualGrossSales: number; forecastGrossSales: number
+  budgetNetSales: number; actualNetSales: number; forecastNetSales: number
+  budgetCogs: number; actualCogs: number; forecastCogs: number
+  budgetGrossProfit: number; actualGrossProfit: number; forecastGrossProfit: number
+  actualNetSalesVariance: number; forecastNetSalesVariance: number
+}
+type Data = {
+  versionId: string; versionNumber: number; versionName: string; currencyCode: string
+  budgetQuantity: number; actualQuantity: number; forecastQuantity: number
+  budgetFreeQuantity: number; actualFreeQuantity: number; forecastFreeQuantity: number
+  budgetGrossSales: number; actualGrossSales: number; forecastGrossSales: number
+  budgetDiscount: number; actualDiscount: number; forecastDiscount: number
+  budgetReturn: number; actualReturn: number; forecastReturn: number
+  budgetNetSales: number; actualNetSales: number; forecastNetSales: number
+  budgetCogs: number; actualCogs: number; forecastCogs: number
+  budgetCompanyDiscount: number; actualCompanyDiscount: number; forecastCompanyDiscount: number
+  budgetGrossProfit: number; actualGrossProfit: number; forecastGrossProfit: number
+  actualNetSalesVariance: number; forecastNetSalesVariance: number
+  monthly: Month[]; dimensions: Dim[]; selectedDimensionId?: string | null; drilldown: Row[]
+}
 const n = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 })
 function amount(v: number) { const a = Math.abs(v); if (a >= 1e12) return `${n.format(v / 1e12)} همت`; if (a >= 1e9) return `${n.format(v / 1e9)} میلیارد`; if (a >= 1e6) return `${n.format(v / 1e6)} میلیون`; return n.format(v) }
 function err(e: unknown) { return typeof e === 'object' && e !== null && 'response' in e ? (e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'خطا در داشبورد فروش' : 'خطا در داشبورد فروش' }
@@ -19,19 +49,33 @@ export default function SalesDashboardPanel({ companyId, fiscalYearId }: { compa
   if (busy && !data) return <Box py={5} textAlign="center"><CircularProgress /></Box>
   if (error && !data) return <Alert severity="error">{error}</Alert>
   if (!data) return <Alert severity="info">برای فروش هنوز داده TRADE ثبت نشده است.</Alert>
-  const marginBudget = data.budgetNetSales === 0 ? 0 : data.budgetGrossProfit / data.budgetNetSales * 100
-  const marginForecast = data.forecastNetSales === 0 ? 0 : data.forecastGrossProfit / data.forecastNetSales * 100
+
+  const margin = (profit: number, sales: number) => sales === 0 ? 0 : profit / sales * 100
   return <Stack spacing={2.5}>
     {error && <Alert severity="error">{error}</Alert>}
-    <Card elevation={0} sx={{ background: 'linear-gradient(135deg, rgba(2,132,199,.07), rgba(124,58,237,.06))' }}><CardContent><Stack direction="row" spacing={1} alignItems="center"><PointOfSaleRoundedIcon color="primary" /><Typography variant="h6" fontWeight={900}>داشبورد بودجه و پیش‌بینی فروش</Typography></Stack><Typography color="text.secondary" variant="body2">نسخه {data.versionNumber.toLocaleString('fa-IR')} — {data.versionName}</Typography></CardContent></Card>
+    <Card elevation={0} sx={{ background: 'linear-gradient(135deg, rgba(2,132,199,.07), rgba(124,58,237,.06))' }}><CardContent><Stack direction="row" spacing={1} alignItems="center"><PointOfSaleRoundedIcon color="primary" /><Typography variant="h6" fontWeight={900}>داشبورد Budget / Actual / Forecast فروش</Typography></Stack><Typography color="text.secondary" variant="body2">نسخه {data.versionNumber.toLocaleString('fa-IR')} — {data.versionName}؛ Actual از Ledger/ERP یا Import کنترل‌شده خوانده می‌شود.</Typography></CardContent></Card>
+
     <Box className="kpi-grid">{[
-      ['بودجه تعداد فروش', n.format(data.budgetQuantity)], ['Forecast تعداد فروش', n.format(data.forecastQuantity)], ['بودجه فروش ناخالص', amount(data.budgetGrossSales)], ['Forecast فروش ناخالص', amount(data.forecastGrossSales)], ['بودجه فروش خالص', amount(data.budgetNetSales)], ['Forecast فروش خالص', amount(data.forecastNetSales)], ['بودجه بهای تمام‌شده', amount(data.budgetCogs)], ['Forecast بهای تمام‌شده', amount(data.forecastCogs)], ['بودجه سود ناخالص', amount(data.budgetGrossProfit)], ['Forecast سود ناخالص', amount(data.forecastGrossProfit)], ['انحراف فروش خالص', amount(data.netSalesVariance)]
+      ['بودجه فروش خالص', amount(data.budgetNetSales)], ['عملکرد واقعی فروش خالص', amount(data.actualNetSales)], ['Forecast فروش خالص', amount(data.forecastNetSales)],
+      ['بودجه تعداد فروش', n.format(data.budgetQuantity)], ['عملکرد واقعی تعداد', n.format(data.actualQuantity)], ['Forecast تعداد', n.format(data.forecastQuantity)],
+      ['بودجه COGS', amount(data.budgetCogs)], ['عملکرد واقعی COGS', amount(data.actualCogs)], ['Forecast COGS', amount(data.forecastCogs)],
+      ['بودجه سود ناخالص', amount(data.budgetGrossProfit)], ['عملکرد واقعی سود ناخالص', amount(data.actualGrossProfit)], ['Forecast سود ناخالص', amount(data.forecastGrossProfit)],
+      ['انحراف Actual از بودجه', amount(data.actualNetSalesVariance)], ['انحراف Forecast از بودجه', amount(data.forecastNetSalesVariance)]
     ].map(([l, v]) => <Card key={l} className="kpi-card" elevation={0}><CardContent><Typography color="text.secondary" variant="body2">{l}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{v}</Typography></CardContent></Card>)}</Box>
-    <Card elevation={0}><CardContent><Stack direction="row" spacing={4}><Box><Typography color="text.secondary">حاشیه سود ناخالص بودجه</Typography><Typography variant="h6" fontWeight={900}>{n.format(marginBudget)}٪</Typography></Box><Box><Typography color="text.secondary">حاشیه سود ناخالص Forecast</Typography><Typography variant="h6" fontWeight={900}>{n.format(marginForecast)}٪</Typography></Box></Stack><Typography variant="h6" fontWeight={900} mt={2}>روند ماهانه فروش</Typography><Box height={350}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data.monthly}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="periodName"/><YAxis yAxisId="a"/><YAxis yAxisId="q" orientation="right"/><Tooltip formatter={(v: unknown) => n.format(Number(v ?? 0))}/><Legend/><Bar yAxisId="a" dataKey="budgetNetSales" name="بودجه فروش خالص" fill="#2563eb"/><Bar yAxisId="a" dataKey="forecastNetSales" name="Forecast فروش خالص" fill="#7c3aed"/><Line yAxisId="q" dataKey="budgetQuantity" name="بودجه تعداد" stroke="#0f766e"/><Line yAxisId="q" dataKey="forecastQuantity" name="Forecast تعداد" stroke="#d97706"/></ComposedChart></ResponsiveContainer></Box>
-      <TableContainer sx={{ maxHeight: 420 }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>ماه</TableCell><TableCell>بودجه تعداد</TableCell><TableCell>Forecast تعداد</TableCell><TableCell>بودجه ناخالص</TableCell><TableCell>تخفیف</TableCell><TableCell>برگشت</TableCell><TableCell>بودجه خالص</TableCell><TableCell>Forecast خالص</TableCell><TableCell>بودجه COGS</TableCell><TableCell>Forecast COGS</TableCell><TableCell>بودجه سود ناخالص</TableCell><TableCell>Forecast سود ناخالص</TableCell></TableRow></TableHead><TableBody>{data.monthly.map(m => <TableRow key={m.periodId} hover><TableCell>{m.periodName}</TableCell><TableCell>{n.format(m.budgetQuantity)}</TableCell><TableCell>{n.format(m.forecastQuantity)}</TableCell><TableCell>{amount(m.budgetGrossSales)}</TableCell><TableCell>{amount(m.budgetDiscount)}</TableCell><TableCell>{amount(m.budgetReturn)}</TableCell><TableCell>{amount(m.budgetNetSales)}</TableCell><TableCell>{amount(m.forecastNetSales)}</TableCell><TableCell>{amount(m.budgetCogs)}</TableCell><TableCell>{amount(m.forecastCogs)}</TableCell><TableCell>{amount(m.budgetGrossProfit)}</TableCell><TableCell>{amount(m.forecastGrossProfit)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
+
+    <Card elevation={0}><CardContent>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={4}>
+        <Box><Typography color="text.secondary">حاشیه سود ناخالص بودجه</Typography><Typography variant="h6" fontWeight={900}>{n.format(margin(data.budgetGrossProfit, data.budgetNetSales))}٪</Typography></Box>
+        <Box><Typography color="text.secondary">حاشیه سود ناخالص واقعی</Typography><Typography variant="h6" fontWeight={900}>{n.format(margin(data.actualGrossProfit, data.actualNetSales))}٪</Typography></Box>
+        <Box><Typography color="text.secondary">حاشیه سود ناخالص Forecast</Typography><Typography variant="h6" fontWeight={900}>{n.format(margin(data.forecastGrossProfit, data.forecastNetSales))}٪</Typography></Box>
+      </Stack>
+      <Typography variant="h6" fontWeight={900} mt={2}>روند ماهانه فروش</Typography>
+      <Box height={360}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data.monthly}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="periodName"/><YAxis yAxisId="a"/><YAxis yAxisId="q" orientation="right"/><Tooltip formatter={(v: unknown) => n.format(Number(v ?? 0))}/><Legend/><Bar yAxisId="a" dataKey="budgetNetSales" name="بودجه فروش خالص" fill="#2563eb"/><Bar yAxisId="a" dataKey="actualNetSales" name="Actual فروش خالص" fill="#0f766e"/><Bar yAxisId="a" dataKey="forecastNetSales" name="Forecast فروش خالص" fill="#7c3aed"/><Line yAxisId="q" dataKey="actualQuantity" name="Actual تعداد" stroke="#d97706" strokeWidth={2}/></ComposedChart></ResponsiveContainer></Box>
+      <TableContainer sx={{ maxHeight: 470 }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>ماه</TableCell><TableCell>Bud تعداد</TableCell><TableCell>Act تعداد</TableCell><TableCell>Fct تعداد</TableCell><TableCell>Bud خالص</TableCell><TableCell>Act خالص</TableCell><TableCell>Fct خالص</TableCell><TableCell>Act تخفیف</TableCell><TableCell>Act برگشت</TableCell><TableCell>Bud COGS</TableCell><TableCell>Act COGS</TableCell><TableCell>Fct COGS</TableCell><TableCell>Bud سود</TableCell><TableCell>Act سود</TableCell><TableCell>Fct سود</TableCell></TableRow></TableHead><TableBody>{data.monthly.map(m => <TableRow key={m.periodId} hover><TableCell>{m.periodName}</TableCell><TableCell>{n.format(m.budgetQuantity)}</TableCell><TableCell>{n.format(m.actualQuantity)}</TableCell><TableCell>{n.format(m.forecastQuantity)}</TableCell><TableCell>{amount(m.budgetNetSales)}</TableCell><TableCell>{amount(m.actualNetSales)}</TableCell><TableCell>{amount(m.forecastNetSales)}</TableCell><TableCell>{amount(m.actualDiscount)}</TableCell><TableCell>{amount(m.actualReturn)}</TableCell><TableCell>{amount(m.budgetCogs)}</TableCell><TableCell>{amount(m.actualCogs)}</TableCell><TableCell>{amount(m.forecastCogs)}</TableCell><TableCell>{amount(m.budgetGrossProfit)}</TableCell><TableCell>{amount(m.actualGrossProfit)}</TableCell><TableCell>{amount(m.forecastGrossProfit)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>
+
     <Card elevation={0}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} mb={2}><Box><Typography variant="h6" fontWeight={900}>Drill-down فروش</Typography><Typography color="text.secondary" variant="body2">کالا، کمپانی، مشتری، برند، منطقه، قرارداد و سایر ابعاد فروش.</Typography></Box><FormControl size="small" sx={{ minWidth: 250 }}><InputLabel>بُعد تحلیل</InputLabel><Select value={dimensionId} label="بُعد تحلیل" onChange={e => { setDimensionId(e.target.value); void load(e.target.value) }}>{data.dimensions.map(d => <MenuItem value={d.id} key={d.id}>{d.name} ({d.code})</MenuItem>)}</Select></FormControl></Stack>
-      <TableContainer sx={{ maxHeight: 500 }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>عضو</TableCell><TableCell>بودجه تعداد</TableCell><TableCell>Forecast تعداد</TableCell><TableCell>بودجه خالص</TableCell><TableCell>Forecast خالص</TableCell><TableCell>بودجه COGS</TableCell><TableCell>Forecast COGS</TableCell><TableCell>بودجه سود</TableCell><TableCell>Forecast سود</TableCell><TableCell>انحراف فروش</TableCell></TableRow></TableHead><TableBody>{data.drilldown.map(r => <TableRow key={`${r.memberId}:${r.code}`} hover><TableCell><Typography fontWeight={800}>{r.name}</Typography><Typography variant="caption">{r.code}</Typography></TableCell><TableCell>{n.format(r.budgetQuantity)}</TableCell><TableCell>{n.format(r.forecastQuantity)}</TableCell><TableCell>{amount(r.budgetNetSales)}</TableCell><TableCell>{amount(r.forecastNetSales)}</TableCell><TableCell>{amount(r.budgetCogs)}</TableCell><TableCell>{amount(r.forecastCogs)}</TableCell><TableCell>{amount(r.budgetGrossProfit)}</TableCell><TableCell>{amount(r.forecastGrossProfit)}</TableCell><TableCell>{amount(r.netSalesVariance)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
+      <TableContainer sx={{ maxHeight: 520 }}><Table stickyHeader size="small"><TableHead><TableRow><TableCell>عضو</TableCell><TableCell>Bud تعداد</TableCell><TableCell>Act تعداد</TableCell><TableCell>Fct تعداد</TableCell><TableCell>Bud خالص</TableCell><TableCell>Act خالص</TableCell><TableCell>Fct خالص</TableCell><TableCell>Act COGS</TableCell><TableCell>Act سود</TableCell><TableCell>انحراف Actual</TableCell><TableCell>انحراف Forecast</TableCell></TableRow></TableHead><TableBody>{data.drilldown.map(r => <TableRow key={`${r.memberId}:${r.code}`} hover><TableCell><Typography fontWeight={800}>{r.name}</Typography><Typography variant="caption">{r.code}</Typography></TableCell><TableCell>{n.format(r.budgetQuantity)}</TableCell><TableCell>{n.format(r.actualQuantity)}</TableCell><TableCell>{n.format(r.forecastQuantity)}</TableCell><TableCell>{amount(r.budgetNetSales)}</TableCell><TableCell>{amount(r.actualNetSales)}</TableCell><TableCell>{amount(r.forecastNetSales)}</TableCell><TableCell>{amount(r.actualCogs)}</TableCell><TableCell>{amount(r.actualGrossProfit)}</TableCell><TableCell>{amount(r.actualNetSalesVariance)}</TableCell><TableCell>{amount(r.forecastNetSalesVariance)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
     </CardContent></Card>
   </Stack>
 }
