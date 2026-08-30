@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'feat/**', 'fix/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: "PbmIntegration_2026!Strong"
+        ports:
+          - 1433:1433
+    env:
+      PBM_INTEGRATION_SQL: "Server=localhost,1433;Database=PBM_Integration_CI;User Id=sa;Password=PbmIntegration_2026!Strong;Encrypt=False;TrustServerCertificate=True"
+      PBM_DESIGNTIME_CONNECTION: "Server=localhost,1433;Database=PBM_Integration_EF;User Id=sa;Password=PbmIntegration_2026!Strong;Encrypt=False;TrustServerCertificate=True"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore PerformanceBudgetManagement.slnx
+      - name: Restore local tools
+        run: dotnet tool restore
+      - name: Build
+        run: dotnet build PerformanceBudgetManagement.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test PerformanceBudgetManagement.slnx -c Release --no-build --collect:"XPlat Code Coverage"
+      - name: Verify EF migration drift
+        shell: pwsh
+        run: |
+          $migrationDirectory = Join-Path $PWD 'src/PBM.Infrastructure/Migrations'
+          $snapshot = Get-ChildItem -Path $migrationDirectory -Filter '*ModelSnapshot.cs' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $snapshot) {
+            Write-Output '::warning title=EF migration missing::Initial EF Core migration has not been generated yet. Production startup will continue to reject migration-less schema management.'
+          } else {
+            ./scripts/ef-migrations.ps1 -Action status
+          }
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/PBM.Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
