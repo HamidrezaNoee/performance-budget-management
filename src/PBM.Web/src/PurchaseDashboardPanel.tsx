@@ -181,6 +181,32 @@ export default function PurchaseDashboardPanel({ companyId, fiscalYearId }: { co
           </ComposedChart>
         </ResponsiveContainer>
       </Box>
+      <TableContainer sx={{ maxHeight: 440, mt: 2 }}><Table stickyHeader size="small">
+        <TableHead><TableRow>
+          <TableCell>ماه</TableCell>
+          <TableCell align="left">بودجه تعداد</TableCell>
+          <TableCell align="left">Forecast تعداد</TableCell>
+          <TableCell align="left">بودجه مبلغ خرید</TableCell>
+          <TableCell align="left">بودجه هزینه</TableCell>
+          <TableCell align="left">بودجه کل</TableCell>
+          <TableCell align="left">Forecast مبلغ خرید</TableCell>
+          <TableCell align="left">Forecast هزینه</TableCell>
+          <TableCell align="left">Forecast کل</TableCell>
+          <TableCell align="left">انحراف ماه</TableCell>
+        </TableRow></TableHead>
+        <TableBody>{data.monthly.map(month => <TableRow key={month.periodId} hover>
+          <TableCell><Typography fontWeight={800}>{month.periodName}</Typography></TableCell>
+          <TableCell align="left">{number.format(month.budgetQuantity)}</TableCell>
+          <TableCell align="left">{number.format(month.forecastQuantity)}</TableCell>
+          <TableCell align="left">{formatAmount(month.budgetPurchaseAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.budgetCostAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.budgetTotalAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.forecastPurchaseAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.forecastCostAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.forecastTotalAmount)}</TableCell>
+          <TableCell align="left">{formatAmount(month.forecastTotalAmount - month.budgetTotalAmount)}</TableCell>
+        </TableRow>)}</TableBody>
+      </Table></TableContainer>
     </CardContent></Card>
 
     <Card elevation={0}><CardContent>
