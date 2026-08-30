@@ -1,0 +1,66 @@
+name: Regenerate operational migration
+
+on:
+  push:
+    branches:
+      - feat/initial-platform
+    paths:
+      - .github/workflows/regenerate-operational-migration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/initial-platform
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install EF Core CLI
+        run: dotnet tool install --global dotnet-ef --version 10.0.11
+
+      - name: Restore
+        run: dotnet restore src/PBM.Api/PBM.Api.csproj
+
+      - name: Generate operational master-data migration
+        run: >-
+          dotnet ef migrations add OperationalMasterData
+          --project src/PBM.Infrastructure/PBM.Infrastructure.csproj
+          --startup-project src/PBM.Api/PBM.Api.csproj
+          --context PbmDbContext
+          --output-dir Migrations
+
+      - name: Verify model snapshot is current
+        run: >-
+          dotnet ef migrations has-pending-model-changes
+          --project src/PBM.Infrastructure/PBM.Infrastructure.csproj
+          --startup-project src/PBM.Api/PBM.Api.csproj
+          --context PbmDbContext
+
+      - name: Build API
+        run: dotnet build src/PBM.Api/PBM.Api.csproj -c Release --no-restore
+
+      - name: Commit generated migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git add src/PBM.Infrastructure/Migrations
+          if git diff --cached --quiet; then
+            echo "No generated migration changes found."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Generate operational master data EF migration"
+          git push origin HEAD:feat/initial-platform
