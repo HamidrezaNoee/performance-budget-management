@@ -31,6 +31,7 @@ type CostSeries = { costTypeId: string; code: string; name: string; amounts: Per
 type PlanningData = { periods: Period[]; quantity: PeriodValue[]; amount: PeriodValue[]; costs: CostSeries[] }
 type PlanningKind = 'budget' | 'forecast'
 
+const primaryDimensionCodes = new Set(['PRODUCT', 'SUPPLIER', 'BRAND', 'CURRENCY'])
 const number = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 })
 const compact = new Intl.NumberFormat('fa-IR', { notation: 'compact', maximumFractionDigits: 1 })
 
@@ -74,15 +75,13 @@ export default function PurchaseForecastPlanner({
   const versions = useMemo(() => [...(plan?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber), [plan])
   const version = versions.find(x => x.id === versionId) ?? versions[0]
   const editable = canWrite && !!version && version.status === 0 && !version.isLocked
-  const selectedDimensions = useMemo(() => {
-    if (!setup) return []
-    return setup.dimensions
-      .filter(dimension => !!selections[dimension.id])
-      .map(dimension => ({ dimensionId: dimension.id, memberId: selections[dimension.id] }))
-  }, [setup, selections])
-  const requiredReady = useMemo(() => !!setup && setup.dimensions
+  const visibleDimensions = useMemo(() => setup?.dimensions.filter(dimension => primaryDimensionCodes.has(dimension.code.toUpperCase())) ?? [], [setup])
+  const selectedDimensions = useMemo(() => visibleDimensions
+    .filter(dimension => !!selections[dimension.id])
+    .map(dimension => ({ dimensionId: dimension.id, memberId: selections[dimension.id] })), [visibleDimensions, selections])
+  const requiredReady = useMemo(() => !!setup && visibleDimensions
     .filter(x => x.isRequired || x.code.toUpperCase() === 'PRODUCT')
-    .every(x => !!selections[x.id]), [setup, selections])
+    .every(x => !!selections[x.id]), [setup, visibleDimensions, selections])
 
   const reloadSetupAndPlan = async () => {
     if (!companyId || !fiscalYearId) return
@@ -98,13 +97,7 @@ export default function PurchaseForecastPlanner({
       setPlan(nextPlan)
       const latest = [...(nextPlan?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)[0]
       setVersionId(latest?.id ?? '')
-
-      const defaults: Record<string, string> = {}
-      nextSetup.dimensions.forEach(dimension => {
-        if ((dimension.isRequired || dimension.code.toUpperCase() === 'PRODUCT') && dimension.members.length)
-          defaults[dimension.id] = dimension.members[0].id
-      })
-      setSelections(defaults)
+      setSelections({})
     } catch (requestError) {
       setError(apiError(requestError, 'دریافت تنظیمات برنامه‌ریزی خرید ناموفق بود.'))
     } finally { setBusy(false) }
@@ -212,7 +205,7 @@ export default function PurchaseForecastPlanner({
               <Chip label={planningKind === 'budget' ? 'Budget' : 'Forecast'} color={planningKind === 'budget' ? 'success' : 'primary'} variant="outlined" />
             </Stack>
             <Typography color="text.secondary" mt={1}>
-              ثبت ماهانه تعداد، مبلغ خرید و هزینه‌های جانبی به تفکیک کالا و هر ترکیب دلخواه از تأمین‌کننده، برند، ارز، قرارداد، منطقه، واحد، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی.
+              فعلاً فرم خرید فقط بر کالا، تأمین‌کننده، برند و ارز متمرکز است. قرارداد، منطقه، واحد، مرکز هزینه، حساب، برنامه، فعالیت، پروژه و منبع تأمین مالی در اطلاعات پایه قابل نگهداری‌اند و بعداً به این فرم اضافه می‌شوند.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
@@ -232,16 +225,22 @@ export default function PurchaseForecastPlanner({
 
     {setup && <Card elevation={0}><CardContent>
       <Typography variant="h6" fontWeight={900}>مختصات {planningLabel}</Typography>
-      <Typography color="text.secondary" mb={2}>کالا اجباری است؛ سایر Dimensionها را فقط زمانی انتخاب کنید که می‌خواهید داده در آن سطح تفکیک شود.</Typography>
+      <Typography color="text.secondary" mb={2}>کالا اجباری است؛ تأمین‌کننده، برند و ارز اختیاری‌اند. هیچ مقداری به‌صورت خودکار انتخاب نمی‌شود.</Typography>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.3} flexWrap="wrap" useFlexGap>
-        {setup.dimensions.map(dimension => <FormControl key={dimension.id} size="small" sx={{ minWidth: 205 }}>
+        {visibleDimensions.map(dimension => <FormControl key={dimension.id} size="small" sx={{ minWidth: 205 }}>
           <InputLabel>{dimension.name}{dimension.isRequired || dimension.code.toUpperCase() === 'PRODUCT' ? ' *' : ''}</InputLabel>
           <Select
+            displayEmpty
             label={`${dimension.name}${dimension.isRequired || dimension.code.toUpperCase() === 'PRODUCT' ? ' *' : ''}`}
             value={selections[dimension.id] ?? ''}
             onChange={e => setSelections(current => ({ ...current, [dimension.id]: e.target.value }))}
+            renderValue={selected => {
+              if (!selected) return <Typography component="span" color="text.secondary">انتخاب کنید</Typography>
+              const member = dimension.members.find(item => item.id === selected)
+              return member ? `${member.name} — ${member.code}` : ''
+            }}
           >
-            {!dimension.isRequired && dimension.code.toUpperCase() !== 'PRODUCT' && <MenuItem value=""><em>بدون تفکیک</em></MenuItem>}
+            <MenuItem value=""><em>انتخاب کنید</em></MenuItem>
             {dimension.members.map(member => <MenuItem key={member.id} value={member.id}>{member.name} — {member.code}</MenuItem>)}
           </Select>
         </FormControl>)}
@@ -252,7 +251,8 @@ export default function PurchaseForecastPlanner({
           </Select>
         </FormControl>}
       </Stack>
-      {!requiredReady && <Alert severity="warning" sx={{ mt: 2 }}>برای ادامه، حداقل کالا و تمام Dimensionهای اجباری را انتخاب کنید.</Alert>}
+      {!requiredReady && <Alert severity="warning" sx={{ mt: 2 }}>برای ادامه ابتدا کالا را انتخاب کنید.</Alert>}
+      <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>نسخه یک Dimension نیست؛ نسخه اولیه هنگام ایجاد برنامه ساخته می‌شود و اصلاحیه‌های بعدی از گردش نسخه بودجه مدیریت می‌شوند.</Typography>
       {version && !editable && <Alert severity="warning" sx={{ mt: 2 }}>این نسخه Draft باز نیست؛ اطلاعات فقط قابل مشاهده است.</Alert>}
     </CardContent></Card>}
 
