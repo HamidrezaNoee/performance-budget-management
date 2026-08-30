@@ -86,15 +86,10 @@ public sealed class PurchaseForecastService(
             if (!measures.ContainsKey(code))
                 throw new InvalidOperationException($"Purchase forecast measure '{code}' is not initialized. Restart the API to run PlanningSeedData.");
 
-        var baseCurrencyCode = await db.Currencies.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency)
-            .Select(x => x.Code)
-            .FirstOrDefaultAsync(cancellationToken) ?? "IRR";
-
         return new PurchaseForecastSetupDto(
             model.Id,
             model.Name,
-            baseCurrencyCode,
+            await GetBaseCurrencyAsync(tenantId, cancellationToken),
             dimensions,
             costTypes,
             ToMeasureDto(measures[QuantityMeasureCode]),
@@ -196,7 +191,7 @@ public sealed class PurchaseForecastService(
             x => BudgetCoordinateKey.Create([.. dimensions, new DimensionSelection(costDimension.Id, x.Id)]));
         var hashValues = costHashes.Values.Distinct().ToArray();
         var costMeasureIds = new[] { measures[CostAmountMeasureCode].Id, measures[CostRateMeasureCode].Id };
-        var costFacts = hashValues.Length == 0
+        List<BudgetFact> costFacts = hashValues.Length == 0
             ? []
             : await db.BudgetFacts.AsNoTracking()
                 .Where(x => x.VersionId == request.VersionId
@@ -232,16 +227,19 @@ public sealed class PurchaseForecastService(
         var code = (request.MeasureCode ?? string.Empty).Trim().ToUpperInvariant();
         if (code is not (QuantityMeasureCode or AmountMeasureCode or CostAmountMeasureCode or CostRateMeasureCode))
             throw new ArgumentException("Unsupported purchase forecast measure code.");
+        if (request.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(request.Value), "Purchase forecast values cannot be negative.");
 
         var measure = await db.Measures.AsNoTracking()
             .SingleAsync(x => x.BudgetModelId == context.ModelId && x.Code == code, cancellationToken);
         var finalDimensions = dimensions.ToList();
+        DimensionDefinition? costDimension = null;
 
         if (code is CostAmountMeasureCode or CostRateMeasureCode)
         {
             if (!request.CostTypeId.HasValue)
                 throw new ArgumentException("A purchase cost type is required for a cost forecast value.");
-            var costDimension = await db.Dimensions.AsNoTracking()
+            costDimension = await db.Dimensions.AsNoTracking()
                 .SingleAsync(x => x.TenantId == context.TenantId && x.Code == CostDimensionCode && x.IsActive, cancellationToken);
             var validCostType = await db.DimensionMembers.AsNoTracking().AnyAsync(x =>
                 x.Id == request.CostTypeId.Value
@@ -257,13 +255,10 @@ public sealed class PurchaseForecastService(
         }
 
         var baseCurrencyCode = measure.ValueType == MeasureValueType.Amount
-            ? await db.Currencies.AsNoTracking()
-                .Where(x => x.TenantId == context.TenantId && x.IsActive && x.IsBaseCurrency)
-                .Select(x => x.Code)
-                .FirstOrDefaultAsync(cancellationToken) ?? "IRR"
+            ? await GetBaseCurrencyAsync(context.TenantId, cancellationToken)
             : null;
 
-        return await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
+        var id = await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
             request.VersionId,
             request.PeriodId,
             measure.Id,
@@ -273,6 +268,118 @@ public sealed class PurchaseForecastService(
             finalDimensions,
             "PurchaseForecastPlanner",
             request.Note), cancellationToken);
+
+        if (code == CostRateMeasureCode && request.CostTypeId.HasValue && costDimension is not null)
+        {
+            var purchaseAmount = await GetPurchaseAmountAsync(
+                request.VersionId, request.PeriodId, context.ModelId, dimensions, cancellationToken);
+            await UpsertRateDrivenCostAmountAsync(
+                context,
+                request.PeriodId,
+                dimensions,
+                costDimension.Id,
+                request.CostTypeId.Value,
+                purchaseAmount,
+                request.Value,
+                cancellationToken);
+        }
+        else if (code == AmountMeasureCode)
+        {
+            await RecalculateRateDrivenCostsAsync(
+                context,
+                request.PeriodId,
+                dimensions,
+                request.Value,
+                cancellationToken);
+        }
+
+        return id;
+    }
+
+    private async Task RecalculateRateDrivenCostsAsync(
+        ForecastContext context,
+        Guid periodId,
+        IReadOnlyList<DimensionSelection> baseDimensions,
+        decimal purchaseAmount,
+        CancellationToken ct)
+    {
+        var costDimension = await db.Dimensions.AsNoTracking()
+            .SingleAsync(x => x.TenantId == context.TenantId && x.Code == CostDimensionCode && x.IsActive, ct);
+        var rateMeasureId = await db.Measures.AsNoTracking()
+            .Where(x => x.BudgetModelId == context.ModelId && x.Code == CostRateMeasureCode)
+            .Select(x => x.Id)
+            .SingleAsync(ct);
+        var costTypes = await db.DimensionMembers.AsNoTracking()
+            .Where(x => x.DimensionId == costDimension.Id
+                && x.IsActive
+                && (x.CompanyId == null || x.CompanyId == context.CompanyId))
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        foreach (var costTypeId in costTypes)
+        {
+            var dimensions = baseDimensions.Concat([new DimensionSelection(costDimension.Id, costTypeId)]).ToList();
+            var hash = BudgetCoordinateKey.Create(dimensions);
+            var rate = await db.BudgetFacts.AsNoTracking()
+                .Where(x => x.VersionId == context.VersionId
+                    && x.PeriodId == periodId
+                    && x.MeasureId == rateMeasureId
+                    && x.ValueKind == ValueKind.Forecast
+                    && x.CoordinateHash == hash)
+                .Select(x => (decimal?)x.Value)
+                .SingleOrDefaultAsync(ct);
+            if (rate.HasValue)
+                await UpsertRateDrivenCostAmountAsync(
+                    context, periodId, baseDimensions, costDimension.Id, costTypeId, purchaseAmount, rate.Value, ct);
+        }
+    }
+
+    private async Task UpsertRateDrivenCostAmountAsync(
+        ForecastContext context,
+        Guid periodId,
+        IReadOnlyList<DimensionSelection> baseDimensions,
+        Guid costDimensionId,
+        Guid costTypeId,
+        decimal purchaseAmount,
+        decimal rate,
+        CancellationToken ct)
+    {
+        var amountMeasure = await db.Measures.AsNoTracking()
+            .SingleAsync(x => x.BudgetModelId == context.ModelId && x.Code == CostAmountMeasureCode, ct);
+        var dimensions = baseDimensions.Concat([new DimensionSelection(costDimensionId, costTypeId)]).ToList();
+        var calculatedAmount = decimal.Round(purchaseAmount * rate / 100m, 2, MidpointRounding.AwayFromZero);
+        await budgetService.UpsertFactAsync(new UpsertBudgetFactRequest(
+            context.VersionId,
+            periodId,
+            amountMeasure.Id,
+            ValueKind.Forecast,
+            calculatedAmount,
+            await GetBaseCurrencyAsync(context.TenantId, ct),
+            dimensions,
+            "PurchaseForecastRate",
+            $"Calculated from purchase amount using {rate}% purchase cost rate."), ct);
+    }
+
+    private async Task<decimal> GetPurchaseAmountAsync(
+        Guid versionId,
+        Guid periodId,
+        Guid modelId,
+        IReadOnlyList<DimensionSelection> dimensions,
+        CancellationToken ct)
+    {
+        var amountMeasureId = await db.Measures.AsNoTracking()
+            .Where(x => x.BudgetModelId == modelId && x.Code == AmountMeasureCode)
+            .Select(x => x.Id)
+            .SingleAsync(ct);
+        var hash = BudgetCoordinateKey.Create(dimensions);
+        return await db.BudgetFacts.AsNoTracking()
+            .Where(x => x.VersionId == versionId
+                && x.PeriodId == periodId
+                && x.MeasureId == amountMeasureId
+                && x.ValueKind == ValueKind.Forecast
+                && x.CoordinateHash == hash)
+            .Select(x => (decimal?)x.Value)
+            .SingleOrDefaultAsync(ct) ?? 0m;
     }
 
     private async Task<ForecastContext> ResolveContextAsync(Guid versionId, CancellationToken ct)
@@ -280,6 +387,7 @@ public sealed class PurchaseForecastService(
         var context = await db.BudgetVersions.AsNoTracking()
             .Where(x => x.Id == versionId)
             .Select(x => new ForecastContext(
+                x.Id,
                 x.BudgetPlan!.Company!.TenantId,
                 x.BudgetPlan.CompanyId,
                 x.BudgetPlan.FiscalYearId,
@@ -316,7 +424,8 @@ public sealed class PurchaseForecastService(
             throw new ArgumentException("One or more required TRADE dimensions are missing.");
         if (modelDimensions.Any(x => x.Code == ProductDimensionCode && !suppliedIds.Contains(x.DimensionId)))
             throw new ArgumentException("PRODUCT is required for purchase forecasting.");
-        var costDimensionId = modelDimensions.Where(x => x.Code == CostDimensionCode).Select(x => (Guid?)x.DimensionId).SingleOrDefault();
+        var costDimensionId = modelDimensions.Where(x => x.Code == CostDimensionCode)
+            .Select(x => (Guid?)x.DimensionId).SingleOrDefault();
         if (costDimensionId.HasValue && suppliedIds.Contains(costDimensionId.Value))
             throw new ArgumentException("PURCHASECOST is managed separately and must not be included in the base dimension selection.");
 
@@ -334,6 +443,12 @@ public sealed class PurchaseForecastService(
 
         return selections.OrderBy(x => x.DimensionId).ToList();
     }
+
+    private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
+        await db.Currencies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency)
+            .Select(x => x.Code)
+            .FirstOrDefaultAsync(ct) ?? "IRR";
 
     private static IReadOnlyList<PurchaseForecastPeriodValueDto> BuildSeries(
         IReadOnlyList<FiscalPeriodDto> periods,
@@ -370,6 +485,7 @@ public sealed class PurchaseForecastService(
     }
 
     private sealed record ForecastContext(
+        Guid VersionId,
         Guid TenantId,
         Guid CompanyId,
         Guid FiscalYearId,
