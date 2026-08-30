@@ -1,7 +1,15 @@
 namespace PBM.Application;
 
 public sealed record SecurityRoleDto(Guid Id, string Code, string Name);
-public sealed record UserCompanyAccessDto(Guid CompanyId, string CompanyCode, string CompanyName, bool CanRead, bool CanWrite);
+public sealed record UserCompanyAccessDto(
+    Guid CompanyId,
+    string CompanyCode,
+    string CompanyName,
+    Guid? OrganizationUnitId,
+    string? OrganizationUnitCode,
+    string? OrganizationUnitName,
+    bool CanRead,
+    bool CanWrite);
 public sealed record SecurityUserDto(
     Guid Id,
     string UserName,
@@ -11,7 +19,7 @@ public sealed record SecurityUserDto(
     IReadOnlyList<SecurityRoleDto> Roles,
     IReadOnlyList<UserCompanyAccessDto> CompanyAccess);
 
-public sealed record UserCompanyAccessInput(Guid CompanyId, bool CanRead, bool CanWrite);
+public sealed record UserCompanyAccessInput(Guid CompanyId, Guid? OrganizationUnitId, bool CanRead, bool CanWrite);
 public sealed record CreateSecurityUserRequest(
     string UserName,
     string DisplayName,
