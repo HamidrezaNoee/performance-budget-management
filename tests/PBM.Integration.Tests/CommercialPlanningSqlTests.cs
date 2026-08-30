@@ -189,7 +189,8 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
                 "ACCOUNT" => dimension.Members.FirstOrDefault(x => x.Code == "EXPENSE_BUDGET") ?? dimension.Members.FirstOrDefault(),
                 _ => dimension.Members.FirstOrDefault()
             };
-            member ??= throw new InvalidOperationException($"Required expense dimension {dimension.Code} has no requested member.");
+            if (member is null)
+                throw new InvalidOperationException($"Required expense dimension {dimension.Code} has no requested member.");
             selections.Add(new DimensionSelection(dimension.Id, member.Id));
         }
         return selections;
