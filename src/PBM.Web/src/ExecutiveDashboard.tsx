@@ -5,6 +5,7 @@ import {
 } from '@mui/material'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from './api'
+import PortfolioFinancialPanel from './PortfolioFinancialPanel'
 import PurchaseDashboardPanel from './PurchaseDashboardPanel'
 import SalesDashboardPanel from './SalesDashboardPanel'
 import ExpenseDashboardPanel from './ExpenseDashboardPanel'
@@ -57,6 +58,7 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
   const selectedMetric = useMemo(() => metrics.find(x => x.code === metricCode), [metrics, metricCode])
   const summary = measureSummary?.summary ?? null
   const commercialPanels = <>
+    <PortfolioFinancialPanel companyId={companyId} fiscalYearId={fiscalYearId} />
     <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
     <SalesDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
     <ExpenseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
@@ -69,7 +71,7 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
   return <Stack spacing={3}>
     {commercialPanels}
     {error && <Alert severity="error">{error}</Alert>}
-    <Card elevation={0}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between"><Box><Typography variant="h6" fontWeight={900}>شاخص داشبورد اجرایی</Typography><Typography color="text.secondary" variant="body2">کارت‌ها، روند ماهانه و Drill-down عمومی بر اساس یک Measure واحد هستند؛ پنل‌های خرید، فروش و هزینه در بالا گزارش‌های دامنه‌ای مستقل‌اند.</Typography></Box><FormControl size="small" sx={{ minWidth: 280 }}><InputLabel>شاخص مالی</InputLabel><Select value={metricCode} label="شاخص مالی" onChange={e => setMetricCode(e.target.value)}>{metrics.map(m => <MenuItem key={m.code} value={m.code}>{m.name} ({m.code})</MenuItem>)}</Select></FormControl></Stack>{selectedMetric && <Typography variant="caption" color="text.secondary" display="block" mt={1.5}>واحد: {selectedMetric.unit || 'مبلغ'} — ارز پایه: {selectedMetric.currencyCode}</Typography>}</CardContent></Card>
+    <Card elevation={0}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between"><Box><Typography variant="h6" fontWeight={900}>شاخص داشبورد اجرایی</Typography><Typography color="text.secondary" variant="body2">کارت‌ها، روند ماهانه و Drill-down عمومی بر اساس یک Measure واحد هستند؛ پنل‌های Portfolio، خرید، فروش و هزینه در بالا گزارش‌های دامنه‌ای مستقل‌اند.</Typography></Box><FormControl size="small" sx={{ minWidth: 280 }}><InputLabel>شاخص مالی</InputLabel><Select value={metricCode} label="شاخص مالی" onChange={e => setMetricCode(e.target.value)}>{metrics.map(m => <MenuItem key={m.code} value={m.code}>{m.name} ({m.code})</MenuItem>)}</Select></FormControl></Stack>{selectedMetric && <Typography variant="caption" color="text.secondary" display="block" mt={1.5}>واحد: {selectedMetric.unit || 'مبلغ'} — ارز پایه: {selectedMetric.currencyCode}</Typography>}</CardContent></Card>
     {loadingSummary && <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>}
     {!loadingSummary && summary && <>
       <Box className="kpi-grid">{[['بودجه مصوب', formatAmount(summary.budget)], ['عملکرد واقعی', formatAmount(summary.actual)], ['تعهدات', formatAmount(summary.commitment)], ['پیش‌بینی پایان سال', formatAmount(summary.forecast)], ['مانده بودجه', formatAmount(summary.remaining)], ['انحراف', formatAmount(summary.variance)], ['درصد تحقق', `${percent.format(summary.budgetUtilizationPercent)}٪`]].map(([label, value]) => <Card key={label} className="kpi-card" elevation={0}><CardContent><Typography color="text.secondary" variant="body2">{label}</Typography><Typography variant="h5" fontWeight={900} mt={1}>{value}</Typography></CardContent></Card>)}</Box>
