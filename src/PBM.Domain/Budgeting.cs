@@ -25,6 +25,7 @@ public sealed class DimensionMember : Entity
     public required string Code { get; set; }
     public required string Name { get; set; }
     public string? ExternalKey { get; set; }
+    public string? MetadataJson { get; set; }
     public bool IsActive { get; set; } = true;
     public DimensionDefinition? Dimension { get; set; }
     public DimensionMember? Parent { get; set; }
