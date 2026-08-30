@@ -7,6 +7,7 @@ import {
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
 import { api } from './api'
 
 type Dimension = {
@@ -31,6 +32,12 @@ type Member = {
 
 type Scope = 'company' | 'global'
 
+const primaryDimensionCodes = new Set(['PRODUCT', 'SUPPLIER', 'BRAND', 'CURRENCY'])
+const advancedDimensionCodes = new Set([
+  'CUSTOMER', 'CONTRACT', 'REGION', 'DEPARTMENT', 'COSTCENTER', 'ACCOUNT',
+  'PROGRAM', 'ACTIVITY', 'PROJECT', 'FUNDINGSOURCE', 'EXPENSECLASS', 'EXPENSEITEM', 'PURCHASECOST'
+])
+
 function apiError(error: unknown, fallback: string) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = (error as { response?: { data?: { detail?: string; message?: string; title?: string } } }).response
@@ -51,13 +58,20 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [externalKey, setExternalKey] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
   const selectedDimension = dimensions.find(x => x.id === dimensionId)
-  const isProduct = selectedDimension?.code.toUpperCase() === 'PRODUCT'
+  const selectedCode = selectedDimension?.code.toUpperCase() ?? ''
+  const isProduct = selectedCode === 'PRODUCT'
+  const isCurrency = selectedCode === 'CURRENCY'
+  const visibleDimensions = useMemo(() => dimensions.filter(item => {
+    const code = item.code.toUpperCase()
+    return primaryDimensionCodes.has(code) || (showAdvanced && (advancedDimensionCodes.has(code) || !primaryDimensionCodes.has(code)))
+  }), [dimensions, showAdvanced])
 
   const loadMembers = async (targetDimensionId = dimensionId) => {
     if (!targetDimensionId || !companyId) { setMembers([]); return }
@@ -79,7 +93,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
       const response = await api.get<Dimension[]>('/master-data/dimensions')
       setDimensions(response.data)
       const product = response.data.find(x => x.code.toUpperCase() === 'PRODUCT')
-      const nextId = product?.id ?? response.data[0]?.id ?? ''
+      const nextId = product?.id ?? response.data.find(x => primaryDimensionCodes.has(x.code.toUpperCase()))?.id ?? ''
       setDimensionId(nextId)
       if (nextId) await loadMembers(nextId)
       else setMembers([])
@@ -90,6 +104,11 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
 
   useEffect(() => { void loadDimensions() }, [companyId])
   useEffect(() => { if (dimensionId) void loadMembers(dimensionId) }, [dimensionId])
+  useEffect(() => {
+    if (showAdvanced || !selectedDimension || primaryDimensionCodes.has(selectedDimension.code.toUpperCase())) return
+    const product = dimensions.find(x => x.code.toUpperCase() === 'PRODUCT')
+    setDimensionId(product?.id ?? dimensions.find(x => primaryDimensionCodes.has(x.code.toUpperCase()))?.id ?? '')
+  }, [showAdvanced])
 
   const createMember = async () => {
     if (!canManage || !dimensionId || !companyId || !code.trim() || !name.trim()) return
@@ -134,29 +153,45 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
         <Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <Inventory2RoundedIcon color="primary" />
-            <Typography variant="h6" fontWeight={900}>کالا و داده‌های پایه بودجه</Typography>
+            <Typography variant="h6" fontWeight={900}>اطلاعات پایه بودجه</Typography>
           </Stack>
           <Typography color="text.secondary" mt={0.7}>
-            کالا، تأمین‌کننده، برند و سایر اعضای Dimensionها را از این بخش مدیریت کنید. فهرست «کالا» در بودجه خرید و فروش مستقیماً از PRODUCT خوانده می‌شود.
+            در حالت عادی فقط کالا، تأمین‌کننده، برند و ارز نمایش داده می‌شوند. داده‌های پایه تکمیلی از همین بخش قابل تعریف‌اند ولی فعلاً از فرم‌های خرید و فروش پنهان شده‌اند.
           </Typography>
         </Box>
-        <Button startIcon={<RefreshRoundedIcon />} onClick={() => void loadDimensions()} disabled={busy || saving}>بازخوانی</Button>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button startIcon={<TuneRoundedIcon />} variant={showAdvanced ? 'contained' : 'outlined'} onClick={() => setShowAdvanced(x => !x)}>
+            {showAdvanced ? 'فقط اطلاعات اصلی' : 'نمایش اطلاعات تکمیلی'}
+          </Button>
+          <Button startIcon={<RefreshRoundedIcon />} onClick={() => void loadDimensions()} disabled={busy || saving}>بازخوانی</Button>
+        </Stack>
       </Stack>
+
+      <Alert severity="info" sx={{ mb: 2 }}>
+        برای تعریف شرکت جدید از تب «شرکت‌ها و ساختار سازمانی» در همین صفحه تنظیمات استفاده کنید. نسخه بودجه Dimension نیست و از بخش برنامه‌ریزی و گردش نسخه‌ها مدیریت می‌شود.
+      </Alert>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {message && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMessage('')}>{message}</Alert>}
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} mb={2}>
-        <FormControl size="small" sx={{ minWidth: 260 }}>
+        <FormControl size="small" sx={{ minWidth: 290 }}>
           <InputLabel>نوع داده پایه</InputLabel>
           <Select label="نوع داده پایه" value={dimensionId} onChange={e => setDimensionId(e.target.value)}>
-            {dimensions.map(item => <MenuItem key={item.id} value={item.id}>{item.name} — {item.code}</MenuItem>)}
+            {visibleDimensions.map(item => <MenuItem key={item.id} value={item.id}>{item.name} — {item.code}</MenuItem>)}
           </Select>
         </FormControl>
         {isProduct && <Alert severity="info" sx={{ py: 0 }}>
-          برای شروع بودجه خرید، حداقل یک کالا در همین بخش ثبت کنید.
+          برای شروع بودجه خرید یا فروش، حداقل یک کالا ثبت کنید.
+        </Alert>}
+        {isCurrency && <Alert severity="info" sx={{ py: 0 }}>
+          کدهای ارز بودجه را اینجا تعریف کنید؛ نرخ تبدیل ارز در تب «ارز و نرخ ارز» نگهداری می‌شود.
         </Alert>}
       </Stack>
+
+      {showAdvanced && <Alert severity="warning" sx={{ mb: 2 }}>
+        حالت تکمیلی فعال است: مشتری، قرارداد، منطقه، واحد سازمانی، مرکز هزینه، حساب، برنامه، فعالیت، پروژه، منبع تأمین مالی و سایر Dimensionهای تخصصی قابل مدیریت هستند.
+      </Alert>}
 
       {canManage ? <Card variant="outlined" sx={{ mb: 2 }}><CardContent>
         <Typography fontWeight={900} mb={1.5}>افزودن {selectedDimension?.name ?? 'عضو جدید'}</Typography>
@@ -166,7 +201,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
             label="کد *"
             value={code}
             onChange={e => setCode(e.target.value.toUpperCase())}
-            placeholder={isProduct ? 'SYLPHY-2026-EP' : 'CODE-001'}
+            placeholder={isProduct ? 'SYLPHY-2026-EP' : isCurrency ? 'USD' : 'CODE-001'}
             sx={{ minWidth: 190, direction: 'ltr' }}
           />
           <TextField
@@ -174,7 +209,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
             label="نام *"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder={isProduct ? 'Nissan Sylphy 2026 e-Power' : 'نام داده پایه'}
+            placeholder={isProduct ? 'Nissan Sylphy 2026 e-Power' : isCurrency ? 'دلار آمریکا' : 'نام داده پایه'}
             sx={{ minWidth: 270 }}
           />
           <TextField
@@ -202,7 +237,7 @@ export default function MasterDataAdmin({ companyId, roles }: { companyId: strin
           </Button>
         </Stack>
         <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>
-          برای اتصال آینده به ERP می‌توانید کد کالا/طرف حساب سیستم مبدأ را در «کلید ERP» نگهداری کنید. حذف فیزیکی انجام نمی‌شود؛ اعضای استفاده‌شده را غیرفعال کنید.
+          برای اتصال آینده به ERP می‌توانید کد سیستم مبدأ را در «کلید ERP» نگهداری کنید. حذف فیزیکی انجام نمی‌شود؛ اعضای استفاده‌شده را غیرفعال کنید.
         </Typography>
       </CardContent></Card> : <Alert severity="info" sx={{ mb: 2 }}>ثبت داده پایه برای مدیر سامانه یا مدیر بودجه فعال است.</Alert>}
 
