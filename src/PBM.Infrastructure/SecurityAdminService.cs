@@ -110,8 +110,14 @@ public sealed class SecurityAdminService(
 
         var oldRoleIds = user.UserRoles.Select(x => x.RoleId).OrderBy(x => x).ToArray();
         var newRoleIds = roles.Select(x => x.Id).OrderBy(x => x).ToArray();
-        var oldCompanyAccess = user.CompanyAccess.Select(x => (x.CompanyId, x.OrganizationUnitId, x.CanRead, x.CanWrite)).OrderBy(x => x.CompanyId).ToArray();
-        var newCompanyAccess = companies.Select(x => (x.Company.Id, x.Position?.Id, x.Input.CanRead, x.Input.CanWrite)).OrderBy(x => x.Id).ToArray();
+        var oldCompanyAccess = user.CompanyAccess
+            .Select(x => (CompanyId: x.CompanyId, OrganizationUnitId: x.OrganizationUnitId, CanRead: x.CanRead, CanWrite: x.CanWrite))
+            .OrderBy(x => x.CompanyId)
+            .ToArray();
+        var newCompanyAccess = companies
+            .Select(x => (CompanyId: x.Company.Id, OrganizationUnitId: x.Position?.Id, CanRead: x.Input.CanRead, CanWrite: x.Input.CanWrite))
+            .OrderBy(x => x.CompanyId)
+            .ToArray();
         var authorizationChanged = user.IsActive != request.IsActive
             || !oldRoleIds.SequenceEqual(newRoleIds)
             || !oldCompanyAccess.SequenceEqual(newCompanyAccess);
