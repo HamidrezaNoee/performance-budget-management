@@ -15,7 +15,7 @@ type AccessState = Record<string, { canRead: boolean; canWrite: boolean }>
 
 const faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
-export default function SecurityAdmin() {
+export default function SecurityAdmin({ showLicense = true }: { showLicense?: boolean }) {
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
@@ -89,7 +89,7 @@ export default function SecurityAdmin() {
 
   return <Stack spacing={2.5}>
     {error && <Alert severity="error">{error}</Alert>}
-    {license && <Box className="kpi-grid">
+    {showLicense && license && <Box className="kpi-grid">
       <Metric title="کاربران فعال" value={`${license.activeUsers.toLocaleString('fa-IR')} / ${license.maxUsers.toLocaleString('fa-IR')}`} />
       <Metric title="شرکت‌های فعال" value={`${license.activeCompanies.toLocaleString('fa-IR')} / ${license.maxCompanies.toLocaleString('fa-IR')}`} />
       <Metric title="اعتبار لایسنس" value={license.isActive ? 'فعال' : 'غیرفعال'} />
