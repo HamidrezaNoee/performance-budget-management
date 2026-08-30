@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PBM.Domain;
 
@@ -36,9 +37,90 @@ public static class EnterpriseSeedData
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        await EnsureOperationalMasterDimensionsAsync(db, tenant.Id, cancellationToken);
+        await SyncCurrencyDimensionMembersAsync(db, tenant.Id, cancellationToken);
         await EnsureEnterpriseBudgetModelsAsync(db, tenant.Id, cancellationToken);
         await EnsureTradeMeasuresAsync(db, tenant.Id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task EnsureOperationalMasterDimensionsAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
+    {
+        var required = new (string Code, string Name, bool Hierarchical)[]
+        {
+            ("PRODUCT", "کالا / محصول", true),
+            ("BRAND", "برند", true),
+            ("UOM", "واحد سنجش", false),
+            ("SUPPLIER", "تامین‌کننده", true),
+            ("COUNTRY", "کشور", false),
+            ("GEOGRAPHY", "موقعیت جغرافیایی", true),
+            ("CURRENCY", "ارز", false),
+            ("WAREHOUSE", "انبار", true),
+            ("CUSTOMS", "گمرک / مبادی گمرکی", true),
+            ("DEPARTMENT", "واحد سازمانی", true),
+            ("COSTCENTER", "مرکز هزینه", true),
+            ("ACCOUNT", "حساب", true),
+            ("PROGRAM", "برنامه", true),
+            ("ACTIVITY", "فعالیت", true),
+            ("CUSTOMER", "مشتری", true),
+            ("REGION", "منطقه", true),
+            ("CONTRACT", "قرارداد", true),
+            ("PROJECT", "پروژه", true),
+            ("FUNDINGSOURCE", "منبع تامین مالی", true)
+        };
+
+        var existing = await db.Dimensions
+            .Where(x => x.TenantId == tenantId)
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+
+        foreach (var item in required)
+        {
+            if (existing.ContainsKey(item.Code)) continue;
+            var dimension = new DimensionDefinition
+            {
+                TenantId = tenantId,
+                Code = item.Code,
+                Name = item.Name,
+                IsSystem = true,
+                IsHierarchical = item.Hierarchical,
+                IsActive = true
+            };
+            db.Dimensions.Add(dimension);
+            existing[item.Code] = dimension;
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task SyncCurrencyDimensionMembersAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
+    {
+        var dimension = await db.Dimensions.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "CURRENCY", ct);
+        if (dimension is null) return;
+
+        var currencies = await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId).ToListAsync(ct);
+        var existing = await db.DimensionMembers.Where(x => x.DimensionId == dimension.Id && x.CompanyId == null).ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        foreach (var currency in currencies)
+        {
+            var metadata = JsonSerializer.Serialize(new { currency.Symbol, currency.IsBaseCurrency });
+            if (!existing.TryGetValue(currency.Code, out var member))
+            {
+                db.DimensionMembers.Add(new DimensionMember
+                {
+                    DimensionId = dimension.Id,
+                    CompanyId = null,
+                    Code = currency.Code,
+                    Name = currency.Name,
+                    ExternalKey = $"CURRENCY:{currency.Id}",
+                    MetadataJson = metadata,
+                    IsActive = true
+                });
+            }
+            else
+            {
+                member.Name = currency.Name;
+                member.MetadataJson = metadata;
+                member.IsActive = true;
+            }
+        }
     }
 
     private static async Task EnsureTradeMeasuresAsync(PbmDbContext db, Guid tenantId, CancellationToken ct)
