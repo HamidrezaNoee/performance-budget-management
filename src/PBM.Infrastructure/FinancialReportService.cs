@@ -97,7 +97,11 @@ public sealed class FinancialReportService(
 
         if (tradeVersion is not null)
         {
-            var tradeCodes = new[] { "GROSS_SALES", "SALES_DISCOUNT", "SALES_RETURN", "COGS_AMOUNT", "PURCHASE_COMPANY_DISCOUNT", "FOC_SALES_AMOUNT" };
+            var tradeCodes = new[]
+            {
+                "GROSS_SALES", "SALES_DISCOUNT", "FOC_SALES_AMOUNT", "SALES_RETURN",
+                "COGS_AMOUNT", "FOC_COST", "PURCHASE_COMPANY_DISCOUNT"
+            };
             var measures = await db.Measures.AsNoTracking().Where(x => x.BudgetModelId == tradeVersion.ModelId && tradeCodes.Contains(x.Code))
                 .Select(x => new { x.Id, x.Code }).ToListAsync(ct);
             var byId = measures.ToDictionary(x => x.Id, x => x.Code);
@@ -143,10 +147,12 @@ public sealed class FinancialReportService(
         foreach (var period in periods)
         {
             var gross = Get("GROSS_SALES", period.Id);
-            var discount = Get("SALES_DISCOUNT", period.Id);
+            var cashDiscount = Get("SALES_DISCOUNT", period.Id);
+            var freeDiscount = Get("FOC_SALES_AMOUNT", period.Id);
+            var discount = cashDiscount + freeDiscount;
             var salesReturn = Get("SALES_RETURN", period.Id);
             var netSales = gross - discount - salesReturn;
-            var cogs = Get("COGS_AMOUNT", period.Id);
+            var cogs = Get("COGS_AMOUNT", period.Id) + Get("FOC_COST", period.Id);
             var companyDiscount = Get("PURCHASE_COMPANY_DISCOUNT", period.Id);
             var totalCogs = cogs - companyDiscount;
             var grossProfit = netSales - totalCogs;
@@ -158,6 +164,8 @@ public sealed class FinancialReportService(
             var preTax = operatingProfit - finance + nonOperating;
             var tax = Get("TAX", period.Id);
             var netProfit = preTax - tax;
+
+            Set("SALES_DISCOUNT", period.Id, discount);
             Set("NET_SALES", period.Id, netSales);
             Set("COGS", period.Id, cogs);
             Set("TOTAL_COGS", period.Id, totalCogs);
@@ -165,8 +173,8 @@ public sealed class FinancialReportService(
             Set("OPERATING_PROFIT", period.Id, operatingProfit);
             Set("PROFIT_BEFORE_TAX", period.Id, preTax);
             Set("NET_PROFIT", period.Id, netProfit);
-            Set("CASH_SALES_DISCOUNT", period.Id, discount);
-            Set("FREE_SALES_DISCOUNT", period.Id, Get("FOC_SALES_AMOUNT", period.Id));
+            Set("CASH_SALES_DISCOUNT", period.Id, cashDiscount);
+            Set("FREE_SALES_DISCOUNT", period.Id, freeDiscount);
 
             var allocatable = netProfit + Get("RESERVE_TRANSFER", period.Id) + Get("PRIOR_RETAINED_EARNINGS", period.Id) + Get("PRIOR_ADJUSTMENTS", period.Id);
             Set("ALLOCATABLE_PROFIT", period.Id, allocatable);
