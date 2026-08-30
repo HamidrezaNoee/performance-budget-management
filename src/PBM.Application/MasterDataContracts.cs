@@ -16,18 +16,23 @@ public sealed record MasterDataMemberDto(
     string Code,
     string Name,
     string? ExternalKey,
+    string? MetadataJson,
     bool IsActive);
 
 public sealed record CreateMasterDataMemberRequest(
     Guid DimensionId,
+    Guid? ParentId,
     Guid? CompanyId,
     string Code,
     string Name,
-    string? ExternalKey);
+    string? ExternalKey,
+    string? MetadataJson);
 
 public sealed record UpdateMasterDataMemberRequest(
+    Guid? ParentId,
     string Name,
     string? ExternalKey,
+    string? MetadataJson,
     bool IsActive);
 
 public interface IMasterDataService
