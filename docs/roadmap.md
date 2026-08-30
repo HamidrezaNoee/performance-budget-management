@@ -62,7 +62,17 @@
 - Dedicated RTL CAPEX workspace with project creation, review actions, milestones and Jalali display
 - Dedicated cash planning / treasury workspace with Opening / Inflow / Outflow / Liquidity Buffer and rolling closing cash
 - Cash planning keeps currency as an explicit required dimension and supports Budget / Actual / Commitment / Forecast
-- Next: portfolio performance ranking across companies / organization units / programs
+- Workbook-derived monthly purchase model preserves quantity, foreign-currency amount, base-currency amount, landed-cost components and multidimensional analysis
+- Workbook-derived monthly sales planner preserves quantity, free/in-kind quantity, selling rate, cash/in-kind discounts, returns, normal/in-kind COGS, company purchase discounts and calculated gross margin
+- Sales planner and dashboard expose Budget / read-only Actual / Forecast at the same multidimensional coordinate
+- Expense-center planner includes payroll, administrative, marketing, selling, operating, finance, non-operating and tax categories with workbook-derived department/cost-center hierarchy
+- Expense planner and dashboard expose Budget / read-only Actual / Forecast with cost-center, department, account, project, program and activity drill-down
+- Operational P&L is calculated directly from TRADE + EXPENSE using the workbook statement chain from gross sales through net profit and profit-allocation rows
+- P&L workspace includes annual and monthly Budget / Actual / Forecast comparison, variance and charts
+- Executive purchase, sales and expense dashboards use the same Budget / Actual / Forecast semantics and preserve unallocated values
+- Cross-company portfolio financial dashboard aligns companies by Jalali fiscal year and ranks net sales, gross profit, operating profit and net profit using the same P&L semantics
+- SQL Server integration tests cover purchase/sales/expense Budget-Actual-Forecast reconciliation and cross-company portfolio ranking
+- Next: cross-company dimension portfolio ranking for organization units, cost centers, products/programs and contribution analysis
 
 ## Slice 4 — governance and enterprise integration (implemented / hardening)
 - Budget approval state machine, revisions and review comments
@@ -87,6 +97,9 @@
 - External-key posting API resolves PeriodCode, MeasureCode and DimensionMember ExternalKey/Code
 - Retry-safe batch Actual ingestion with per-row result and up to 1000 rows per request
 - Dedicated RTL Actual/ERP operations workspace with reversal and reconciliation controls
+- General budget-entry policy now restricts Draft writes to Budget/Forecast; Actual and Commitment are execution data for the controlled approved-version paths
+- Sales and expense planners expose Actual as read-only and explicitly preserve Actual Ledger / ERP ownership
+- Next: add read-only Actual query mode to the purchase planning entry workspace while keeping all Actual writes on controlled execution paths
 - Next: add database indexes/constraints tuned for Actual Ledger volume after the initial migration is generated
 - Next: email/SMS/Teams notification delivery adapters and retry/outbox handling
 - Next: BPMN/workflow engine adapter
