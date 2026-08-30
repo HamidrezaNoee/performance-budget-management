@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PBM.Application;
 using PBM.Domain;
 using PBM.Infrastructure;
+using Xunit;
 
 namespace PBM.Integration.Tests;
 
