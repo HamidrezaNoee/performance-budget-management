@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PBM.Application;
+using PBM.Domain;
 
 namespace PBM.Infrastructure;
 
@@ -51,13 +52,13 @@ public sealed class PortfolioFinancialService(
             if (!fiscalYearByCompany.TryGetValue(company.Id, out var year)) continue;
 
             var budget = await financialReports.GetAsync(
-                company.Id, year.Id, FinancialReportType.ProfitLoss, Domain.ValueKind.Budget,
+                company.Id, year.Id, FinancialReportType.ProfitLoss, ValueKind.Budget,
                 cancellationToken: cancellationToken);
             var actual = await financialReports.GetAsync(
-                company.Id, year.Id, FinancialReportType.ProfitLoss, Domain.ValueKind.Actual,
+                company.Id, year.Id, FinancialReportType.ProfitLoss, ValueKind.Actual,
                 cancellationToken: cancellationToken);
             var forecast = await financialReports.GetAsync(
-                company.Id, year.Id, FinancialReportType.ProfitLoss, Domain.ValueKind.Forecast,
+                company.Id, year.Id, FinancialReportType.ProfitLoss, ValueKind.Forecast,
                 cancellationToken: cancellationToken);
 
             var budgetValues = ToTotals(budget);
