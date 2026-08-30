@@ -41,8 +41,10 @@ public sealed class SalesDashboardService(
             "SALES_QTY", "FREE_SALES_QTY", "GROSS_SALES", "SALES_DISCOUNT", "SALES_RETURN",
             "NET_SALES", "COGS_AMOUNT", "PURCHASE_COMPANY_DISCOUNT"
         };
-        var measures = await db.Measures.AsNoTracking().Where(x => x.BudgetModelId == version.ModelId && codes.Contains(x.Code))
-            .Select(x => new { x.Id, x.Code, x.ValueType }).ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var measures = await db.Measures.AsNoTracking()
+            .Where(x => x.BudgetModelId == version.ModelId && codes.Contains(x.Code))
+            .Select(x => new MeasureRef(x.Id, x.Code, x.ValueType))
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
         if (codes.Any(code => !measures.ContainsKey(code))) throw new InvalidOperationException("Sales dashboard measures are not fully initialized.");
 
         var currency = await GetBaseCurrencyAsync(tenantId, cancellationToken);
@@ -124,7 +126,7 @@ public sealed class SalesDashboardService(
         Guid versionId,
         Guid companyId,
         Guid dimensionId,
-        IReadOnlyDictionary<string, dynamic> measures,
+        IReadOnlyDictionary<string, MeasureRef> measures,
         string currency,
         decimal totalBQ,
         decimal totalFQ,
@@ -139,8 +141,7 @@ public sealed class SalesDashboardService(
         int take,
         CancellationToken ct)
     {
-        // Avoid dynamic translation in EF: materialize measure ids first.
-        var ids = measures.ToDictionary(x => x.Key, x => (Guid)x.Value.Id, StringComparer.OrdinalIgnoreCase);
+        var ids = measures.ToDictionary(x => x.Key, x => x.Value.Id, StringComparer.OrdinalIgnoreCase);
         var quantityId = ids["SALES_QTY"];
         var tracked = new[] { quantityId, ids["GROSS_SALES"], ids["NET_SALES"], ids["COGS_AMOUNT"], ids["PURCHASE_COMPANY_DISCOUNT"] };
         var links = await db.BudgetFactDimensions.AsNoTracking()
@@ -181,8 +182,10 @@ public sealed class SalesDashboardService(
         var ufn = totalFNet - Alloc(x => x.ForecastNetSales);
         var ubc = totalBCogs - Alloc(x => x.BudgetCogs);
         var ufc = totalFCogs - Alloc(x => x.ForecastCogs);
-        var ubp = ubn - ubc + (totalBCompanyDiscount - links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Budget).Sum(x => x.Value));
-        var ufp = ufn - ufc + (totalFCompanyDiscount - links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Forecast).Sum(x => x.Value));
+        var allocatedBCd = links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
+        var allocatedFCd = links.Where(x => x.MeasureId == ids["PURCHASE_COMPANY_DISCOUNT"] && x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
+        var ubp = ubn - ubc + (totalBCompanyDiscount - allocatedBCd);
+        var ufp = ufn - ufc + (totalFCompanyDiscount - allocatedFCd);
         if (ubq != 0 || ufq != 0 || ubg != 0 || ufg != 0 || ubn != 0 || ufn != 0 || ubc != 0 || ufc != 0 || ubp != 0 || ufp != 0)
             rows.Add(new SalesDashboardDrilldownRowDto(Guid.Empty, "UNALLOCATED", "بدون تفکیک", ubq, ufq, ubg, ufg, ubn, ufn, ubc, ufc, ubp, ufp, ufn - ubn));
 
@@ -199,5 +202,6 @@ public sealed class SalesDashboardService(
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";
 
+    private sealed record MeasureRef(Guid Id, string Code, MeasureValueType ValueType);
     private sealed record SalesFact(Guid Id, Guid PeriodId, Guid MeasureId, ValueKind ValueKind, decimal Value);
 }
