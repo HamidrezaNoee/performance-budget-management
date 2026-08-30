@@ -11,6 +11,68 @@ public sealed class ReferenceDataService(PbmDbContext db, IUserContext user) : I
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == user.TenantId && x.IsActive).OrderByDescending(x => x.IsBaseCurrency).ThenBy(x => x.Code)
             .Select(x => new CurrencyDto(x.Id, x.Code, x.Name, x.Symbol, x.IsBaseCurrency, x.IsActive)).ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<CurrencyDto>> GetCurrencyCatalogAsync(CancellationToken cancellationToken = default) =>
+        await db.Currencies.AsNoTracking().Where(x => x.TenantId == user.TenantId).OrderByDescending(x => x.IsBaseCurrency).ThenBy(x => x.Code)
+            .Select(x => new CurrencyDto(x.Id, x.Code, x.Name, x.Symbol, x.IsBaseCurrency, x.IsActive)).ToListAsync(cancellationToken);
+
+    public async Task<CurrencyDto> UpsertCurrencyAsync(UpsertCurrencyRequest request, CancellationToken cancellationToken = default)
+    {
+        EnsureFinanceEditor();
+        var code = request.Code?.Trim().ToUpperInvariant() ?? string.Empty;
+        var name = request.Name?.Trim() ?? string.Empty;
+        var symbol = string.IsNullOrWhiteSpace(request.Symbol) ? null : request.Symbol.Trim();
+        if (code.Length != 3 || !code.All(char.IsLetter)) throw new ArgumentException("Currency code must be a three-letter ISO code such as IRR, USD or CNY.");
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Currency name is required.");
+        if (name.Length > 128) throw new ArgumentException("Currency name is too long.");
+        if (symbol?.Length > 16) throw new ArgumentException("Currency symbol is too long.");
+
+        if (await db.Currencies.AnyAsync(x => x.TenantId == user.TenantId && x.Code == code && (!request.Id.HasValue || x.Id != request.Id.Value), cancellationToken))
+            throw new InvalidOperationException("A currency with this ISO code already exists.");
+
+        CurrencyDefinition currency;
+        string? oldValue = null;
+        if (request.Id.HasValue)
+        {
+            currency = await db.Currencies.SingleAsync(x => x.Id == request.Id.Value && x.TenantId == user.TenantId, cancellationToken);
+            oldValue = JsonSerializer.Serialize(new { currency.Code, currency.Name, currency.Symbol, currency.IsBaseCurrency, currency.IsActive });
+        }
+        else
+        {
+            currency = new CurrencyDefinition { TenantId = user.TenantId, Code = code, Name = name };
+            db.Currencies.Add(currency);
+        }
+
+        if (request.IsBaseCurrency && request.IsActive)
+        {
+            var otherBases = await db.Currencies.Where(x => x.TenantId == user.TenantId && x.IsBaseCurrency && x.Id != currency.Id).ToListAsync(cancellationToken);
+            foreach (var other in otherBases)
+            {
+                other.IsBaseCurrency = false;
+                other.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        currency.Code = code;
+        currency.Name = name;
+        currency.Symbol = symbol;
+        currency.IsActive = request.IsActive;
+        currency.IsBaseCurrency = request.IsActive && request.IsBaseCurrency;
+        currency.UpdatedAtUtc = DateTime.UtcNow;
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = user.TenantId,
+            UserId = user.UserId == Guid.Empty ? null : user.UserId,
+            EntityType = "CurrencyDefinition",
+            EntityId = currency.Id.ToString(),
+            Action = oldValue is null ? "CREATE" : "UPDATE",
+            OldValueJson = oldValue,
+            NewValueJson = JsonSerializer.Serialize(new { currency.Code, currency.Name, currency.Symbol, currency.IsBaseCurrency, currency.IsActive })
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return new CurrencyDto(currency.Id, currency.Code, currency.Name, currency.Symbol, currency.IsBaseCurrency, currency.IsActive);
+    }
+
     public async Task<IReadOnlyList<FxRateSourceDto>> GetFxRateSourcesAsync(CancellationToken cancellationToken = default) =>
         await db.FxRateSources.AsNoTracking().Where(x => x.TenantId == user.TenantId && x.IsActive).OrderBy(x => x.Name)
             .Select(x => new FxRateSourceDto(x.Id, x.Code, x.Name, x.IsActive)).ToListAsync(cancellationToken);
@@ -63,7 +125,7 @@ public sealed class ReferenceDataService(PbmDbContext db, IUserContext user) : I
     private void EnsureFinanceEditor()
     {
         if (!user.IsInRole("SUPERADMIN") && !user.IsInRole("ADMIN") && !user.IsInRole("CFO") && !user.IsInRole("BUDGET_MANAGER"))
-            throw new UnauthorizedAccessException("CFO, budget manager or administrator role is required to maintain FX rates.");
+            throw new UnauthorizedAccessException("CFO, budget manager or administrator role is required to maintain currencies and FX rates.");
     }
 }
 
