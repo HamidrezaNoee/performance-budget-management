@@ -5,6 +5,9 @@ namespace PBM.Infrastructure;
 
 public static class EnterpriseSeedData
 {
+    public static Task InitializeAsync(PbmDbContext db, bool includeWorkbookReferenceMembers, CancellationToken cancellationToken = default) =>
+        InitializeAsync(db, cancellationToken);
+
     public static async Task InitializeAsync(PbmDbContext db, CancellationToken cancellationToken = default)
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(cancellationToken);
