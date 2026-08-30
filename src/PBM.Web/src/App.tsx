@@ -8,6 +8,7 @@ import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
 import AccountBalanceWalletRoundedIcon from '@mui/icons-material/AccountBalanceWalletRounded'
 import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded'
+import ShoppingCartCheckoutRoundedIcon from '@mui/icons-material/ShoppingCartCheckoutRounded'
 import RequestQuoteRoundedIcon from '@mui/icons-material/RequestQuoteRounded'
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
@@ -28,6 +29,7 @@ import { api, clearClientSession, setAccessToken } from './api'
 import BudgetInbox from './BudgetInbox'
 import BudgetPlanning from './BudgetPlanning'
 import TradeSupplyChain from './TradeSupplyChain'
+import PurchaseForecastPlanner from './PurchaseForecastPlanner'
 import BudgetReservations from './BudgetReservations'
 import BudgetTransfers from './BudgetTransfers'
 import WorkbookImport from './WorkbookImport'
@@ -50,7 +52,7 @@ type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds:
 
 const drawerWidth = 236
 const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
+const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings'] as const
 
 function viewIndexFromHash() {
   const hash = window.location.hash.replace(/^#/, '').toLowerCase()
@@ -233,21 +235,22 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
   const menu = [
     ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />],
     ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />], ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />],
-    ['رزرو و تعهدات', <RequestQuoteRoundedIcon />], ['جابجایی بودجه', <SwapHorizRoundedIcon />],
-    ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />], ['عملکرد و KPI', <InsightsRoundedIcon />],
-    ['تحلیل انحراف', <DifferenceRoundedIcon />], ['پیش‌بینی', <AutoGraphRoundedIcon />],
-    ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />], ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />],
-    ['گزارش‌ها', <AssessmentRoundedIcon />], ['Actual و اتصال ERP', <SyncAltRoundedIcon />],
-    ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
+    ['پیش‌بینی خرید چندبعدی', <ShoppingCartCheckoutRoundedIcon />], ['رزرو و تعهدات', <RequestQuoteRoundedIcon />],
+    ['جابجایی بودجه', <SwapHorizRoundedIcon />], ['ورود اطلاعات اکسل', <UploadFileRoundedIcon />],
+    ['عملکرد و KPI', <InsightsRoundedIcon />], ['تحلیل انحراف', <DifferenceRoundedIcon />],
+    ['پیش‌بینی', <AutoGraphRoundedIcon />], ['نقدینگی و خزانه‌داری', <PaymentsRoundedIcon />],
+    ['پروژه‌های سرمایه‌ای', <BusinessCenterRoundedIcon />], ['گزارش‌ها', <AssessmentRoundedIcon />],
+    ['Actual و اتصال ERP', <SyncAltRoundedIcon />], ['تنظیمات و داده‌های پایه', <SettingsRoundedIcon />]
   ] as const
   const titles = [
     'داشبورد مدیریت بودجه', 'کارتابل بررسی و تأیید بودجه', 'برنامه‌ریزی و ورود بودجه',
-    'خرید از مبدا، واردات، تحویل انبار و فروش', 'رزرو بودجه و مدیریت تعهدات', 'جابجایی و بازتخصیص بودجه',
-    'ورود و نگاشت اکسل', 'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی',
-    'برنامه نقدینگی و خزانه‌داری', 'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی',
-    'دفتر Actual و اتصال ERP / حسابداری', 'تنظیمات و داده‌های پایه'
+    'خرید از مبدا، واردات، تحویل انبار و فروش', 'پیش‌بینی خرید تعدادی، مبلغی و هزینه‌ها',
+    'رزرو بودجه و مدیریت تعهدات', 'جابجایی و بازتخصیص بودجه', 'ورود و نگاشت اکسل',
+    'عملکرد و KPI', 'تحلیل انحراف بودجه و عملکرد', 'پیش‌بینی', 'برنامه نقدینگی و خزانه‌داری',
+    'پروژه‌های سرمایه‌ای و CAPEX', 'گزارش‌های مالی و مدیریتی', 'دفتر Actual و اتصال ERP / حسابداری',
+    'تنظیمات و داده‌های پایه'
   ]
-  const writeSensitiveView = (activeView >= 1 && activeView <= 11) || activeView === 13
+  const writeSensitiveView = (activeView >= 1 && activeView <= 12) || activeView === 14
 
   return <>
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -279,17 +282,18 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && activeView === 1 && <BudgetInbox companyId={companyId} />}
         {!loading && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
         {!loading && activeView === 3 && <TradeSupplyChain companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
-        {!loading && activeView === 4 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 5 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
-        {!loading && activeView === 6 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 7 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 8 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 9 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 10 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 11 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 12 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
-        {!loading && activeView === 13 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
-        {!loading && activeView === 14 && <ReferenceAdmin companyId={companyId} roles={roles} />}
+        {!loading && activeView === 4 && <PurchaseForecastPlanner companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
+        {!loading && activeView === 5 && <BudgetReservations companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 6 && <BudgetTransfers companyId={companyId} fiscalYearId={yearId} roles={roles} />}
+        {!loading && activeView === 7 && <WorkbookImport companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 8 && <KpiPerformance companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 9 && <VarianceAnalysis companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 10 && <Forecasting companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 11 && <CashPlanning companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 12 && <CapexProjects companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 13 && <FinancialReports companyId={companyId} fiscalYearId={yearId} />}
+        {!loading && activeView === 14 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
+        {!loading && activeView === 15 && <ReferenceAdmin companyId={companyId} roles={roles} />}
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />
