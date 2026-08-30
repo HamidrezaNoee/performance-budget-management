@@ -44,7 +44,7 @@ public sealed class ExpenseDashboardService(
 
         var facts = await db.BudgetFacts.AsNoTracking().Include(x => x.Dimensions)
             .Where(x => x.VersionId == version.Id && x.MeasureId == measureId
-                && (x.ValueKind == ValueKind.Budget || x.ValueKind == ValueKind.Forecast)
+                && (x.ValueKind == ValueKind.Budget || x.ValueKind == ValueKind.Actual || x.ValueKind == ValueKind.Forecast)
                 && x.CurrencyCode == currency)
             .ToListAsync(cancellationToken);
 
@@ -56,35 +56,49 @@ public sealed class ExpenseDashboardService(
         bool IsIncome(BudgetFact fact) => ClassOf(fact) is { } c && IncomeClasses.Contains(c.Code);
         decimal Sum(ValueKind kind, bool income, IEnumerable<BudgetFact>? source = null) => (source ?? facts)
             .Where(x => x.ValueKind == kind && IsIncome(x) == income).Sum(x => x.Value);
+        ExpenseTotals Totals(ValueKind kind, IEnumerable<BudgetFact>? source = null)
+        {
+            var expense = Sum(kind, false, source);
+            var income = Sum(kind, true, source);
+            return new ExpenseTotals(expense, income, expense - income);
+        }
 
-        var bExpense = Sum(ValueKind.Budget, false);
-        var fExpense = Sum(ValueKind.Forecast, false);
-        var bIncome = Sum(ValueKind.Budget, true);
-        var fIncome = Sum(ValueKind.Forecast, true);
-        var bNet = bExpense - bIncome;
-        var fNet = fExpense - fIncome;
+        var budget = Totals(ValueKind.Budget);
+        var actual = Totals(ValueKind.Actual);
+        var forecast = Totals(ValueKind.Forecast);
 
         var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYearId)
             .OrderBy(x => x.Sequence).Select(x => new { x.Id, x.Name, x.Sequence }).ToListAsync(cancellationToken);
         var monthly = periods.Select(period =>
         {
-            var pf = facts.Where(x => x.PeriodId == period.Id).ToList();
-            var be = Sum(ValueKind.Budget, false, pf); var fe = Sum(ValueKind.Forecast, false, pf);
-            var bi = Sum(ValueKind.Budget, true, pf); var fi = Sum(ValueKind.Forecast, true, pf);
-            return new ExpenseDashboardMonthlyDto(period.Id, period.Name, period.Sequence, be, fe, bi, fi, be - bi, fe - fi);
+            var periodFacts = facts.Where(x => x.PeriodId == period.Id).ToList();
+            var b = Totals(ValueKind.Budget, periodFacts);
+            var a = Totals(ValueKind.Actual, periodFacts);
+            var f = Totals(ValueKind.Forecast, periodFacts);
+            return new ExpenseDashboardMonthlyDto(
+                period.Id, period.Name, period.Sequence,
+                b.Expense, a.Expense, f.Expense,
+                b.Income, a.Income, f.Income,
+                b.NetCost, a.NetCost, f.NetCost);
         }).ToList();
 
         var classRows = classMembers.Values.Select(member =>
         {
-            var mf = facts.Where(x => ClassOf(x)?.Id == member.Id).ToList();
-            var budget = mf.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
-            var forecast = mf.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
-            return new ExpenseDashboardClassRowDto(member.Id, member.Code, member.Name, budget, forecast, forecast - budget);
-        }).Where(x => x.BudgetAmount != 0 || x.ForecastAmount != 0).OrderByDescending(x => x.ForecastAmount).ThenByDescending(x => x.BudgetAmount).ToList();
+            var memberFacts = facts.Where(x => ClassOf(x)?.Id == member.Id).ToList();
+            var b = memberFacts.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value);
+            var a = memberFacts.Where(x => x.ValueKind == ValueKind.Actual).Sum(x => x.Value);
+            var f = memberFacts.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value);
+            return new ExpenseDashboardClassRowDto(member.Id, member.Code, member.Name, b, a, f, a - b, f - b);
+        }).Where(x => x.BudgetAmount != 0 || x.ActualAmount != 0 || x.ForecastAmount != 0)
+            .OrderByDescending(x => x.ActualAmount).ThenByDescending(x => x.ForecastAmount).ThenByDescending(x => x.BudgetAmount).ToList();
         var unclassifiedBudget = facts.Where(x => x.ValueKind == ValueKind.Budget && ClassOf(x) is null).Sum(x => x.Value);
+        var unclassifiedActual = facts.Where(x => x.ValueKind == ValueKind.Actual && ClassOf(x) is null).Sum(x => x.Value);
         var unclassifiedForecast = facts.Where(x => x.ValueKind == ValueKind.Forecast && ClassOf(x) is null).Sum(x => x.Value);
-        if (unclassifiedBudget != 0 || unclassifiedForecast != 0)
-            classRows.Add(new ExpenseDashboardClassRowDto(Guid.Empty, "UNCLASSIFIED", "بدون طبقه‌بندی", unclassifiedBudget, unclassifiedForecast, unclassifiedForecast - unclassifiedBudget));
+        if (unclassifiedBudget != 0 || unclassifiedActual != 0 || unclassifiedForecast != 0)
+            classRows.Add(new ExpenseDashboardClassRowDto(
+                Guid.Empty, "UNCLASSIFIED", "بدون طبقه‌بندی",
+                unclassifiedBudget, unclassifiedActual, unclassifiedForecast,
+                unclassifiedActual - unclassifiedBudget, unclassifiedForecast - unclassifiedBudget));
 
         var dimensions = await db.BudgetModelDimensions.AsNoTracking()
             .Where(x => x.BudgetModelId == version.ModelId && x.Dimension!.IsActive && x.Dimension.Code != ClassCode)
@@ -95,9 +109,17 @@ public sealed class ExpenseDashboardService(
             ? dimensions.FirstOrDefault(x => x.Id == dimensionId.Value) ?? throw new ArgumentException("Selected dimension is not available for expense drill-down.")
             : dimensions.FirstOrDefault(x => x.Code == "COSTCENTER") ?? dimensions.FirstOrDefault(x => x.Code == "DEPARTMENT") ?? dimensions.FirstOrDefault(x => x.Code == ItemCode) ?? dimensions.FirstOrDefault();
 
-        var drilldown = selected is null ? [] : await BuildDrilldownAsync(companyId, selected.Id, facts, classDimension.Id, classMembers, bExpense, fExpense, bIncome, fIncome, Math.Clamp(take, 1, 500), cancellationToken);
-        return new ExpenseDashboardDto(version.Id, version.VersionNumber, version.Name, currency,
-            bExpense, fExpense, bIncome, fIncome, bNet, fNet, fNet - bNet, monthly, classRows, dimensions, selected?.Id, drilldown);
+        var drilldown = selected is null ? [] : await BuildDrilldownAsync(
+            companyId, selected.Id, facts, classDimension.Id, classMembers,
+            budget, actual, forecast, Math.Clamp(take, 1, 500), cancellationToken);
+        return new ExpenseDashboardDto(
+            version.Id, version.VersionNumber, version.Name, currency,
+            budget.Expense, actual.Expense, forecast.Expense,
+            budget.Income, actual.Income, forecast.Income,
+            budget.NetCost, actual.NetCost, forecast.NetCost,
+            actual.NetCost - budget.NetCost,
+            forecast.NetCost - budget.NetCost,
+            monthly, classRows, dimensions, selected?.Id, drilldown);
     }
 
     private async Task<IReadOnlyList<ExpenseDashboardDrilldownRowDto>> BuildDrilldownAsync(
@@ -106,10 +128,9 @@ public sealed class ExpenseDashboardService(
         IReadOnlyList<BudgetFact> facts,
         Guid classDimensionId,
         IReadOnlyDictionary<Guid, ClassMember> classes,
-        decimal totalBExpense,
-        decimal totalFExpense,
-        decimal totalBIncome,
-        decimal totalFIncome,
+        ExpenseTotals totalBudget,
+        ExpenseTotals totalActual,
+        ExpenseTotals totalForecast,
         int take,
         CancellationToken ct)
     {
@@ -124,19 +145,45 @@ public sealed class ExpenseDashboardService(
 
         var rows = members.Values.Select(member =>
         {
-            var mf = facts.Where(x => x.Dimensions.Any(d => d.DimensionId == dimensionId && d.MemberId == member.Id)).ToList();
-            decimal S(ValueKind kind, bool income) => mf.Where(x => x.ValueKind == kind && Income(x) == income).Sum(x => x.Value);
-            var be = S(ValueKind.Budget, false); var fe = S(ValueKind.Forecast, false);
-            var bi = S(ValueKind.Budget, true); var fi = S(ValueKind.Forecast, true);
-            return new ExpenseDashboardDrilldownRowDto(member.Id, member.Code, member.Name, be, fe, bi, fi, be - bi, fe - fi, (fe - fi) - (be - bi));
-        }).Where(x => x.BudgetExpense != 0 || x.ForecastExpense != 0 || x.BudgetIncome != 0 || x.ForecastIncome != 0).ToList();
+            var memberFacts = facts.Where(x => x.Dimensions.Any(d => d.DimensionId == dimensionId && d.MemberId == member.Id)).ToList();
+            ExpenseTotals T(ValueKind kind)
+            {
+                var expense = memberFacts.Where(x => x.ValueKind == kind && !Income(x)).Sum(x => x.Value);
+                var income = memberFacts.Where(x => x.ValueKind == kind && Income(x)).Sum(x => x.Value);
+                return new ExpenseTotals(expense, income, expense - income);
+            }
+            var b = T(ValueKind.Budget); var a = T(ValueKind.Actual); var f = T(ValueKind.Forecast);
+            return new ExpenseDashboardDrilldownRowDto(
+                member.Id, member.Code, member.Name,
+                b.Expense, a.Expense, f.Expense,
+                b.Income, a.Income, f.Income,
+                b.NetCost, a.NetCost, f.NetCost,
+                a.NetCost - b.NetCost, f.NetCost - b.NetCost);
+        }).Where(x => x.BudgetExpense != 0 || x.ActualExpense != 0 || x.ForecastExpense != 0 || x.BudgetIncome != 0 || x.ActualIncome != 0 || x.ForecastIncome != 0).ToList();
 
-        var ube = totalBExpense - rows.Sum(x => x.BudgetExpense); var ufe = totalFExpense - rows.Sum(x => x.ForecastExpense);
-        var ubi = totalBIncome - rows.Sum(x => x.BudgetIncome); var ufi = totalFIncome - rows.Sum(x => x.ForecastIncome);
-        if (ube != 0 || ufe != 0 || ubi != 0 || ufi != 0)
-            rows.Add(new ExpenseDashboardDrilldownRowDto(Guid.Empty, "UNALLOCATED", "بدون تفکیک", ube, ufe, ubi, ufi, ube - ubi, ufe - ufi, (ufe - ufi) - (ube - ubi)));
-        return rows.OrderByDescending(x => x.ForecastNetCost).ThenByDescending(x => x.BudgetNetCost).Take(take).ToList();
+        ExpenseTotals Allocated(ValueKind kind) => new(
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetExpense : kind == ValueKind.Actual ? x.ActualExpense : x.ForecastExpense),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetIncome : kind == ValueKind.Actual ? x.ActualIncome : x.ForecastIncome),
+            rows.Sum(x => kind == ValueKind.Budget ? x.BudgetNetCost : kind == ValueKind.Actual ? x.ActualNetCost : x.ForecastNetCost));
+        ExpenseTotals Remaining(ExpenseTotals total, ExpenseTotals allocated) => new(
+            total.Expense - allocated.Expense,
+            total.Income - allocated.Income,
+            total.NetCost - allocated.NetCost);
+
+        var ub = Remaining(totalBudget, Allocated(ValueKind.Budget));
+        var ua = Remaining(totalActual, Allocated(ValueKind.Actual));
+        var uf = Remaining(totalForecast, Allocated(ValueKind.Forecast));
+        if (HasValues(ub) || HasValues(ua) || HasValues(uf))
+            rows.Add(new ExpenseDashboardDrilldownRowDto(
+                Guid.Empty, "UNALLOCATED", "بدون تفکیک",
+                ub.Expense, ua.Expense, uf.Expense,
+                ub.Income, ua.Income, uf.Income,
+                ub.NetCost, ua.NetCost, uf.NetCost,
+                ua.NetCost - ub.NetCost, uf.NetCost - ub.NetCost));
+        return rows.OrderByDescending(x => x.ActualNetCost).ThenByDescending(x => x.ForecastNetCost).ThenByDescending(x => x.BudgetNetCost).Take(take).ToList();
     }
+
+    private static bool HasValues(ExpenseTotals x) => x.Expense != 0 || x.Income != 0 || x.NetCost != 0;
 
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
@@ -146,4 +193,5 @@ public sealed class ExpenseDashboardService(
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";
     private sealed record ClassMember(Guid Id, string Code, string Name);
+    private sealed record ExpenseTotals(decimal Expense, decimal Income, decimal NetCost);
 }
