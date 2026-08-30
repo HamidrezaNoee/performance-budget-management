@@ -4,9 +4,7 @@ export const masterDataTree: SidebarTreeNode[] = [
   {
     label: '1. اطلاعات پایه عملیاتی', path: 'operational', children: [
       { label: '1.1 سازمان و ساختار سازمانی', path: 'operational/organization', children: [
-        { label: 'شرکت‌ها', path: 'operational/organization/companies' },
         { label: 'ساختار سازمانی', path: 'operational/organization/structure' },
-        { label: 'سمت‌ها', path: 'operational/organization/positions' },
         { label: 'تخصیص کاربران به سمت‌ها', path: 'operational/organization/user-positions' }
       ]},
       { label: '1.2 کالا و خدمات', path: 'operational/products', children: [
