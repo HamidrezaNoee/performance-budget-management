@@ -5,6 +5,7 @@ import {
 } from '@mui/material'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from './api'
+import PurchaseDashboardPanel from './PurchaseDashboardPanel'
 
 type MonthlyPoint = {
   periodId: string
@@ -182,11 +183,24 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
   const selectedMetric = useMemo(() => metrics.find(x => x.code === metricCode), [metrics, metricCode])
   const summary = measureSummary?.summary ?? null
 
-  if (loadingMetrics) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>
-  if (error && !metrics.length) return <Alert severity="error">{error}</Alert>
-  if (!metrics.length) return <Alert severity="info">برای شرکت و سال مالی انتخاب‌شده شاخص مبلغی قابل نمایش وجود ندارد.</Alert>
+  if (loadingMetrics) return <Stack spacing={3}>
+    <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+    <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>
+  </Stack>
+
+  if (error && !metrics.length) return <Stack spacing={3}>
+    <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+    <Alert severity="error">{error}</Alert>
+  </Stack>
+
+  if (!metrics.length) return <Stack spacing={3}>
+    <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+    <Alert severity="info">برای شرکت و سال مالی انتخاب‌شده شاخص مبلغی عمومی قابل نمایش وجود ندارد.</Alert>
+  </Stack>
 
   return <Stack spacing={3}>
+    <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+
     {error && <Alert severity="error">{error}</Alert>}
 
     <Card elevation={0}>
