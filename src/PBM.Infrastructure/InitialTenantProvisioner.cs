@@ -66,14 +66,19 @@ public static class InitialTenantProvisioner
         foreach (var (code, name, hierarchical) in new[]
         {
             ("PRODUCT", "کالا / محصول", true),
+            ("BRAND", "برند", true),
+            ("UOM", "واحد سنجش", false),
             ("SUPPLIER", "تامین‌کننده", true),
+            ("COUNTRY", "کشور", false),
+            ("GEOGRAPHY", "موقعیت جغرافیایی", true),
+            ("CURRENCY", "ارز", false),
+            ("WAREHOUSE", "انبار", true),
+            ("CUSTOMS", "گمرک / مبادی گمرکی", true),
             ("DEPARTMENT", "واحد سازمانی", true),
             ("COSTCENTER", "مرکز هزینه", true),
             ("ACCOUNT", "حساب", true),
             ("PROGRAM", "برنامه", true),
             ("ACTIVITY", "فعالیت", true),
-            ("CURRENCY", "ارز", false),
-            ("BRAND", "برند", true),
             ("CUSTOMER", "مشتری", true),
             ("REGION", "منطقه", true),
             ("CONTRACT", "قرارداد", true)
