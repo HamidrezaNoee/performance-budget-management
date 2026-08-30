@@ -20,6 +20,7 @@ public static class ServiceRegistration
         services.AddHostedService<OutboxDispatcherBackgroundService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<IMasterDataService, MasterDataService>();
         services.AddScoped<CommercialPlanningProvisioner>();
         services.AddScoped<BudgetService>();
         services.AddScoped<IBudgetService, GovernedBudgetService>();
