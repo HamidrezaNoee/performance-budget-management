@@ -143,9 +143,16 @@ public sealed class PbmSqlFixture : IAsyncLifetime
                     && x.IsActive
                     && (x.CompanyId == null || x.CompanyId == company.Id))
                 .OrderBy(x => x.Code)
-                .Select(x => x.Id)
-                .FirstAsync();
-            selections.Add(new DimensionSelection(modelDimension.DimensionId, memberId));
+                .Select(x => (Guid?)x.Id)
+                .FirstOrDefaultAsync();
+            if (memberId.HasValue)
+            {
+                selections.Add(new DimensionSelection(modelDimension.DimensionId, memberId.Value));
+                continue;
+            }
+
+            if (modelDimension.IsRequired)
+                throw new InvalidOperationException($"Required integration-test dimension {modelDimension.DimensionId} has no active member.");
         }
 
         TenantId = tenant.Id;
