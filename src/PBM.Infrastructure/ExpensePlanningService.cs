@@ -42,7 +42,7 @@ public sealed class ExpensePlanningService(
 
     public async Task<ExpensePlanningDataDto> QueryAsync(ExpensePlanningQueryRequest request, CancellationToken cancellationToken = default)
     {
-        ValidateKind(request.ValueKind);
+        ValidateReadableKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompany(context.CompanyId);
         await provisioner.EnsureExpenseAsync(context.TenantId, cancellationToken);
@@ -61,7 +61,7 @@ public sealed class ExpensePlanningService(
 
     public async Task<Guid> UpsertCellAsync(UpsertExpensePlanningCellRequest request, CancellationToken cancellationToken = default)
     {
-        ValidateKind(request.ValueKind);
+        ValidateEditableKind(request.ValueKind);
         if (request.Value < 0) throw new ArgumentOutOfRangeException(nameof(request.Value), "Expense planning amounts must be positive; income/expense nature is selected by EXPENSECLASS.");
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
         EnsureCompanyWrite(context.CompanyId);
@@ -146,9 +146,16 @@ public sealed class ExpensePlanningService(
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";
 
-    private static void ValidateKind(ValueKind kind)
+    private static void ValidateReadableKind(ValueKind kind)
     {
-        if (kind is not (ValueKind.Budget or ValueKind.Forecast)) throw new ArgumentException("Expense planner supports Budget and Forecast only.");
+        if (kind is not (ValueKind.Budget or ValueKind.Actual or ValueKind.Forecast))
+            throw new ArgumentException("Expense planning view supports Budget, Actual and Forecast values.");
+    }
+
+    private static void ValidateEditableKind(ValueKind kind)
+    {
+        if (kind is not (ValueKind.Budget or ValueKind.Forecast))
+            throw new ArgumentException("Only Budget and Forecast can be edited in the expense planner. Actual values are owned by Actual Ledger / controlled imports.");
     }
 
     private static string NormalizeCode(string value)
