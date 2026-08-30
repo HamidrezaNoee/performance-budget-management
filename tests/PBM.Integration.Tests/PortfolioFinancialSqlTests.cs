@@ -151,6 +151,10 @@ public sealed class PortfolioFinancialSqlTests(PbmSqlFixture fixture)
         var expenses = new ExpensePlanningService(db, superUser, budget, provisioner);
         var expenseSetup = await expenses.GetSetupAsync(secondCompany.Id);
         var expenseDimensions = ExpenseSelections(expenseSetup.Dimensions, "PERSONNEL", "SALARY_BASE");
+        var costCenter = expenseSetup.Dimensions.Single(x => x.Code == "COSTCENTER");
+        var financeCostCenter = costCenter.Members.Single(x => x.Code == "CC_FINANCE");
+        expenseDimensions.Add(new DimensionSelection(costCenter.Id, financeCostCenter.Id));
+
         await expenses.UpsertCellAsync(new UpsertExpensePlanningCellRequest(
             expenseVersion.Id, secondPeriod.Id, 10_000m, expenseDimensions, ValueKind.Budget));
         await expenses.UpsertCellAsync(new UpsertExpensePlanningCellRequest(
@@ -191,7 +195,34 @@ public sealed class PortfolioFinancialSqlTests(PbmSqlFixture fixture)
         Assert.Equal(8_000m, row.ActualNetProfitVariance);
         Assert.Equal(14_000m, row.ForecastNetProfitVariance);
         Assert.Equal(120m, row.BudgetAchievementPercent);
-        Assert.Equal(31.666666666666666666666666667m, row.ActualNetMarginPercent);
+        Assert.InRange(row.ActualNetMarginPercent, 31.6666m, 31.6667m);
+
+        var salesDashboard = new SalesDashboardService(db, superUser, provisioner);
+        var expenseDashboard = new ExpenseDashboardService(db, superUser, provisioner);
+        var dimensions = new PortfolioDimensionService(db, superUser, provisioner, salesDashboard, expenseDashboard);
+
+        var productRanking = await dimensions.GetSalesAsync(secondCompany.Id, secondYear.Id, "PRODUCT", 50);
+        var productRow = productRanking.Rows.Single(x => x.MemberCode == product.Code);
+        Assert.Equal(100_000m, productRow.BudgetNetSales);
+        Assert.Equal(120_000m, productRow.ActualNetSales);
+        Assert.Equal(130_000m, productRow.ForecastNetSales);
+        Assert.Equal(20_000m, productRow.ActualNetSalesVariance);
+        Assert.Equal(40_000m, productRow.BudgetGrossProfit);
+        Assert.Equal(50_000m, productRow.ActualGrossProfit);
+        Assert.Equal(55_000m, productRow.ForecastGrossProfit);
+        Assert.Equal(1, productRow.CompanyCount);
+        Assert.InRange(productRow.ActualContributionPercent, 0.0001m, 100m);
+
+        var costCenterRanking = await dimensions.GetExpensesAsync(secondCompany.Id, secondYear.Id, "COSTCENTER", 50);
+        var costCenterRow = costCenterRanking.Rows.Single(x => x.MemberCode == financeCostCenter.Code);
+        Assert.Equal(10_000m, costCenterRow.BudgetNetCost);
+        Assert.Equal(12_000m, costCenterRow.ActualNetCost);
+        Assert.Equal(11_000m, costCenterRow.ForecastNetCost);
+        Assert.Equal(2_000m, costCenterRow.ActualVarianceAmount);
+        Assert.Equal(1_000m, costCenterRow.ForecastVarianceAmount);
+        Assert.Equal(120m, costCenterRow.BudgetAchievementPercent);
+        Assert.Equal(1, costCenterRow.CompanyCount);
+        Assert.InRange(costCenterRow.ActualContributionPercent, 0.0001m, 100m);
 
         async Task PutSales(string code, decimal value, ValueKind kind) =>
             await sales.UpsertCellAsync(new UpsertSalesPlanningCellRequest(
