@@ -10,7 +10,7 @@ namespace PBM.Integration.Tests;
 public sealed class PurchaseDashboardSqlTests(PbmSqlFixture fixture)
 {
     [Fact]
-    public async Task Purchase_budget_and_forecast_roll_up_by_month_cost_and_product_dimension()
+    public async Task Purchase_budget_actual_and_forecast_roll_up_by_month_cost_and_product_dimension()
     {
         if (!fixture.IsEnabled) return;
 
@@ -37,10 +37,7 @@ public sealed class PurchaseDashboardSqlTests(PbmSqlFixture fixture)
             fixture.CompanyId,
             "PURCHASE_DASHBOARD_COST_TEST",
             "هزینه تست داشبورد خرید"));
-        var dimensions = new List<DimensionSelection>
-        {
-            new(productDimension.Id, product.Id)
-        };
+        var dimensions = new List<DimensionSelection> { new(productDimension.Id, product.Id) };
         var periodId = fixture.PeriodIds[3];
 
         await planning.UpsertCellAsync(new UpsertPurchaseForecastCellRequest(
@@ -63,15 +60,30 @@ public sealed class PurchaseDashboardSqlTests(PbmSqlFixture fixture)
             fixture.VersionId, periodId, "PURCHASE_COST_RATE", 12m, dimensions, costType.Id,
             ValueKind: ValueKind.Forecast));
 
+        // Emulate controlled Actual Ledger / ERP projection into the same purchase coordinates.
+        await budget.UpsertFactAsync(new UpsertBudgetFactRequest(
+            fixture.VersionId, periodId, setup.QuantityMeasure.Id, ValueKind.Actual, 110m, null,
+            dimensions, "IntegrationActual", "Actual purchase quantity"));
+        await budget.UpsertFactAsync(new UpsertBudgetFactRequest(
+            fixture.VersionId, periodId, setup.AmountMeasure.Id, ValueKind.Actual, 1_100_000m, setup.BaseCurrencyCode,
+            dimensions, "IntegrationActual", "Actual purchase amount"));
+        var purchaseCostDimensionId = await db.Dimensions.AsNoTracking()
+            .Where(x => x.TenantId == fixture.TenantId && x.Code == "PURCHASECOST")
+            .Select(x => x.Id).SingleAsync();
+        var costDimensions = dimensions.Concat([new DimensionSelection(purchaseCostDimensionId, costType.Id)]).ToList();
+        await budget.UpsertFactAsync(new UpsertBudgetFactRequest(
+            fixture.VersionId, periodId, setup.CostAmountMeasure.Id, ValueKind.Actual, 121_000m, setup.BaseCurrencyCode,
+            costDimensions, "IntegrationActual", "Actual purchase landed cost component"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => planning.UpsertCellAsync(new UpsertPurchaseForecastCellRequest(
+            fixture.VersionId, periodId, "PURCHASE_FORECAST_QTY", 999m, dimensions,
+            ValueKind: ValueKind.Actual)));
+
         var budgetData = await planning.QueryAsync(new PurchaseForecastQueryRequest(
             fixture.VersionId, dimensions, ValueKind.Budget));
         var forecastData = await planning.QueryAsync(new PurchaseForecastQueryRequest(
             fixture.VersionId, dimensions, ValueKind.Forecast));
-        var result = await dashboard.GetAsync(
-            fixture.CompanyId,
-            fixture.FiscalYearId,
-            productDimension.Id,
-            50);
+        var result = await dashboard.GetAsync(fixture.CompanyId, fixture.FiscalYearId, productDimension.Id, 50);
 
         Assert.NotNull(result);
         Assert.Equal(100m, budgetData.Quantity.Single(x => x.PeriodId == periodId).Value);
@@ -83,29 +95,40 @@ public sealed class PurchaseDashboardSqlTests(PbmSqlFixture fixture)
 
         var monthly = result!.Monthly.Single(x => x.PeriodId == periodId);
         Assert.Equal(100m, monthly.BudgetQuantity);
+        Assert.Equal(110m, monthly.ActualQuantity);
         Assert.Equal(120m, monthly.ForecastQuantity);
         Assert.Equal(1_000_000m, monthly.BudgetPurchaseAmount);
+        Assert.Equal(1_100_000m, monthly.ActualPurchaseAmount);
         Assert.Equal(1_200_000m, monthly.ForecastPurchaseAmount);
         Assert.Equal(100_000m, monthly.BudgetCostAmount);
+        Assert.Equal(121_000m, monthly.ActualCostAmount);
         Assert.Equal(144_000m, monthly.ForecastCostAmount);
         Assert.Equal(1_100_000m, monthly.BudgetTotalAmount);
+        Assert.Equal(1_221_000m, monthly.ActualTotalAmount);
         Assert.Equal(1_344_000m, monthly.ForecastTotalAmount);
 
         var cost = result.Costs.Single(x => x.CostTypeId == costType.Id);
         Assert.Equal(100_000m, cost.BudgetAmount);
+        Assert.Equal(121_000m, cost.ActualAmount);
         Assert.Equal(144_000m, cost.ForecastAmount);
-        Assert.Equal(44_000m, cost.VarianceAmount);
+        Assert.Equal(21_000m, cost.ActualVarianceAmount);
+        Assert.Equal(44_000m, cost.ForecastVarianceAmount);
 
         Assert.Equal(productDimension.Id, result.SelectedDimensionId);
         var row = result.Drilldown.Single(x => x.MemberId == product.Id);
         Assert.Equal(100m, row.BudgetQuantity);
+        Assert.Equal(110m, row.ActualQuantity);
         Assert.Equal(120m, row.ForecastQuantity);
         Assert.Equal(1_000_000m, row.BudgetPurchaseAmount);
+        Assert.Equal(1_100_000m, row.ActualPurchaseAmount);
         Assert.Equal(1_200_000m, row.ForecastPurchaseAmount);
         Assert.Equal(100_000m, row.BudgetCostAmount);
+        Assert.Equal(121_000m, row.ActualCostAmount);
         Assert.Equal(144_000m, row.ForecastCostAmount);
         Assert.Equal(1_100_000m, row.BudgetTotalAmount);
+        Assert.Equal(1_221_000m, row.ActualTotalAmount);
         Assert.Equal(1_344_000m, row.ForecastTotalAmount);
-        Assert.Equal(244_000m, row.VarianceAmount);
+        Assert.Equal(121_000m, row.ActualVarianceAmount);
+        Assert.Equal(244_000m, row.ForecastVarianceAmount);
     }
 }
