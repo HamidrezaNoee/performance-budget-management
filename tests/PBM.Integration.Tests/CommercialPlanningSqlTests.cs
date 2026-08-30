@@ -49,11 +49,31 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
         await PutSales("FOC_COST", 1_000m, ValueKind.Forecast);
         await PutSales("PURCHASE_COMPANY_DISCOUNT", 5_000m, ValueKind.Forecast);
 
+        // Actual is written through the underlying governed fact path here to emulate an ERP/Ledger projection.
+        // The planner itself must stay read-only for ValueKind.Actual.
+        await PutActualSales("SALES_QTY", 90m);
+        await PutActualSales("SALES_PRICE", 1_050m);
+        await PutActualSales("SALES_DISCOUNT", 4_000m);
+        await PutActualSales("FOC_SALES_AMOUNT", 500m);
+        await PutActualSales("SALES_RETURN", 1_000m);
+        await PutActualSales("COGS_AMOUNT", 55_000m);
+        await PutActualSales("FOC_COST", 400m);
+        await PutActualSales("PURCHASE_COMPANY_DISCOUNT", 2_500m);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => sales.UpsertCellAsync(new UpsertSalesPlanningCellRequest(
+            fixture.VersionId, periodId, "SALES_QTY", 999m, salesDimensions, ValueKind.Actual)));
+
         var budgetSales = await sales.QueryAsync(new SalesPlanningQueryRequest(fixture.VersionId, salesDimensions, ValueKind.Budget));
         Assert.Equal(100_000m, SalesValue(budgetSales, "GROSS_SALES", periodId));
         Assert.Equal(92_000m, SalesValue(budgetSales, "NET_SALES", periodId));
         Assert.Equal(60_500m, SalesValue(budgetSales, "SALES_COGS_TOTAL", periodId));
         Assert.Equal(34_500m, SalesValue(budgetSales, "SALES_GROSS_MARGIN", periodId));
+
+        var actualSales = await sales.QueryAsync(new SalesPlanningQueryRequest(fixture.VersionId, salesDimensions, ValueKind.Actual));
+        Assert.Equal(94_500m, SalesValue(actualSales, "GROSS_SALES", periodId));
+        Assert.Equal(89_000m, SalesValue(actualSales, "NET_SALES", periodId));
+        Assert.Equal(55_400m, SalesValue(actualSales, "SALES_COGS_TOTAL", periodId));
+        Assert.Equal(36_100m, SalesValue(actualSales, "SALES_GROSS_MARGIN", periodId));
 
         var forecastSales = await sales.QueryAsync(new SalesPlanningQueryRequest(fixture.VersionId, salesDimensions, ValueKind.Forecast));
         Assert.Equal(132_000m, SalesValue(forecastSales, "GROSS_SALES", periodId));
@@ -65,14 +85,19 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
         Assert.NotNull(salesDash);
         var salesMonth = salesDash!.Monthly.Single(x => x.PeriodId == periodId);
         Assert.Equal(100m, salesMonth.BudgetQuantity);
+        Assert.Equal(90m, salesMonth.ActualQuantity);
         Assert.Equal(120m, salesMonth.ForecastQuantity);
         Assert.Equal(6_000m, salesMonth.BudgetDiscount);
+        Assert.Equal(4_500m, salesMonth.ActualDiscount);
         Assert.Equal(8_000m, salesMonth.ForecastDiscount);
         Assert.Equal(92_000m, salesMonth.BudgetNetSales);
+        Assert.Equal(89_000m, salesMonth.ActualNetSales);
         Assert.Equal(120_000m, salesMonth.ForecastNetSales);
         Assert.Equal(60_500m, salesMonth.BudgetCogs);
+        Assert.Equal(55_400m, salesMonth.ActualCogs);
         Assert.Equal(81_000m, salesMonth.ForecastCogs);
         Assert.Equal(34_500m, salesMonth.BudgetGrossProfit);
+        Assert.Equal(36_100m, salesMonth.ActualGrossProfit);
         Assert.Equal(44_000m, salesMonth.ForecastGrossProfit);
 
         // --- Expenses: create/reuse an EXPENSE plan and post workbook categories at the same month.
@@ -118,17 +143,34 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
         await PutExpense("OTHER_OPERATING_INCOME", "SCRAP_SALE", 1_000m, ValueKind.Budget);
         await PutExpense("OTHER_OPERATING_EXPENSE", "INVENTORY_SHORTAGE", 500m, ValueKind.Budget);
         await PutExpense("FINANCIAL_EXPENSE", "FINANCE_INTEREST", 2_000m, ValueKind.Budget);
-        await PutExpense("OTHER_NON_OPERATING_INCOME", "NON_OPERATING_INCOME", 400m, ValueKind.Budget);
-        await PutExpense("OTHER_NON_OPERATING_EXPENSE", "NON_OPERATING_EXPENSE", 100m, ValueKind.Budget);
+        await PutExpense("OTHER_NON_OPERATING_INCOME", "ASSET_SALE_GAIN", 400m, ValueKind.Budget);
+        await PutExpense("OTHER_NON_OPERATING_EXPENSE", "NONCURRENT_ASSET_SALE_LOSS", 100m, ValueKind.Budget);
         await PutExpense("TAX", "INCOME_TAX", 1_000m, ValueKind.Budget);
+
+        await PutActualExpense("PERSONNEL", "SALARY_BASE", 11_000m);
+        await PutActualExpense("OTHER_OPERATING_INCOME", "SCRAP_SALE", 900m);
+        await PutActualExpense("OTHER_OPERATING_EXPENSE", "INVENTORY_SHORTAGE", 600m);
+        await PutActualExpense("FINANCIAL_EXPENSE", "FINANCE_INTEREST", 1_800m);
+        await PutActualExpense("OTHER_NON_OPERATING_INCOME", "ASSET_SALE_GAIN", 350m);
+        await PutActualExpense("OTHER_NON_OPERATING_EXPENSE", "NONCURRENT_ASSET_SALE_LOSS", 120m);
+        await PutActualExpense("TAX", "INCOME_TAX", 900m);
+
+        var salaryDimensions = RequiredExpenseSelections(expenseSetup.Dimensions, "PERSONNEL", "SALARY_BASE");
+        await Assert.ThrowsAsync<ArgumentException>(() => expenses.UpsertCellAsync(new UpsertExpensePlanningCellRequest(
+            expenseVersionId!.Value, periodId, 99_999m, salaryDimensions, ValueKind.Actual)));
+        var actualSalary = await expenses.QueryAsync(new ExpensePlanningQueryRequest(expenseVersionId!.Value, salaryDimensions, ValueKind.Actual));
+        Assert.Equal(11_000m, actualSalary.Values.Single(x => x.PeriodId == periodId).Value);
 
         var expenseDash = await expenseDashboard.GetAsync(fixture.CompanyId, fixture.FiscalYearId);
         Assert.NotNull(expenseDash);
         var expenseMonth = expenseDash!.Monthly.Single(x => x.PeriodId == periodId);
         Assert.Equal(13_600m, expenseMonth.BudgetExpense);
+        Assert.Equal(14_420m, expenseMonth.ActualExpense);
         Assert.Equal(1_400m, expenseMonth.BudgetIncome);
+        Assert.Equal(1_250m, expenseMonth.ActualIncome);
         Assert.Equal(12_200m, expenseMonth.BudgetNetCost);
-        Assert.Contains(expenseDash.Classes, x => x.Code == "PERSONNEL" && x.BudgetAmount == 10_000m && x.ForecastAmount == 12_000m);
+        Assert.Equal(13_170m, expenseMonth.ActualNetCost);
+        Assert.Contains(expenseDash.Classes, x => x.Code == "PERSONNEL" && x.BudgetAmount == 10_000m && x.ActualAmount == 11_000m && x.ForecastAmount == 12_000m);
 
         // --- Workbook-style P&L: cash + in-kind discount and normal + in-kind COGS are reconciled.
         var pnl = await financial.GetAsync(
@@ -137,28 +179,59 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
             FinancialReportType.ProfitLoss,
             ValueKind.Budget);
 
-        AssertPnl("GROSS_SALES", 100_000m);
-        AssertPnl("SALES_DISCOUNT", 6_000m);
-        AssertPnl("CASH_SALES_DISCOUNT", 5_000m);
-        AssertPnl("FREE_SALES_DISCOUNT", 1_000m);
-        AssertPnl("SALES_RETURN", 2_000m);
-        AssertPnl("NET_SALES", 92_000m);
-        AssertPnl("COGS", 60_500m);
-        AssertPnl("PURCHASE_COMPANY_DISCOUNT", 3_000m);
-        AssertPnl("TOTAL_COGS", 57_500m);
-        AssertPnl("GROSS_PROFIT", 34_500m);
-        AssertPnl("ADMIN_EXPENSE", 10_000m);
-        AssertPnl("OTHER_OPERATING_NET", 500m);
-        AssertPnl("OPERATING_PROFIT", 25_000m);
-        AssertPnl("FINANCE_COST", 2_000m);
-        AssertPnl("OTHER_NON_OPERATING_NET", 300m);
-        AssertPnl("PROFIT_BEFORE_TAX", 23_300m);
-        AssertPnl("TAX", 1_000m);
-        AssertPnl("NET_PROFIT", 22_300m);
+        AssertPnl(pnl, "GROSS_SALES", 100_000m);
+        AssertPnl(pnl, "SALES_DISCOUNT", 6_000m);
+        AssertPnl(pnl, "CASH_SALES_DISCOUNT", 5_000m);
+        AssertPnl(pnl, "FREE_SALES_DISCOUNT", 1_000m);
+        AssertPnl(pnl, "SALES_RETURN", 2_000m);
+        AssertPnl(pnl, "NET_SALES", 92_000m);
+        AssertPnl(pnl, "COGS", 60_500m);
+        AssertPnl(pnl, "PURCHASE_COMPANY_DISCOUNT", 3_000m);
+        AssertPnl(pnl, "TOTAL_COGS", 57_500m);
+        AssertPnl(pnl, "GROSS_PROFIT", 34_500m);
+        AssertPnl(pnl, "ADMIN_EXPENSE", 10_000m);
+        AssertPnl(pnl, "OTHER_OPERATING_NET", 500m);
+        AssertPnl(pnl, "OPERATING_PROFIT", 25_000m);
+        AssertPnl(pnl, "FINANCE_COST", 2_000m);
+        AssertPnl(pnl, "OTHER_NON_OPERATING_NET", 300m);
+        AssertPnl(pnl, "PROFIT_BEFORE_TAX", 23_300m);
+        AssertPnl(pnl, "TAX", 1_000m);
+        AssertPnl(pnl, "NET_PROFIT", 22_300m);
+
+        var actualPnl = await financial.GetAsync(
+            fixture.CompanyId,
+            fixture.FiscalYearId,
+            FinancialReportType.ProfitLoss,
+            ValueKind.Actual);
+        AssertPnl(actualPnl, "GROSS_SALES", 94_500m);
+        AssertPnl(actualPnl, "SALES_DISCOUNT", 4_500m);
+        AssertPnl(actualPnl, "SALES_RETURN", 1_000m);
+        AssertPnl(actualPnl, "NET_SALES", 89_000m);
+        AssertPnl(actualPnl, "COGS", 55_400m);
+        AssertPnl(actualPnl, "PURCHASE_COMPANY_DISCOUNT", 2_500m);
+        AssertPnl(actualPnl, "TOTAL_COGS", 52_900m);
+        AssertPnl(actualPnl, "GROSS_PROFIT", 36_100m);
+        AssertPnl(actualPnl, "ADMIN_EXPENSE", 11_000m);
+        AssertPnl(actualPnl, "OTHER_OPERATING_NET", 300m);
+        AssertPnl(actualPnl, "OPERATING_PROFIT", 25_400m);
+        AssertPnl(actualPnl, "FINANCE_COST", 1_800m);
+        AssertPnl(actualPnl, "OTHER_NON_OPERATING_NET", 230m);
+        AssertPnl(actualPnl, "PROFIT_BEFORE_TAX", 23_830m);
+        AssertPnl(actualPnl, "TAX", 900m);
+        AssertPnl(actualPnl, "NET_PROFIT", 22_930m);
 
         async Task PutSales(string code, decimal value, ValueKind kind) =>
             await sales.UpsertCellAsync(new UpsertSalesPlanningCellRequest(
                 fixture.VersionId, periodId, code, value, salesDimensions, kind));
+
+        async Task PutActualSales(string code, decimal value)
+        {
+            var measure = salesSetup.Measures.Single(x => x.Code == code);
+            var currency = code is "SALES_QTY" or "FREE_SALES_QTY" ? null : salesSetup.BaseCurrencyCode;
+            await budget.UpsertFactAsync(new UpsertBudgetFactRequest(
+                fixture.VersionId, periodId, measure.Id, ValueKind.Actual, value, currency,
+                salesDimensions, "IntegrationActual", "Emulates controlled Actual Ledger projection."));
+        }
 
         async Task PutExpense(string classCode, string itemCode, decimal value, ValueKind kind)
         {
@@ -167,9 +240,17 @@ public sealed class CommercialPlanningSqlTests(PbmSqlFixture fixture)
                 expenseVersionId!.Value, periodId, value, dimensions, kind));
         }
 
-        void AssertPnl(string code, decimal expected)
+        async Task PutActualExpense(string classCode, string itemCode, decimal value)
         {
-            var row = pnl.Rows.Single(x => x.Code == code);
+            var dimensions = RequiredExpenseSelections(expenseSetup.Dimensions, classCode, itemCode);
+            await budget.UpsertFactAsync(new UpsertBudgetFactRequest(
+                expenseVersionId!.Value, periodId, expenseSetup.MeasureId, ValueKind.Actual, value,
+                expenseSetup.BaseCurrencyCode, dimensions, "IntegrationActual", "Emulates controlled Actual Ledger projection."));
+        }
+
+        void AssertPnl(FinancialReportDto report, string code, decimal expected)
+        {
+            var row = report.Rows.Single(x => x.Code == code);
             Assert.Equal(expected, row.Periods.Single(x => x.PeriodId == periodId).Value);
         }
     }
