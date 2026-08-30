@@ -14,6 +14,7 @@ public static class EndpointRegistration
         api.MapNotificationEndpoints();
         api.MapEnterpriseEndpoints();
         api.MapDashboardAnalyticsEndpoints();
+        api.MapPortfolioFinancialEndpoints();
         api.MapStrategyEndpoints();
         api.MapPerformanceBudgetingEndpoints();
         api.MapForecastEndpoints();
