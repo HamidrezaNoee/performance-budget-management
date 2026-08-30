@@ -113,7 +113,7 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
       const memberEntries = await Promise.all(dims.map(async d => [d.id, (await api.get<Member[]>('/reference/dimension-members', { params: { dimensionId: d.id, companyId } })).data] as const))
       const map = Object.fromEntries(memberEntries); setMembers(map)
       const defaults: Record<string, string> = {}
-      dims.slice(1).forEach(d => { if (map[d.id]?.length) defaults[d.id] = map[d.id][0].id })
+      dims.slice(1).forEach(d => { if (d.isRequired && map[d.id]?.length) defaults[d.id] = map[d.id][0].id })
       setFilters(defaults)
       const matchingPlan = plans.find(x => x.budgetModelId === modelId)
       if (matchingPlan) {
@@ -146,7 +146,7 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
 
   useEffect(() => {
     const next = { ...filters }
-    filterDimensions.forEach(d => { if (!next[d.id] && members[d.id]?.length) next[d.id] = members[d.id][0].id })
+    filterDimensions.forEach(d => { if (d.isRequired && !next[d.id] && members[d.id]?.length) next[d.id] = members[d.id][0].id })
     Object.keys(next).forEach(id => { if (!filterDimensions.some(d => d.id === id)) delete next[id] })
     setFilters(next)
   }, [rowDimensionId, dimensions, members])
@@ -345,7 +345,7 @@ export default function BudgetPlanning({ companyId, fiscalYearId }: { companyId:
         <Typography variant="body2" color="text.secondary">نسخه جدید می‌تواند در همان سناریو یا یک سناریوی فعال دیگر ساخته شود؛ داده‌های نسخه مبنا کپی می‌شوند.</Typography>
       </Stack>}
 
-      {filterDimensions.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2}>{filterDimensions.map(d => <FormControl size="small" sx={{ minWidth: 220 }} key={d.id}><InputLabel>{d.name}</InputLabel><Select value={filters[d.id] ?? ''} label={d.name} onChange={e => setFilters(x => ({ ...x, [d.id]: e.target.value }))}>{(members[d.id] ?? []).map(m => <MenuItem value={m.id} key={m.id}>{m.name}</MenuItem>)}</Select></FormControl>)}</Stack>}
+      {filterDimensions.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2}>{filterDimensions.map(d => <FormControl size="small" sx={{ minWidth: 220 }} key={d.id}><InputLabel>{d.name}</InputLabel><Select value={filters[d.id] ?? ''} label={d.name} onChange={e => setFilters(x => ({ ...x, [d.id]: e.target.value }))}>{!d.isRequired && <MenuItem value=""><em>بدون تفکیک</em></MenuItem>}{(members[d.id] ?? []).map(m => <MenuItem value={m.id} key={m.id}>{m.name}</MenuItem>)}</Select></FormControl>)}</Stack>}
 
       {sortedVersions.length > 1 && version && <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={2} alignItems={{ md: 'center' }}>
         <FormControl size="small" sx={{ minWidth: 260 }}><InputLabel>مقایسه با نسخه</InputLabel><Select value={compareVersionId} label="مقایسه با نسخه" onChange={e => setCompareVersionId(e.target.value)}>{sortedVersions.filter(x => x.id !== version.id).map(x => <MenuItem key={x.id} value={x.id}>نسخه {x.versionNumber} — {x.name}</MenuItem>)}</Select></FormControl>
