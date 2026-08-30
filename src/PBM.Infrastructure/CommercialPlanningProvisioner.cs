@@ -5,6 +5,25 @@ namespace PBM.Infrastructure;
 
 public sealed class CommercialPlanningProvisioner(PbmDbContext db)
 {
+    private static readonly IReadOnlyDictionary<string, (string Name, bool Hierarchical)> StandardDimensions =
+        new Dictionary<string, (string, bool)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PRODUCT"] = ("کالا / محصول", true),
+            ["SUPPLIER"] = ("تامین‌کننده / کمپانی", true),
+            ["BRAND"] = ("برند", true),
+            ["CUSTOMER"] = ("مشتری", true),
+            ["REGION"] = ("منطقه", true),
+            ["DEPARTMENT"] = ("واحد سازمانی", true),
+            ["COSTCENTER"] = ("مرکز هزینه", true),
+            ["CONTRACT"] = ("قرارداد", true),
+            ["CURRENCY"] = ("ارز", false),
+            ["ACCOUNT"] = ("حساب", true),
+            ["PROGRAM"] = ("برنامه", true),
+            ["ACTIVITY"] = ("فعالیت", true),
+            ["PROJECT"] = ("پروژه", true),
+            ["FUNDINGSOURCE"] = ("منبع تامین مالی", false)
+        };
+
     public async Task EnsureSalesAsync(Guid tenantId, CancellationToken ct = default)
     {
         var trade = await db.BudgetModels.Include(x => x.Dimensions).Include(x => x.Measures)
@@ -16,13 +35,13 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
             "PRODUCT", "SUPPLIER", "BRAND", "CUSTOMER", "REGION", "DEPARTMENT", "COSTCENTER",
             "CONTRACT", "CURRENCY", "ACCOUNT", "PROGRAM", "ACTIVITY", "PROJECT", "FUNDINGSOURCE"
         };
-        var dimensions = await db.Dimensions.Where(x => x.TenantId == tenantId && requestedCodes.Contains(x.Code) && x.IsActive)
-            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var dimensions = await EnsureStandardDimensionsAsync(tenantId, requestedCodes, ct);
         var attached = trade.Dimensions.Select(x => x.DimensionId).ToHashSet();
         var sequence = trade.Dimensions.Count == 0 ? 1 : trade.Dimensions.Max(x => x.Sequence) + 1;
         foreach (var code in requestedCodes)
         {
-            if (!dimensions.TryGetValue(code, out var dimension) || attached.Contains(dimension.Id)) continue;
+            var dimension = dimensions[code];
+            if (attached.Contains(dimension.Id)) continue;
             var link = new BudgetModelDimension
             {
                 BudgetModelId = trade.Id,
@@ -54,24 +73,9 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         EnsureMeasure(trade, "SALES_GROSS_MARGIN", "سود ناخالص فروش", "ریال", MeasureValueType.Amount, ref order,
             formula: "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]");
 
-        var netSales = trade.Measures.FirstOrDefault(x => x.Code == "NET_SALES");
-        if (netSales is not null)
-        {
-            netSales.IsCalculated = true;
-            netSales.FormulaExpression = "[GROSS_SALES] - [SALES_DISCOUNT] - [FOC_SALES_AMOUNT] - [SALES_RETURN]";
-        }
-        var salesCogs = trade.Measures.FirstOrDefault(x => x.Code == "SALES_COGS_TOTAL");
-        if (salesCogs is not null)
-        {
-            salesCogs.IsCalculated = true;
-            salesCogs.FormulaExpression = "[COGS_AMOUNT] + [FOC_COST]";
-        }
-        var margin = trade.Measures.FirstOrDefault(x => x.Code == "SALES_GROSS_MARGIN");
-        if (margin is not null)
-        {
-            margin.IsCalculated = true;
-            margin.FormulaExpression = "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]";
-        }
+        ForceFormula(trade, "NET_SALES", "[GROSS_SALES] - [SALES_DISCOUNT] - [FOC_SALES_AMOUNT] - [SALES_RETURN]");
+        ForceFormula(trade, "SALES_COGS_TOTAL", "[COGS_AMOUNT] + [FOC_COST]");
+        ForceFormula(trade, "SALES_GROSS_MARGIN", "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]");
         await db.SaveChangesAsync(ct);
     }
 
@@ -81,7 +85,12 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "EXPENSE" && x.IsActive, ct)
             ?? throw new InvalidOperationException("EXPENSE budget model is not available.");
 
-        var dimensions = await db.Dimensions.Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var standardCodes = new[]
+        {
+            "DEPARTMENT", "ACCOUNT", "COSTCENTER", "PROGRAM", "ACTIVITY", "PROJECT",
+            "FUNDINGSOURCE", "CONTRACT", "REGION"
+        };
+        var dimensions = await EnsureStandardDimensionsAsync(tenantId, standardCodes, ct);
         var expenseClass = await EnsureDimensionAsync(dimensions, tenantId, "EXPENSECLASS", "طبقه هزینه / درآمد", false, ct);
         var expenseItem = await EnsureDimensionAsync(dimensions, tenantId, "EXPENSEITEM", "ردیف هزینه / درآمد", false, ct);
 
@@ -90,8 +99,9 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         foreach (var (code, name) in ExpenseItems)
             await EnsureMemberAsync(expenseItem, code, name, ct);
 
-        if (dimensions.TryGetValue("ACCOUNT", out var account))
-            await EnsureMemberAsync(account, "EXPENSE_BUDGET", "حساب بودجه هزینه و درآمد", ct);
+        var account = dimensions["ACCOUNT"];
+        await EnsureMemberAsync(account, "EXPENSE_BUDGET", "حساب بودجه هزینه و درآمد", ct);
+        await EnsureWorkbookOrganizationAsync(dimensions["DEPARTMENT"], dimensions["COSTCENTER"], ct);
 
         var requestedCodes = new[]
         {
@@ -102,7 +112,8 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         var sequence = expense.Dimensions.Count == 0 ? 1 : expense.Dimensions.Max(x => x.Sequence) + 1;
         foreach (var code in requestedCodes)
         {
-            if (!dimensions.TryGetValue(code, out var dimension) || attached.Contains(dimension.Id)) continue;
+            var dimension = dimensions[code];
+            if (attached.Contains(dimension.Id)) continue;
             var link = new BudgetModelDimension
             {
                 BudgetModelId = expense.Id,
@@ -120,6 +131,39 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    private async Task<Dictionary<string, DimensionDefinition>> EnsureStandardDimensionsAsync(
+        Guid tenantId,
+        IEnumerable<string> requestedCodes,
+        CancellationToken ct)
+    {
+        var codes = requestedCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var dimensions = await db.Dimensions.Where(x => x.TenantId == tenantId && codes.Contains(x.Code))
+            .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, ct);
+        foreach (var code in codes)
+        {
+            if (dimensions.TryGetValue(code, out var existing))
+            {
+                if (!existing.IsActive) existing.IsActive = true;
+                continue;
+            }
+            if (!StandardDimensions.TryGetValue(code, out var definition))
+                throw new InvalidOperationException($"Standard dimension definition '{code}' is missing.");
+            var created = new DimensionDefinition
+            {
+                TenantId = tenantId,
+                Code = code,
+                Name = definition.Name,
+                IsSystem = true,
+                IsHierarchical = definition.Hierarchical,
+                IsActive = true
+            };
+            db.Dimensions.Add(created);
+            dimensions[code] = created;
+        }
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return dimensions;
+    }
+
     private async Task<DimensionDefinition> EnsureDimensionAsync(
         IDictionary<string, DimensionDefinition> dimensions,
         Guid tenantId,
@@ -128,14 +172,19 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         bool hierarchical,
         CancellationToken ct)
     {
-        if (dimensions.TryGetValue(code, out var existing)) return existing;
+        if (dimensions.TryGetValue(code, out var existing))
+        {
+            if (!existing.IsActive) existing.IsActive = true;
+            return existing;
+        }
         var dimension = new DimensionDefinition
         {
             TenantId = tenantId,
             Code = code,
             Name = name,
             IsSystem = true,
-            IsHierarchical = hierarchical
+            IsHierarchical = hierarchical,
+            IsActive = true
         };
         db.Dimensions.Add(dimension);
         dimensions[code] = dimension;
@@ -143,20 +192,72 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         return dimension;
     }
 
-    private async Task EnsureMemberAsync(DimensionDefinition dimension, string code, string name, CancellationToken ct)
+    private async Task<DimensionMember> EnsureMemberAsync(
+        DimensionDefinition dimension,
+        string code,
+        string name,
+        CancellationToken ct,
+        Guid? parentId = null)
     {
-        if (await db.DimensionMembers.AnyAsync(x => x.DimensionId == dimension.Id && x.Code == code, ct)) return;
-        db.DimensionMembers.Add(new DimensionMember
+        var existing = await db.DimensionMembers.SingleOrDefaultAsync(x =>
+            x.DimensionId == dimension.Id && x.Code == code && x.CompanyId == null, ct);
+        if (existing is not null)
+        {
+            if (!existing.IsActive) existing.IsActive = true;
+            return existing;
+        }
+        var member = new DimensionMember
         {
             DimensionId = dimension.Id,
             CompanyId = null,
+            ParentId = parentId,
             Code = code,
-            Name = name
-        });
+            Name = name,
+            IsActive = true
+        };
+        db.DimensionMembers.Add(member);
         await db.SaveChangesAsync(ct);
+        return member;
     }
 
-    private static void EnsureMeasure(
+    private async Task EnsureWorkbookOrganizationAsync(
+        DimensionDefinition department,
+        DimensionDefinition costCenter,
+        CancellationToken ct)
+    {
+        var marketing = await EnsureMemberAsync(department, "MARKETING", "مارکتینگ", ct);
+        var corporate = await EnsureMemberAsync(department, "CORPORATE", "ستادی", ct);
+        var sales = await EnsureMemberAsync(department, "SALES", "فروش", ct);
+        await EnsureMemberAsync(department, "MKT_HOSP", "مارکتینگ - بیمارستانی", ct, marketing.Id);
+        await EnsureMemberAsync(department, "MKT_RX", "مارکتینگ - رکورداتی", ct, marketing.Id);
+        await EnsureMemberAsync(department, "MEDICAL", "مدیکال", ct, marketing.Id);
+        await EnsureMemberAsync(department, "MKT_EYE", "مارکتینگ - چشمی", ct, marketing.Id);
+        await EnsureMemberAsync(department, "DIGITAL_MKT", "دیجیتال مارکتینگ", ct, marketing.Id);
+        await EnsureMemberAsync(department, "MANAGEMENT", "مدیریت", ct, corporate.Id);
+        await EnsureMemberAsync(department, "FINANCE", "مالی", ct, corporate.Id);
+        await EnsureMemberAsync(department, "COMMERCIAL", "بازرگانی", ct, corporate.Id);
+        await EnsureMemberAsync(department, "REGULATORY", "رگولاتوری", ct, corporate.Id);
+        await EnsureMemberAsync(department, "HR", "منابع انسانی", ct, corporate.Id);
+        await EnsureMemberAsync(department, "SALES_LENS_RENU", "فروش - لنز و رنیو", ct, sales.Id);
+
+        var ccMarketing = await EnsureMemberAsync(costCenter, "CC_MARKETING", "مرکز هزینه مارکتینگ", ct);
+        var ccCorporate = await EnsureMemberAsync(costCenter, "CC_CORPORATE", "مرکز هزینه ستادی", ct);
+        var ccSales = await EnsureMemberAsync(costCenter, "CC_SALES", "مرکز هزینه فروش", ct);
+        await EnsureMemberAsync(costCenter, "CC_MKT_HOSP", "مارکتینگ - بیمارستانی", ct, ccMarketing.Id);
+        await EnsureMemberAsync(costCenter, "CC_MKT_RX", "مارکتینگ - رکورداتی", ct, ccMarketing.Id);
+        await EnsureMemberAsync(costCenter, "CC_MEDICAL", "مدیکال", ct, ccMarketing.Id);
+        await EnsureMemberAsync(costCenter, "CC_MKT_EYE", "مارکتینگ - چشمی", ct, ccMarketing.Id);
+        await EnsureMemberAsync(costCenter, "CC_DIGITAL_MKT", "دیجیتال مارکتینگ", ct, ccMarketing.Id);
+        await EnsureMemberAsync(costCenter, "CC_MANAGEMENT", "مدیریت", ct, ccCorporate.Id);
+        await EnsureMemberAsync(costCenter, "CC_FINANCE", "مالی", ct, ccCorporate.Id);
+        await EnsureMemberAsync(costCenter, "CC_COMMERCIAL", "بازرگانی", ct, ccCorporate.Id);
+        await EnsureMemberAsync(costCenter, "CC_REGULATORY", "رگولاتوری", ct, ccCorporate.Id);
+        await EnsureMemberAsync(costCenter, "CC_HR", "منابع انسانی", ct, ccCorporate.Id);
+        await EnsureMemberAsync(costCenter, "CC_SALES_MAIN", "فروش", ct, ccSales.Id);
+        await EnsureMemberAsync(costCenter, "CC_SALES_LENS_RENU", "فروش - لنز و رنیو", ct, ccSales.Id);
+    }
+
+    private void EnsureMeasure(
         BudgetModel model,
         string code,
         string name,
@@ -176,7 +277,7 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
             }
             return;
         }
-        model.Measures.Add(new MeasureDefinition
+        var measure = new MeasureDefinition
         {
             BudgetModelId = model.Id,
             Code = code,
@@ -187,7 +288,17 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
             DisplayOrder = order++,
             IsCalculated = formula is not null,
             FormulaExpression = formula
-        });
+        };
+        db.Measures.Add(measure);
+        model.Measures.Add(measure);
+    }
+
+    private static void ForceFormula(BudgetModel model, string code, string formula)
+    {
+        var measure = model.Measures.FirstOrDefault(x => x.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
+        if (measure is null) return;
+        measure.IsCalculated = true;
+        measure.FormulaExpression = formula;
     }
 
     private static readonly (string Code, string Name)[] ExpenseClasses =
@@ -206,25 +317,83 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
 
     private static readonly (string Code, string Name)[] ExpenseItems =
     [
-        ("SALARY_BASE", "حقوق پایه"), ("FOOD_ALLOWANCE", "خواروبار"), ("HOUSING_ALLOWANCE", "حق مسکن"),
-        ("CHILD_ALLOWANCE", "حق اولاد"), ("OVERTIME", "اضافه‌کاری"), ("MISSION", "ماموریت"),
-        ("COMMUTE", "ایاب و ذهاب"), ("PHONE_ALLOWANCE", "کمک هزینه تلفن"), ("SENIORITY", "سنوات"),
-        ("BONUS", "پاداش"), ("EMPLOYER_INSURANCE", "بیمه سهم کارفرما"), ("SUPPLEMENTARY_INSURANCE", "بیمه تکمیلی"),
-        ("NONCASH_BENEFIT", "مزایای غیرنقدی"), ("YEAR_END_BONUS", "عیدی"), ("UNUSED_LEAVE", "بازخرید مرخصی"),
-        ("TERMINATION_BENEFIT", "مزایای پایان خدمت"), ("MARKETING_ADVERTISING", "تبلیغات و بازاریابی"),
-        ("CONGRESS_EXHIBITION", "کنگره و نمایشگاه"), ("TRAVEL_MISSION", "سفر و ماموریت"),
-        ("TRANSPORTATION", "حمل و نقل"), ("RESEARCH_LAB", "تحقیقات و آزمایشات"), ("MEMBERSHIP", "حق عضویت"),
-        ("TRAINING", "آموزش"), ("BOARD_MEETING_FEE", "حق حضور جلسات"), ("RENT", "اجاره"),
-        ("REPAIR_MAINTENANCE", "تعمیر و نگهداری"), ("UTILITIES", "آب، برق و انرژی"), ("TELECOM", "تلفن و ارتباطات"),
-        ("ASSET_INSURANCE", "بیمه دارایی‌ها"), ("OFFICE_SUPPLIES", "ملزومات و لوازم مصرفی"),
-        ("REGISTRATION_TRANSLATION", "ثبت، دفترخانه و دارالترجمه"), ("CONSULTING", "کارشناسی و مشاوره"),
-        ("AUDIT_FINANCE_SERVICES", "حسابرسی و خدمات مالی"), ("SOFTWARE_INTERNET", "نرم‌افزار و اینترنت"),
-        ("PUBLICATION_ADVERTISING", "آگهی و مطبوعات"), ("BANK_SERVICE_FEE", "کارمزد خدمات بانکی"),
-        ("HOSPITALITY", "پذیرایی و تشریفات"), ("CLEANING", "نظافت"), ("FURNITURE_DEPRECIATION", "استهلاک اثاثیه"),
-        ("SOFTWARE_DEPRECIATION", "استهلاک نرم‌افزار"), ("SCRAP_SALE", "درآمد فروش ضایعات"),
-        ("FX_GAIN", "سود تسعیر ارز"), ("FX_LOSS", "زیان تسعیر ارز"), ("INVENTORY_SHORTAGE", "کسری موجودی"),
-        ("IMPAIRMENT", "کاهش ارزش دارایی / موجودی"), ("EXPIRY_LOSS", "زیان انقضا"),
-        ("FINANCE_INTEREST", "سود و کارمزد تسهیلات و هزینه مالی"), ("NON_OPERATING_INCOME", "سایر درآمد غیرعملیاتی"),
-        ("NON_OPERATING_EXPENSE", "سایر هزینه غیرعملیاتی"), ("INCOME_TAX", "مالیات بر درآمد"), ("OTHER", "سایر")
+        ("SALARY_BASE", "حقوق پایه"),
+        ("FOOD_ALLOWANCE", "حق خواروبار"),
+        ("HOUSING_ALLOWANCE", "حق مسکن"),
+        ("CHILD_ALLOWANCE", "حق اولاد"),
+        ("OVERTIME", "هزینه اضافه‌کاری"),
+        ("MISSION", "حق ماموریت"),
+        ("COMMUTE", "ایاب و ذهاب"),
+        ("PHONE_ALLOWANCE", "کمک هزینه تلفن"),
+        ("SENIORITY", "پایه سنوات"),
+        ("BONUS", "هزینه پاداش"),
+        ("EMPLOYER_INSURANCE", "هزینه بیمه سهم کارفرما"),
+        ("SUPPLEMENTARY_INSURANCE", "بیمه تکمیلی سهم کارفرما"),
+        ("MISSION_BENEFIT", "مزایای ماموریت"),
+        ("NONCASH_BENEFIT", "هزینه‌های غیرنقدی کارکنان"),
+        ("YEAR_END_BONUS", "هزینه عیدی"),
+        ("UNUSED_LEAVE", "هزینه مرخصی استفاده‌نشده کارکنان"),
+        ("TERMINATION_BENEFIT", "هزینه مزایای پایان خدمت کارکنان"),
+        ("MARKETING_ADVERTISING", "هزینه تبلیغات و بازاریابی"),
+        ("CONGRESS_EXHIBITION", "هزینه کنگره و نمایشگاه‌های تخصصی"),
+        ("TRAVEL_MISSION", "هزینه سفر و ماموریت"),
+        ("TRANSPORTATION", "هزینه حمل و نقل و ایاب و ذهاب"),
+        ("RESEARCH_LAB", "هزینه تحقیقات و آزمایشات"),
+        ("MEMBERSHIP", "هزینه حق عضویت‌ها"),
+        ("TRAINING", "هزینه‌های آموزشی"),
+        ("BOARD_MEETING_FEE", "هزینه حق حضور در جلسات"),
+        ("RENT", "هزینه اجاره محل"),
+        ("BUILDING_MAINTENANCE_CHARGE", "تعمیر و نگهداری و شارژ ساختمان"),
+        ("FURNITURE_MAINTENANCE", "تعمیر و نگهداری اثاثه و منصوبات"),
+        ("UTILITIES", "آب، برق و انرژی"),
+        ("TELECOM", "تلفن و ارتباطات"),
+        ("ASSET_INSURANCE", "بیمه دارایی‌ها"),
+        ("OFFICE_SUPPLIES", "ملزومات مصرفی اداری و عمومی"),
+        ("REGISTRATION_TRANSLATION", "ثبت، دفترخانه و دارالترجمه"),
+        ("CONSULTING", "کارشناسی و حق‌المشاوره"),
+        ("AUDIT_FINANCE_SERVICES", "حسابرسی و خدمات مالی"),
+        ("SOFTWARE_INTERNET", "پشتیبانی نرم‌افزارها و اینترنت"),
+        ("PUBLICATION_ADVERTISING", "آگهی و مطبوعات"),
+        ("BANK_SERVICE_FEE", "کارمزد حواله‌ها و سایر خدمات بانکی"),
+        ("HOSPITALITY", "پذیرایی کارکنان و تشریفات"),
+        ("CLEANING", "نظافت و بهداشت"),
+        ("SEMINAR_HOSPITALITY", "پذیرایی و تشریفات کنگره و سمینار"),
+        ("FURNITURE_DEPRECIATION", "استهلاک اثاثیه و منصوبات"),
+        ("SOFTWARE_DEPRECIATION", "استهلاک نرم‌افزارها"),
+
+        ("SCRAP_SALE", "فروش ضایعات"),
+        ("OPERATING_FX_GAIN", "سود ناشی از تسعیر دارایی‌ها و بدهی‌های ارزی عملیاتی"),
+        ("INVENTORY_SURPLUS", "اضافی انبار"),
+        ("OPERATING_EXCEPTIONAL_INCOME", "اقلام استثنایی عملیاتی - درآمد"),
+        ("ACCOUNTING_POLICY_PRIOR_INCOME", "اثر سنواتی تغییر روش حسابداری - درآمد"),
+        ("OTHER_OPERATING_INCOME", "سایر درآمد عملیاتی"),
+        ("IMPAIRMENT", "زیان کاهش ارزش موجودی‌ها / سرمایه‌گذاری‌ها"),
+        ("EXPIRY_LOSS", "زیان حاصل از تاریخ انقضای کالا"),
+        ("OPERATING_FX_LOSS", "زیان ناشی از تسعیر دارایی‌ها و بدهی‌های ارزی عملیاتی"),
+        ("INVENTORY_SHORTAGE", "کسری انبار"),
+        ("ACCOUNTING_POLICY_PRIOR_EXPENSE", "اثر سنواتی تغییر روش حسابداری - هزینه"),
+        ("OTHER_OPERATING_EXPENSE", "سایر هزینه عملیاتی"),
+
+        ("FINANCE_INTEREST_IRR", "سود و کارمزد بانکی و تمدید وام‌ها - ریالی"),
+        ("FINANCE_INTEREST", "سود و کارمزد بانکی و تمدید وام‌ها"),
+        ("FINANCE_EXPERT", "کارشناسی مالی"),
+        ("BANK_TRANSFER_FEE", "هزینه حواله‌های بانکی"),
+        ("PROMISSORY_NOTE_CHEQUE", "خرید سفته / برات و صدور دسته چک"),
+        ("GUARANTEE_REGISTRATION_STAMP", "حق ثبت و حق تمبر اسناد تضمینی"),
+        ("GROUP_COMPANY_FINANCE_COST", "هزینه مالی قابل پرداخت به سایر شرکت‌های گروه"),
+
+        ("ASSET_SALE_GAIN", "سود حاصل از فروش دارایی‌ها"),
+        ("NON_OPERATING_FX_GAIN", "سود دارایی‌ها و بدهی‌های ارزی غیرمرتبط با عملیات"),
+        ("FX_FUND_GAIN_LOSS", "سود / زیان تسعیر صندوق ارزی"),
+        ("INVESTMENT_INTEREST_INCOME", "سود اوراق مشارکت / سپرده و سرمایه‌گذاری‌ها"),
+        ("MARKETING_SAMPLE_REIMBURSEMENT", "دریافتی بابت نمونه مارکتینگ"),
+        ("NON_OPERATING_OTHER_COMPANY", "سایر درآمد از کمپانی‌ها / اشخاص"),
+        ("SHARE_SALE_LOSS", "زیان حاصل از فروش سهام"),
+        ("NONCURRENT_ASSET_SALE_LOSS", "زیان حاصل از فروش دارایی‌های غیرجاری"),
+        ("NON_OPERATING_FX_LOSS", "زیان دارایی‌ها و بدهی‌های ارزی غیرمرتبط با عملیات"),
+        ("NON_OPERATING_EXCEPTIONAL_EXPENSE", "اقلام استثنایی غیرعملیاتی"),
+
+        ("INCOME_TAX", "مالیات بر درآمد"),
+        ("OTHER", "سایر")
     ];
 }
