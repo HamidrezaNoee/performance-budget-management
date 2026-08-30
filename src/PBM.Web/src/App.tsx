@@ -219,9 +219,9 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
     return () => window.removeEventListener('pbm:workspace-data-changed', refresh)
   }, [companyId])
 
-  const selectedCompany = useMemo(() => companies.find(x => x.id === companyId), [companies, companyId])
   const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
   const canWriteCompany = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN') || writableCompanyIds.includes(companyId)
+  const showCompanySelector = companies.length > 1
   const menu = [
     ['داشبورد', <DashboardRoundedIcon />], ['کارتابل تأیید', <FactCheckRoundedIcon />], ['مدیریت بودجه', <AccountBalanceWalletRoundedIcon />],
     ['زنجیره خرید، واردات و فروش', <LocalShippingRoundedIcon />], ['بودجه و Forecast خرید', <ShoppingCartCheckoutRoundedIcon />],
@@ -250,7 +250,14 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         <Box flexGrow={1} /><List sx={{ p: 1 }}><ListItemButton onClick={() => setPasswordDialogOpen(true)} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LockResetRoundedIcon /></ListItemIcon><ListItemText primary="تغییر رمز عبور" /></ListItemButton><ListItemButton onClick={onLogout} sx={{ borderRadius: 2 }}><ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><LogoutRoundedIcon /></ListItemIcon><ListItemText primary="خروج" /></ListItemButton></List>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, pt: 11, pb: 5, minWidth: 0 }}><Container maxWidth="xl">
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}><Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography><Typography color="text.secondary">{selectedCompany?.name ?? 'انتخاب شرکت'} — سال مالی {years.find(x => x.id === yearId)?.jalaliYear ?? '-'}</Typography></Box><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" displayEmpty onChange={e => { const value = e.target.value; setCompanyId(value); if (value) localStorage.setItem('pbm_selected_company_id', value) }}><MenuItem value="" disabled><em>انتخاب کنید</em></MenuItem>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl><FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" displayEmpty disabled={!companyId} onChange={e => { const value = e.target.value; setYearId(value); if (companyId && value) localStorage.setItem(`pbm_selected_fiscal_year_id:${companyId}`, value) }}><MenuItem value="" disabled><em>{years.length ? 'انتخاب کنید' : 'سال مالی تعریف نشده'}</em></MenuItem>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.jalaliYear}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={() => void refreshWorkspaceData()} disabled={loading}>بازخوانی</Button></Stack></Stack>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} mb={3}>
+          <Box><Typography variant="h4" fontWeight={900}>{titles[activeView]}</Typography></Box>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            {showCompanySelector && <FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>شرکت</InputLabel><Select value={companyId} label="شرکت" displayEmpty onChange={e => { const value = e.target.value; setCompanyId(value); if (value) localStorage.setItem('pbm_selected_company_id', value) }}><MenuItem value="" disabled><em>انتخاب کنید</em></MenuItem>{companies.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.code}</MenuItem>)}</Select></FormControl>}
+            <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>سال مالی</InputLabel><Select value={yearId} label="سال مالی" displayEmpty disabled={!companyId} onChange={e => { const value = e.target.value; setYearId(value); if (companyId && value) localStorage.setItem(`pbm_selected_fiscal_year_id:${companyId}`, value) }}><MenuItem value="" disabled><em>{years.length ? 'انتخاب کنید' : 'سال مالی تعریف نشده'}</em></MenuItem>{years.map(x => <MenuItem key={x.id} value={x.id}>{x.name} — {x.jalaliYear}</MenuItem>)}</Select></FormControl>
+            <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={() => void refreshWorkspaceData()} disabled={loading}>بازخوانی</Button>
+          </Stack>
+        </Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {!loading && companies.length === 0 && <Alert severity="warning" sx={{ mb: 2 }}>هیچ شرکت فعالی برای این کاربر در دسترس نیست. از تنظیمات، شرکت را تعریف یا دسترسی کاربر را بررسی کنید.</Alert>}
         {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «تنظیمات و داده‌های پایه ← تقویم مالی» سال مالی را ایجاد کنید.</Alert>}
