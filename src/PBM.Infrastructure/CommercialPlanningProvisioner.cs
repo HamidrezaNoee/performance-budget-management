@@ -9,7 +9,7 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         new Dictionary<string, (string, bool)>(StringComparer.OrdinalIgnoreCase)
         {
             ["PRODUCT"] = ("کالا / محصول", true),
-            ["SUPPLIER"] = ("تامین‌کننده / کمپانی", true),
+            ["SUPPLIER"] = ("تامین‌کننده", true),
             ["BRAND"] = ("برند", true),
             ["CUSTOMER"] = ("مشتری", true),
             ["REGION"] = ("منطقه", true),
@@ -58,7 +58,7 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         EnsureMeasure(trade, "SALES_QTY", "تعداد فروش", "واحد", MeasureValueType.Quantity, ref order);
         EnsureMeasure(trade, "FREE_SALES_QTY", "فروش رایگان / آفر", "واحد", MeasureValueType.Quantity, ref order);
         EnsureMeasure(trade, "SALES_PRICE", "نرخ فروش", "ریال", MeasureValueType.Rate, ref order, MeasureAggregation.Average);
-        EnsureMeasure(trade, "GROSS_SALES", "فروش ناخالص کالای تجاری", "ریال", MeasureValueType.Amount, ref order,
+        EnsureMeasure(trade, "GROSS_SALES", "فروش ناخالص", "ریال", MeasureValueType.Amount, ref order,
             formula: "[SALES_QTY] * [SALES_PRICE]");
         EnsureMeasure(trade, "SALES_DISCOUNT", "تخفیفات ریالی فروش", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "SALES_RETURN", "برگشت از فروش", "ریال", MeasureValueType.Amount, ref order);
@@ -67,9 +67,9 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
             formula: "[GROSS_SALES] - [SALES_DISCOUNT] - [FOC_SALES_AMOUNT] - [SALES_RETURN]");
         EnsureMeasure(trade, "COGS_AMOUNT", "بهای تمام‌شده فروش عادی", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "FOC_COST", "بهای تمام‌شده جایزه جنسی", "ریال", MeasureValueType.Amount, ref order);
-        EnsureMeasure(trade, "SALES_COGS_TOTAL", "قیمت تمام‌شده کالای تجاری فروش‌رفته", "ریال", MeasureValueType.Amount, ref order,
+        EnsureMeasure(trade, "SALES_COGS_TOTAL", "جمع قیمت تمام‌شده کالای فروش‌رفته", "ریال", MeasureValueType.Amount, ref order,
             formula: "[COGS_AMOUNT] + [FOC_COST]");
-        EnsureMeasure(trade, "PURCHASE_COMPANY_DISCOUNT", "تخفیفات کمپانی (خرید)", "ریال", MeasureValueType.Amount, ref order);
+        EnsureMeasure(trade, "PURCHASE_COMPANY_DISCOUNT", "تخفیف تأمین‌کننده (خرید)", "ریال", MeasureValueType.Amount, ref order);
         EnsureMeasure(trade, "SALES_GROSS_MARGIN", "سود ناخالص فروش", "ریال", MeasureValueType.Amount, ref order,
             formula: "[NET_SALES] - [SALES_COGS_TOTAL] + [PURCHASE_COMPANY_DISCOUNT]");
 
@@ -101,7 +101,6 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
 
         var account = dimensions["ACCOUNT"];
         await EnsureMemberAsync(account, "EXPENSE_BUDGET", "حساب بودجه هزینه و درآمد", ct);
-        await EnsureWorkbookOrganizationAsync(dimensions["DEPARTMENT"], dimensions["COSTCENTER"], ct);
 
         var requestedCodes = new[]
         {
@@ -220,43 +219,6 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         return member;
     }
 
-    private async Task EnsureWorkbookOrganizationAsync(
-        DimensionDefinition department,
-        DimensionDefinition costCenter,
-        CancellationToken ct)
-    {
-        var marketing = await EnsureMemberAsync(department, "MARKETING", "مارکتینگ", ct);
-        var corporate = await EnsureMemberAsync(department, "CORPORATE", "ستادی", ct);
-        var sales = await EnsureMemberAsync(department, "SALES", "فروش", ct);
-        await EnsureMemberAsync(department, "MKT_HOSP", "مارکتینگ - بیمارستانی", ct, marketing.Id);
-        await EnsureMemberAsync(department, "MKT_RX", "مارکتینگ - رکورداتی", ct, marketing.Id);
-        await EnsureMemberAsync(department, "MEDICAL", "مدیکال", ct, marketing.Id);
-        await EnsureMemberAsync(department, "MKT_EYE", "مارکتینگ - چشمی", ct, marketing.Id);
-        await EnsureMemberAsync(department, "DIGITAL_MKT", "دیجیتال مارکتینگ", ct, marketing.Id);
-        await EnsureMemberAsync(department, "MANAGEMENT", "مدیریت", ct, corporate.Id);
-        await EnsureMemberAsync(department, "FINANCE", "مالی", ct, corporate.Id);
-        await EnsureMemberAsync(department, "COMMERCIAL", "بازرگانی", ct, corporate.Id);
-        await EnsureMemberAsync(department, "REGULATORY", "رگولاتوری", ct, corporate.Id);
-        await EnsureMemberAsync(department, "HR", "منابع انسانی", ct, corporate.Id);
-        await EnsureMemberAsync(department, "SALES_LENS_RENU", "فروش - لنز و رنیو", ct, sales.Id);
-
-        var ccMarketing = await EnsureMemberAsync(costCenter, "CC_MARKETING", "مرکز هزینه مارکتینگ", ct);
-        var ccCorporate = await EnsureMemberAsync(costCenter, "CC_CORPORATE", "مرکز هزینه ستادی", ct);
-        var ccSales = await EnsureMemberAsync(costCenter, "CC_SALES", "مرکز هزینه فروش", ct);
-        await EnsureMemberAsync(costCenter, "CC_MKT_HOSP", "مارکتینگ - بیمارستانی", ct, ccMarketing.Id);
-        await EnsureMemberAsync(costCenter, "CC_MKT_RX", "مارکتینگ - رکورداتی", ct, ccMarketing.Id);
-        await EnsureMemberAsync(costCenter, "CC_MEDICAL", "مدیکال", ct, ccMarketing.Id);
-        await EnsureMemberAsync(costCenter, "CC_MKT_EYE", "مارکتینگ - چشمی", ct, ccMarketing.Id);
-        await EnsureMemberAsync(costCenter, "CC_DIGITAL_MKT", "دیجیتال مارکتینگ", ct, ccMarketing.Id);
-        await EnsureMemberAsync(costCenter, "CC_MANAGEMENT", "مدیریت", ct, ccCorporate.Id);
-        await EnsureMemberAsync(costCenter, "CC_FINANCE", "مالی", ct, ccCorporate.Id);
-        await EnsureMemberAsync(costCenter, "CC_COMMERCIAL", "بازرگانی", ct, ccCorporate.Id);
-        await EnsureMemberAsync(costCenter, "CC_REGULATORY", "رگولاتوری", ct, ccCorporate.Id);
-        await EnsureMemberAsync(costCenter, "CC_HR", "منابع انسانی", ct, ccCorporate.Id);
-        await EnsureMemberAsync(costCenter, "CC_SALES_MAIN", "فروش", ct, ccSales.Id);
-        await EnsureMemberAsync(costCenter, "CC_SALES_LENS_RENU", "فروش - لنز و رنیو", ct, ccSales.Id);
-    }
-
     private void EnsureMeasure(
         BudgetModel model,
         string code,
@@ -360,7 +322,6 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         ("SEMINAR_HOSPITALITY", "پذیرایی و تشریفات کنگره و سمینار"),
         ("FURNITURE_DEPRECIATION", "استهلاک اثاثیه و منصوبات"),
         ("SOFTWARE_DEPRECIATION", "استهلاک نرم‌افزارها"),
-
         ("SCRAP_SALE", "فروش ضایعات"),
         ("OPERATING_FX_GAIN", "سود ناشی از تسعیر دارایی‌ها و بدهی‌های ارزی عملیاتی"),
         ("INVENTORY_SURPLUS", "اضافی انبار"),
@@ -373,7 +334,6 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         ("INVENTORY_SHORTAGE", "کسری انبار"),
         ("ACCOUNTING_POLICY_PRIOR_EXPENSE", "اثر سنواتی تغییر روش حسابداری - هزینه"),
         ("OTHER_OPERATING_EXPENSE", "سایر هزینه عملیاتی"),
-
         ("FINANCE_INTEREST_IRR", "سود و کارمزد بانکی و تمدید وام‌ها - ریالی"),
         ("FINANCE_INTEREST", "سود و کارمزد بانکی و تمدید وام‌ها"),
         ("FINANCE_EXPERT", "کارشناسی مالی"),
@@ -381,18 +341,16 @@ public sealed class CommercialPlanningProvisioner(PbmDbContext db)
         ("PROMISSORY_NOTE_CHEQUE", "خرید سفته / برات و صدور دسته چک"),
         ("GUARANTEE_REGISTRATION_STAMP", "حق ثبت و حق تمبر اسناد تضمینی"),
         ("GROUP_COMPANY_FINANCE_COST", "هزینه مالی قابل پرداخت به سایر شرکت‌های گروه"),
-
         ("ASSET_SALE_GAIN", "سود حاصل از فروش دارایی‌ها"),
         ("NON_OPERATING_FX_GAIN", "سود دارایی‌ها و بدهی‌های ارزی غیرمرتبط با عملیات"),
         ("FX_FUND_GAIN_LOSS", "سود / زیان تسعیر صندوق ارزی"),
         ("INVESTMENT_INTEREST_INCOME", "سود اوراق مشارکت / سپرده و سرمایه‌گذاری‌ها"),
-        ("MARKETING_SAMPLE_REIMBURSEMENT", "دریافتی بابت نمونه مارکتینگ"),
-        ("NON_OPERATING_OTHER_COMPANY", "سایر درآمد از کمپانی‌ها / اشخاص"),
+        ("MARKETING_SAMPLE_REIMBURSEMENT", "دریافتی بابت نمونه بازاریابی"),
+        ("NON_OPERATING_OTHER_COMPANY", "سایر درآمد از شرکت‌ها / اشخاص"),
         ("SHARE_SALE_LOSS", "زیان حاصل از فروش سهام"),
         ("NONCURRENT_ASSET_SALE_LOSS", "زیان حاصل از فروش دارایی‌های غیرجاری"),
         ("NON_OPERATING_FX_LOSS", "زیان دارایی‌ها و بدهی‌های ارزی غیرمرتبط با عملیات"),
         ("NON_OPERATING_EXCEPTIONAL_EXPENSE", "اقلام استثنایی غیرعملیاتی"),
-
         ("INCOME_TAX", "مالیات بر درآمد"),
         ("OTHER", "سایر")
     ];
