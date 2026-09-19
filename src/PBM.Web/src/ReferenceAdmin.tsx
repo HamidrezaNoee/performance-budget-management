@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Box, Card, CardContent, Divider, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Typography } from '@mui/material'
 import { api } from './api'
+import { resolveSettingsPermissions } from './settingsPermissions'
 import SecurityAdmin from './SecurityAdmin'
 import LicenseAdmin from './LicenseAdmin'
 import IntegrationCredentialsAdmin from './IntegrationCredentialsAdmin'
@@ -14,11 +15,7 @@ export default function ReferenceAdmin({ companyId, roles }: { companyId: string
   const [tab, setTab] = useState(0)
   const [audit, setAudit] = useState<Audit[]>([])
   const [error, setError] = useState('')
-  const roleSet = useMemo(() => new Set(roles.map(x => x.toUpperCase())), [roles])
-  const canManageSecurity = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN')
-  const canViewIdempotency = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO')
-  const canViewOutbox = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
-  const canViewAudit = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
+  const { canManageSecurity, canViewIdempotency, canViewOutbox, canViewAudit } = resolveSettingsPermissions(roles)
 
   useEffect(() => {
     if (!canViewAudit) { setAudit([]); return }
