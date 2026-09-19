@@ -15,7 +15,7 @@ public sealed class ReservationReconciliationService(
         decimal tolerancePercent = 0.1m,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         if (graceDays is < 0 or > 365) throw new ArgumentOutOfRangeException(nameof(graceDays), "Grace days must be between 0 and 365.");
         if (tolerancePercent is < 0m or > 100m) throw new ArgumentOutOfRangeException(nameof(tolerancePercent), "Tolerance percent must be between 0 and 100.");
         if (fiscalYearId.HasValue && !await db.FiscalYears.AsNoTracking().AnyAsync(
@@ -174,9 +174,4 @@ public sealed class ReservationReconciliationService(
         _ => 9
     };
 
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
 }

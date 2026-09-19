@@ -156,13 +156,13 @@ public sealed class BudgetAttachmentService(PbmDbContext db, IUserContext user) 
     private void EnsureCompanyRead(Guid companyId, Guid tenantId)
     {
         if (tenantId != user.TenantId) throw new UnauthorizedAccessException("Attachment is outside the current tenant.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 
     private void EnsureCompanyWrite(Guid companyId, Guid tenantId)
     {
         if (tenantId != user.TenantId) throw new UnauthorizedAccessException("Attachment is outside the current tenant.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company.");
+        user.EnsureCompanyWriteAccess(companyId);
     }
 
     private void AddAudit(string entityType, Guid entityId, string action, object value) => db.AuditLogs.Add(new AuditLog

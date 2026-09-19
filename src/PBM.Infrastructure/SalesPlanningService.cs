@@ -108,7 +108,7 @@ public sealed class SalesPlanningService(
     {
         ValidateEditableKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
         await provisioner.EnsureSalesAsync(context.TenantId, cancellationToken);
         var dimensions = await ValidateDimensionsAsync(context.ModelId, context.CompanyId, request.Dimensions, cancellationToken);
         var code = (request.MeasureCode ?? string.Empty).Trim().ToUpperInvariant();
@@ -213,15 +213,7 @@ public sealed class SalesPlanningService(
             throw new ArgumentException("Only Budget and Forecast can be edited in the sales planner. Actual values are owned by Actual Ledger / controlled imports.");
     }
 
-    private void EnsureCompany(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company.");
-    }
+    private void EnsureCompany(Guid companyId) => user.EnsureCompanyReadAccess(companyId);
 
     private sealed record PlanningContext(Guid VersionId, Guid TenantId, Guid CompanyId, Guid FiscalYearId, Guid ModelId, string ModelCode);
 }

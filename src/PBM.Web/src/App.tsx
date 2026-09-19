@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
-  Alert, AppBar, Box, Button, Card, CardContent, CircularProgress, Collapse, Container, Divider, Drawer,
-  FormControl, IconButton, InputLabel, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Select,
-  Stack, TextField, Toolbar, Typography
+  Alert, AppBar, Box, Button, CircularProgress, Collapse, Container, Divider, Drawer,
+  FormControl, InputLabel, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Select,
+  Stack, Toolbar, Typography
 } from '@mui/material'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
@@ -28,40 +28,37 @@ import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
-import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded'
-import LoginRoundedIcon from '@mui/icons-material/LoginRounded'
 import { api, clearClientSession, setAccessToken } from './api'
-import BudgetInbox from './BudgetInbox'
-import BudgetPlanning from './BudgetPlanning'
-import TradeSupplyChain from './TradeSupplyChain'
-import PurchaseForecastPlanner from './PurchaseForecastPlanner'
-import SalesPlanner from './SalesPlanner'
-import ExpensePlanner from './ExpensePlanner'
-import BudgetReservations from './BudgetReservations'
-import BudgetTransfers from './BudgetTransfers'
-import WorkbookImport from './WorkbookImport'
-import KpiPerformance from './KpiPerformance'
-import VarianceAnalysis from './VarianceAnalysis'
-import Forecasting from './Forecasting'
-import CashPlanning from './CashPlanning'
-import CapexProjects from './CapexProjects'
-import FinancialReports from './FinancialReports'
-import ActualLedgerWorkspace from './ActualLedgerWorkspace'
 import SidebarTree from './SidebarTree'
 import { masterDataTree, settingsTree } from './NavigationTrees'
-import StructuredMasterDataWorkspace from './StructuredMasterDataWorkspace'
-import SystemSettingsWorkspace from './SystemSettingsWorkspace'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import NotificationCenter from './NotificationCenter'
-import ExecutiveDashboard from './ExecutiveDashboard'
+import LoginPage from './LoginPage'
+import { readAuthSession, saveAuthSession, type AuthSession } from './authSession'
+
+const ExecutiveDashboard = lazy(() => import('./ExecutiveDashboard'))
+const BudgetInbox = lazy(() => import('./BudgetInbox'))
+const BudgetPlanning = lazy(() => import('./BudgetPlanning'))
+const TradeSupplyChain = lazy(() => import('./TradeSupplyChain'))
+const PurchaseForecastPlanner = lazy(() => import('./PurchaseForecastPlanner'))
+const SalesPlanner = lazy(() => import('./SalesPlanner'))
+const ExpensePlanner = lazy(() => import('./ExpensePlanner'))
+const BudgetReservations = lazy(() => import('./BudgetReservations'))
+const BudgetTransfers = lazy(() => import('./BudgetTransfers'))
+const WorkbookImport = lazy(() => import('./WorkbookImport'))
+const KpiPerformance = lazy(() => import('./KpiPerformance'))
+const VarianceAnalysis = lazy(() => import('./VarianceAnalysis'))
+const Forecasting = lazy(() => import('./Forecasting'))
+const CashPlanning = lazy(() => import('./CashPlanning'))
+const CapexProjects = lazy(() => import('./CapexProjects'))
+const FinancialReports = lazy(() => import('./FinancialReports'))
+const ActualLedgerWorkspace = lazy(() => import('./ActualLedgerWorkspace'))
+const StructuredMasterDataWorkspace = lazy(() => import('./StructuredMasterDataWorkspace'))
+const SystemSettingsWorkspace = lazy(() => import('./SystemSettingsWorkspace'))
 
 type Company = { id: string; tenantId: string; code: string; name: string; industry?: string }
 type FiscalYear = { id: string; code: string; name: string; jalaliYear: number }
-type LoginResponse = { accessToken: string; displayName: string; roles: string[]; companyIds: string[]; writableCompanyIds: string[] }
-type CaptchaResponse = { captchaId: string; challenge: string; expiresInSeconds: number }
-
 const drawerWidth = 320
-const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 const viewHashes = ['dashboard', 'inbox', 'budget', 'trade', 'purchase-forecast', 'sales', 'expenses', 'reservations', 'transfers', 'imports', 'kpi', 'variance', 'forecast', 'cash', 'capex', 'reports', 'actuals', 'settings', 'master-data'] as const
 
 function viewIndexFromHash() {
@@ -71,93 +68,22 @@ function viewIndexFromHash() {
   return index >= 0 ? index : 0
 }
 
-function readStoredArray(key: string): string[] {
-  try { return JSON.parse(localStorage.getItem(key) ?? '[]') as string[] }
-  catch { return [] }
-}
-
 export default function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('pbm_token'))
-  const [displayName, setDisplayName] = useState(() => localStorage.getItem('pbm_display_name') ?? '')
-  const [roles, setRoles] = useState<string[]>(() => readStoredArray('pbm_roles'))
-  const [writableCompanyIds, setWritableCompanyIds] = useState<string[]>(() => readStoredArray('pbm_writable_company_ids'))
-  useEffect(() => { setAccessToken(token) }, [token])
+  const [session, setSession] = useState<AuthSession | null>(readAuthSession)
+  useEffect(() => { setAccessToken(session?.accessToken ?? null) }, [session?.accessToken])
 
   const logout = () => {
     clearClientSession()
-    setToken(null); setDisplayName(''); setRoles([]); setWritableCompanyIds([])
+    setSession(null)
   }
 
-  if (!token) return <Login onLoggedIn={response => {
-    localStorage.setItem('pbm_token', response.accessToken)
-    localStorage.setItem('pbm_display_name', response.displayName)
-    localStorage.setItem('pbm_roles', JSON.stringify(response.roles))
-    localStorage.setItem('pbm_writable_company_ids', JSON.stringify(response.writableCompanyIds))
+  if (!session) return <LoginPage onLoggedIn={response => {
+    saveAuthSession(response)
     setAccessToken(response.accessToken)
-    setToken(response.accessToken); setDisplayName(response.displayName); setRoles(response.roles); setWritableCompanyIds(response.writableCompanyIds)
+    setSession(response)
   }} />
 
-  return <Workspace displayName={displayName} roles={roles} writableCompanyIds={writableCompanyIds} onLogout={logout} />
-}
-
-function Login({ onLoggedIn }: { onLoggedIn: (response: LoginResponse) => void }) {
-  const [userName, setUserName] = useState(isLocalDevelopment ? 'admin' : '')
-  const [password, setPassword] = useState('')
-  const [captchaId, setCaptchaId] = useState('')
-  const [captchaChallenge, setCaptchaChallenge] = useState('')
-  const [captchaAnswer, setCaptchaAnswer] = useState('')
-  const [captchaLoading, setCaptchaLoading] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const loadCaptcha = async () => {
-    setCaptchaLoading(true)
-    try {
-      const { data } = await api.get<CaptchaResponse>('/auth/captcha', { headers: { 'Cache-Control': 'no-cache' } })
-      setCaptchaId(data.captchaId)
-      setCaptchaChallenge(data.challenge)
-      setCaptchaAnswer('')
-    } catch {
-      setCaptchaId(''); setCaptchaChallenge('')
-      setError('دریافت کد امنیتی ناموفق بود. اتصال به سرور را بررسی کنید.')
-    } finally { setCaptchaLoading(false) }
-  }
-
-  useEffect(() => { void loadCaptcha() }, [])
-
-  const submit = async () => {
-    if (!userName.trim() || !password) { setError('نام کاربری و رمز عبور الزامی است.'); return }
-    if (!captchaId || !captchaAnswer.trim()) { setError('پاسخ کد امنیتی را وارد کنید.'); return }
-    setBusy(true); setError('')
-    try {
-      const { data } = await api.post<LoginResponse>('/auth/login', { userName, password }, {
-        headers: { 'X-PBM-Captcha-Id': captchaId, 'X-PBM-Captcha-Answer': captchaAnswer.trim() }
-      })
-      onLoggedIn(data)
-    } catch (requestError: any) {
-      const status = requestError?.response?.status
-      const detail = requestError?.response?.data?.detail
-      if (status === 400 && detail) setError(detail)
-      else if (status === 429) setError('تعداد تلاش‌های ورود بیش از حد مجاز است. کمی صبر کنید و دوباره تلاش کنید.')
-      else setError('ورود ناموفق بود. نام کاربری یا رمز عبور را بررسی کنید.')
-      await loadCaptcha()
-    } finally { setBusy(false) }
-  }
-
-  return <Box className="login-shell">
-    <Box className="login-visual" aria-hidden="true"><Box className="login-visual-copy"><Typography className="login-visual-kicker">PBM Intelligence Platform</Typography><Typography variant="h4" fontWeight={900}>بودجه هوشمند، تصمیم دقیق</Typography><Typography>برنامه‌ریزی، پایش عملکرد و تحلیل مالی در یک محیط یکپارچه و چندشرکتی</Typography></Box></Box>
-    <Box className="login-panel"><Card className="login-card" elevation={0}><CardContent sx={{ p: { xs: 3, sm: 4.5 } }}>
-      <Box className="login-brand-row"><Box className="brand-mark">PBM</Box><Box><Typography variant="h5" fontWeight={900}>مدیریت بودجه و عملکرد</Typography><Typography className="login-subtitle">سامانه بودجه‌ریزی چندشرکتی و پایش عملکرد</Typography></Box></Box>
-      {error && <Alert severity="error" className="login-alert">{error}</Alert>}
-      <Stack spacing={2.1}>
-        <TextField className="login-field" label="نام کاربری" value={userName} onChange={e => setUserName(e.target.value)} autoComplete="username" fullWidth />
-        <TextField className="login-field" label="رمز عبور" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" fullWidth />
-        <Box className="captcha-section"><Stack direction="row" alignItems="center" spacing={1} mb={1}><ShieldRoundedIcon fontSize="small" /><Typography fontWeight={800}>کد امنیتی</Typography><Typography variant="caption" className="captcha-expiry">اعتبار ۲ دقیقه</Typography></Stack><Box className="captcha-row"><Box className="captcha-challenge" dir="ltr">{captchaLoading ? <CircularProgress size={22} color="inherit" /> : (captchaChallenge || '—')}</Box><IconButton className="captcha-refresh" onClick={() => void loadCaptcha()} disabled={captchaLoading || busy} aria-label="دریافت کد امنیتی جدید"><RefreshRoundedIcon /></IconButton><TextField className="login-field captcha-answer" label="پاسخ" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)} disabled={captchaLoading} inputProps={{ inputMode: 'numeric', dir: 'ltr' }} onKeyDown={e => e.key === 'Enter' && submit()} /></Box></Box>
-        <Button className="login-submit" variant="contained" size="large" startIcon={<LoginRoundedIcon />} onClick={submit} disabled={busy || captchaLoading || !captchaId}>{busy ? <CircularProgress size={24} color="inherit" /> : 'ورود به سامانه'}</Button>
-      </Stack>
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" mt={2.5} className="login-security-note"><ShieldRoundedIcon sx={{ fontSize: 16 }} /><Typography variant="caption">ورود امن با کپچای یک‌بارمصرف و نشست کنترل‌شده</Typography></Stack>
-    </CardContent></Card></Box>
-  </Box>
+  return <Workspace displayName={session.displayName} roles={session.roles} writableCompanyIds={session.writableCompanyIds} onLogout={logout} />
 }
 
 function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displayName: string; roles: string[]; writableCompanyIds: string[]; onLogout: () => void }) {
@@ -348,7 +274,8 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && companyId && years.length === 0 && <Alert severity="info" sx={{ mb: 2 }}>برای شرکت انتخاب‌شده هنوز سال مالی تعریف نشده است. از «اطلاعات پایه ← برنامه‌ریزی و مالی ← تقویم» سال مالی را ایجاد کنید.</Alert>}
         {writeSensitiveView && companyId && !canWriteCompany && <Alert severity="warning" sx={{ mb: 2 }}>دسترسی شما برای این شرکت فقط خواندنی است. عملیات ثبت/ارسال/تأیید انجام نخواهد شد.</Alert>}
         {loading && <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}
-        {!loading && companyId && yearId && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} />}
+        <Suspense fallback={<Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>}>
+        {!loading && companyId && yearId && activeView === 0 && <ExecutiveDashboard companyId={companyId} fiscalYearId={yearId} roles={roles} />}
         {!loading && companyId && activeView === 1 && <BudgetInbox companyId={companyId} />}
         {!loading && companyId && yearId && activeView === 2 && <BudgetPlanning companyId={companyId} fiscalYearId={yearId} />}
         {!loading && companyId && yearId && activeView === 3 && <TradeSupplyChain companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} />}
@@ -367,6 +294,7 @@ function Workspace({ displayName, roles, writableCompanyIds, onLogout }: { displ
         {!loading && companyId && yearId && activeView === 16 && <ActualLedgerWorkspace companyId={companyId} fiscalYearId={yearId} canWrite={canWriteCompany} roles={roles} />}
         {!loading && activeView === 17 && <SystemSettingsWorkspace companyId={companyId} roles={roles} section={selectedSettingsPath} />}
         {!loading && activeView === 18 && <StructuredMasterDataWorkspace companyId={companyId} roles={roles} section={selectedMasterPath} />}
+        </Suspense>
       </Container></Box>
     </Box>
     <ChangePasswordDialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} />

@@ -27,7 +27,7 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
                 TenantId = x.BudgetPlan.Company!.TenantId
             })
             .SingleAsync(cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
 
         var period = await db.FiscalPeriods.AsNoTracking().Include(x => x.FiscalYear)
             .SingleOrDefaultAsync(x => x.Id == periodId && x.FiscalYearId == context.FiscalYearId, cancellationToken)
@@ -145,7 +145,7 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
         var context = await db.BudgetVersions.AsNoTracking().Where(x => x.Id == versionId)
             .Select(x => new { CompanyId = x.BudgetPlan!.CompanyId, ModelId = x.BudgetPlan.BudgetModelId })
             .SingleAsync(cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
 
         var calculatedIds = await db.Measures.AsNoTracking()
             .Where(x => x.BudgetModelId == context.ModelId && x.IsCalculated)
@@ -217,12 +217,6 @@ public sealed partial class CalculationService(PbmDbContext db, IUserContext use
             if (selected is not null)
                 variables[$"ASSUMP:{definition.Code}"] = selected.Value;
         }
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private static IReadOnlyList<string> ExtractDependencies(string expression) =>

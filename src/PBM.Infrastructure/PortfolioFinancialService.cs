@@ -160,7 +160,6 @@ public sealed class PortfolioFinancialService(
                 x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive,
                 cancellationToken))
             throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 }

@@ -64,7 +64,7 @@ public sealed class ExpensePlanningService(
         ValidateEditableKind(request.ValueKind);
         if (request.Value < 0) throw new ArgumentOutOfRangeException(nameof(request.Value), "Expense planning amounts must be positive; income/expense nature is selected by EXPENSECLASS.");
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
         await provisioner.EnsureExpenseAsync(context.TenantId, cancellationToken);
         var dimensions = await ValidateDimensionsAsync(context.ModelId, context.CompanyId, request.Dimensions, cancellationToken);
         var measureId = await db.Measures.AsNoTracking().Where(x => x.BudgetModelId == context.ModelId && x.Code == MeasureCode).Select(x => x.Id).SingleAsync(cancellationToken);
@@ -82,7 +82,7 @@ public sealed class ExpensePlanningService(
 
     public async Task<ExpensePlanningMemberDto> CreateItemAsync(CreateExpenseItemRequest request, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         var tenantId = await GetCompanyTenantAsync(request.CompanyId, cancellationToken);
         await provisioner.EnsureExpenseAsync(tenantId, cancellationToken);
         var code = NormalizeCode(request.Code);
@@ -166,7 +166,6 @@ public sealed class ExpensePlanningService(
         return code;
     }
 
-    private void EnsureCompany(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
-    private void EnsureCompanyWrite(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
+    private void EnsureCompany(Guid companyId) => user.EnsureCompanyReadAccess(companyId);
     private sealed record PlanningContext(Guid VersionId, Guid TenantId, Guid CompanyId, Guid FiscalYearId, Guid ModelId, string ModelCode);
 }

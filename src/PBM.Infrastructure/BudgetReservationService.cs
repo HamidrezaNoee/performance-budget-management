@@ -17,7 +17,7 @@ public sealed class BudgetReservationService(
         int take = 100,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        currentUser.EnsureCompanyReadAccess(companyId);
         take = Math.Clamp(take, 1, 500);
         var query = db.BudgetReservations.AsNoTracking()
             .Where(x => x.TenantId == currentUser.TenantId && x.CompanyId == companyId);
@@ -38,7 +38,7 @@ public sealed class BudgetReservationService(
         CancellationToken cancellationToken = default)
     {
         var context = await LoadContextAsync(versionId, periodId, measureId, dimensions, requireOperationalVersion: false, cancellationToken);
-        EnsureCompanyRead(context.CompanyId);
+        currentUser.EnsureCompanyReadAccess(context.CompanyId);
         return await GetAvailabilityInternalAsync(context, cancellationToken);
     }
 
@@ -53,7 +53,7 @@ public sealed class BudgetReservationService(
 
         var context = await LoadContextAsync(request.VersionId, request.PeriodId, request.MeasureId, request.Dimensions, requireOperationalVersion: true, cancellationToken);
         if (context.CompanyId != request.CompanyId) throw new ArgumentException("Reservation company does not match the selected budget version.");
-        EnsureCompanyWrite(context.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(context.CompanyId);
         EnsureAuthenticated();
 
         var availability = await GetAvailabilityInternalAsync(context, cancellationToken);
@@ -109,7 +109,7 @@ public sealed class BudgetReservationService(
         EnsureApprovalRole();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var reservation = await LoadForMutationAsync(reservationId, cancellationToken);
-        EnsureCompanyWrite(reservation.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(reservation.CompanyId);
         if (reservation.Status != BudgetReservationStatus.Requested)
             throw new InvalidOperationException("Only a requested reservation can be approved.");
 
@@ -144,7 +144,7 @@ public sealed class BudgetReservationService(
     {
         EnsureApprovalRole();
         var reservation = await LoadForMutationAsync(reservationId, cancellationToken);
-        EnsureCompanyWrite(reservation.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(reservation.CompanyId);
         if (reservation.Status != BudgetReservationStatus.Requested)
             throw new InvalidOperationException("Only a requested reservation can be rejected.");
 
@@ -165,7 +165,7 @@ public sealed class BudgetReservationService(
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var reservation = await LoadForMutationAsync(reservationId, cancellationToken);
-        EnsureCompanyWrite(reservation.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(reservation.CompanyId);
         EnsureReleaseRole(reservation);
         if (reservation.Status != BudgetReservationStatus.Approved)
             throw new InvalidOperationException("Only an approved reservation can be released.");
@@ -192,7 +192,7 @@ public sealed class BudgetReservationService(
         EnsureApprovalRole();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var reservation = await LoadForMutationAsync(reservationId, cancellationToken);
-        EnsureCompanyWrite(reservation.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(reservation.CompanyId);
         if (reservation.Status != BudgetReservationStatus.Approved)
             throw new InvalidOperationException("Only an approved reservation can be consumed.");
 
@@ -329,7 +329,7 @@ public sealed class BudgetReservationService(
     {
         var item = await IncludeDetails(db.BudgetReservations.AsNoTracking().Where(x => x.Id == reservationId && x.TenantId == currentUser.TenantId))
             .SingleAsync(cancellationToken);
-        EnsureCompanyRead(item.CompanyId);
+        currentUser.EnsureCompanyReadAccess(item.CompanyId);
         return ToDto(item);
     }
 
@@ -366,18 +366,6 @@ public sealed class BudgetReservationService(
         item.ReleasedAtUtc,
         item.ConsumedAtUtc,
         item.Dimensions.OrderBy(x => x.DimensionId).Select(x => new DimensionSelection(x.DimensionId, x.MemberId)).ToList());
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!currentUser.IsInRole("SUPERADMIN") && !currentUser.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!currentUser.IsInRole("SUPERADMIN") && !currentUser.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
-    }
 
     private void EnsureAuthenticated()
     {

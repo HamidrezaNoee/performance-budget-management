@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, 'feat/**', 'fix/**' ]
+    branches: [ main, 'feat/**', 'fix/**', 'refactor/**' ]
   pull_request:
     branches: [ main ]
 
@@ -55,6 +55,6 @@ jobs:
         with:
           node-version: '22'
       - name: Install
-        run: npm install
+        run: npm ci
       - name: Build
         run: npm run build

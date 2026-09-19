@@ -49,7 +49,7 @@ public sealed class GovernedBudgetService(
         var plan = version.BudgetPlan ?? throw new InvalidOperationException("Budget version has no plan.");
         if (!await db.Companies.AsNoTracking().AnyAsync(x => x.Id == plan.CompanyId && x.TenantId == user.TenantId, cancellationToken))
             throw new UnauthorizedAccessException("Budget version is outside the current tenant.");
-        EnsureCompanyWrite(plan.CompanyId);
+        user.EnsureCompanyWriteAccess(plan.CompanyId);
 
         var decision = BudgetFactWritePolicy.Evaluate(version.Status, version.IsLocked, request.ValueKind);
         if (!decision.IsAllowed)
@@ -191,9 +191,4 @@ public sealed class GovernedBudgetService(
         return fact.Id;
     }
 
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
-    }
 }

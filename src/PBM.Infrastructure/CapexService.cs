@@ -15,7 +15,7 @@ public sealed class CapexService(
         CapexProjectStatus? status = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         var query = db.Set<CapexProject>().AsNoTracking().Where(x => x.CompanyId == companyId && x.TenantId == user.TenantId && x.IsActive);
         if (status.HasValue) query = query.Where(x => x.Status == status.Value);
         var projects = await query
@@ -31,7 +31,7 @@ public sealed class CapexService(
     public async Task<CapexProjectDto> GetProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: false, cancellationToken);
-        EnsureCompanyRead(project.CompanyId);
+        user.EnsureCompanyReadAccess(project.CompanyId);
         return Map(project);
     }
 
@@ -39,7 +39,7 @@ public sealed class CapexService(
         CreateCapexProjectRequest request,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         if (user.UserId == Guid.Empty) throw new UnauthorizedAccessException("Authenticated user is required.");
         var code = NormalizeCode(request.Code);
         var name = NormalizeRequired(request.Name, "Project name", 200);
@@ -99,7 +99,7 @@ public sealed class CapexService(
         CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: true, cancellationToken);
-        EnsureCompanyWrite(project.CompanyId);
+        user.EnsureCompanyWriteAccess(project.CompanyId);
         if (project.Status is CapexProjectStatus.Completed or CapexProjectStatus.Cancelled)
             throw new InvalidOperationException("Completed or cancelled CAPEX projects are read-only.");
         ValidateDates(request.StartDate, request.EndDate);
@@ -151,7 +151,7 @@ public sealed class CapexService(
         CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: true, cancellationToken);
-        EnsureCompanyWrite(project.CompanyId);
+        user.EnsureCompanyWriteAccess(project.CompanyId);
         var oldStatus = project.Status;
         if (oldStatus == request.Status) return Map(project);
         if (!CanTransition(oldStatus, request.Status))
@@ -195,7 +195,7 @@ public sealed class CapexService(
         CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: true, cancellationToken);
-        EnsureCompanyWrite(project.CompanyId);
+        user.EnsureCompanyWriteAccess(project.CompanyId);
         if (project.Status is CapexProjectStatus.Completed or CapexProjectStatus.Cancelled)
             throw new InvalidOperationException("Milestones of completed or cancelled projects are read-only.");
         var code = NormalizeCode(request.Code);
@@ -243,7 +243,7 @@ public sealed class CapexService(
         CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: true, cancellationToken);
-        EnsureCompanyWrite(project.CompanyId);
+        user.EnsureCompanyWriteAccess(project.CompanyId);
         if (project.Status is CapexProjectStatus.Completed or CapexProjectStatus.Cancelled)
             throw new InvalidOperationException("Milestones of completed or cancelled projects are read-only.");
         var milestone = project.Milestones.SingleOrDefault(x => x.Id == milestoneId)
@@ -261,7 +261,7 @@ public sealed class CapexService(
         CancellationToken cancellationToken = default)
     {
         var project = await LoadProjectAsync(projectId, tracking: false, cancellationToken);
-        EnsureCompanyRead(project.CompanyId);
+        user.EnsureCompanyReadAccess(project.CompanyId);
         var fiscalYear = await db.FiscalYears.AsNoTracking().SingleOrDefaultAsync(x => x.Id == fiscalYearId && x.CompanyId == project.CompanyId, cancellationToken)
             ?? throw new ArgumentException("Fiscal year does not belong to the CAPEX project company.");
         var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYear.Id).OrderBy(x => x.Sequence).ToListAsync(cancellationToken);
@@ -466,9 +466,6 @@ public sealed class CapexService(
     }
 
     private bool IsReviewer() => user.IsInRole("SUPERADMIN") || user.IsInRole("ADMIN") || user.IsInRole("CFO") || user.IsInRole("BUDGET_MANAGER");
-    private void EnsureCompanyRead(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
-    private void EnsureCompanyWrite(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
-
     private void AddAudit(string entityType, Guid entityId, string action, object? oldValue, object? newValue) => db.AuditLogs.Add(new AuditLog
     {
         TenantId = user.TenantId, UserId = user.UserId == Guid.Empty ? null : user.UserId,

@@ -16,7 +16,7 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
             .Include(x => x.Facts).ThenInclude(x => x.Dimensions)
             .SingleAsync(x => x.Id == request.SourceVersionId, cancellationToken);
 
-        EnsureCompanyWrite(source.BudgetPlan!.CompanyId);
+        user.EnsureCompanyWriteAccess(source.BudgetPlan!.CompanyId);
         if (await db.FiscalYears.Where(x => x.Id == source.BudgetPlan.FiscalYearId).Select(x => x.IsClosed).SingleAsync(cancellationToken))
             throw new InvalidOperationException("Fiscal year is closed and a revision cannot be created.");
         if (source.Status is BudgetStatus.Submitted or BudgetStatus.UnderReview)
@@ -81,7 +81,7 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
     public async Task<BudgetVersionDetailsDto> ChangeStatusAsync(Guid versionId, ChangeBudgetVersionStatusRequest request, CancellationToken cancellationToken = default)
     {
         var version = await db.BudgetVersions.Include(x => x.BudgetPlan).SingleAsync(x => x.Id == versionId, cancellationToken);
-        EnsureCompanyWrite(version.BudgetPlan!.CompanyId);
+        user.EnsureCompanyWriteAccess(version.BudgetPlan!.CompanyId);
 
         var oldStatus = version.Status;
         if (oldStatus == request.Status) return ToDto(version);
@@ -110,7 +110,7 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
     public async Task<IReadOnlyList<BudgetCommentDto>> GetCommentsAsync(Guid versionId, CancellationToken cancellationToken = default)
     {
         var companyId = await db.BudgetVersions.Where(x => x.Id == versionId).Select(x => x.BudgetPlan!.CompanyId).SingleAsync(cancellationToken);
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         return await db.BudgetComments.AsNoTracking().Where(x => x.VersionId == versionId).OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new BudgetCommentDto(x.Id, x.VersionId, x.UserId, x.User!.DisplayName, x.Text, x.CreatedAtUtc))
             .ToListAsync(cancellationToken);
@@ -120,7 +120,7 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
     {
         if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("Comment text is required.");
         var companyId = await db.BudgetVersions.Where(x => x.Id == versionId).Select(x => x.BudgetPlan!.CompanyId).SingleAsync(cancellationToken);
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         var comment = await AddCommentInternalAsync(versionId, text.Trim(), cancellationToken);
         AddAudit("BudgetComment", comment.Id, "CREATE", null, new { comment.VersionId, comment.Text });
         await db.SaveChangesAsync(cancellationToken);
@@ -175,18 +175,6 @@ public sealed class BudgetWorkflowService(PbmDbContext db, IUserContext user) : 
         }
 
         throw new UnauthorizedAccessException("Your role cannot perform this workflow transition.");
-    }
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private void AddAudit(string entityType, Guid entityId, string action, object? oldValue, object? newValue) =>

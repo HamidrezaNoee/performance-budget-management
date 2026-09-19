@@ -12,7 +12,7 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
     public async Task<WorkbookImportExecutionDto> ImportAsync(Stream stream, string fileName, WorkbookImportExecutionRequest request, CancellationToken ct = default)
     {
         if (!stream.CanSeek) throw new ArgumentException("Workbook stream must be seekable.", nameof(stream));
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         stream.Position = 0;
         var normalized = await normalizer.NormalizeAsync(stream, request.SheetName, request.Profile, ct);
         if (string.IsNullOrWhiteSpace(normalized.ModelCode)) throw new InvalidOperationException("The selected worksheet profile has no automatic target model.");
@@ -137,5 +137,4 @@ public sealed class WorkbookImportExecutionService(PbmDbContext db, IUserContext
     private static string Normalize(string? value) => (value ?? "").Replace('ي', 'ی').Replace('ك', 'ک').Replace('\u200c', ' ').Replace(" ", "").Trim().ToUpperInvariant();
     private static string PeriodKey(string? value) => Normalize(value).Replace("ماه", "");
     private static void Warn(ICollection<string> list, string text) { if (list.Count < 100 && !list.Contains(text)) list.Add(text); }
-    private void EnsureCompanyWrite(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
 }

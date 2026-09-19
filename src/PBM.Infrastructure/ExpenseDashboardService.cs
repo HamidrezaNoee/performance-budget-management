@@ -188,7 +188,7 @@ public sealed class ExpenseDashboardService(
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
         if (!await db.Companies.AsNoTracking().AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive, ct)) throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>
         await db.Currencies.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive && x.IsBaseCurrency).Select(x => x.Code).FirstOrDefaultAsync(ct) ?? "IRR";

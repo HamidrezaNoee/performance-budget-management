@@ -224,7 +224,7 @@ public sealed class SalesDashboardService(
     {
         if (!await db.Companies.AsNoTracking().AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive, ct))
             throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 
     private async Task<string> GetBaseCurrencyAsync(Guid tenantId, CancellationToken ct) =>

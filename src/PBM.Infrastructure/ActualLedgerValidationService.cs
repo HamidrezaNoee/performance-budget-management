@@ -124,8 +124,8 @@ public sealed class ActualLedgerValidationService(PbmDbContext db, IUserContext 
 
         if (write)
             EnsureCompanyWrite(plan.CompanyId);
-        else if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(plan.CompanyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
+        else
+            user.EnsureCompanyReadAccess(plan.CompanyId);
 
         return new ActualLedgerWriteContext(
             plan.CompanyId,
@@ -141,14 +141,12 @@ public sealed class ActualLedgerValidationService(PbmDbContext db, IUserContext 
                 x.Id == companyId && x.TenantId == user.TenantId && x.IsActive,
                 cancellationToken))
             throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 
     public void EnsureCompanyWrite(Guid companyId)
     {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
+        user.EnsureCompanyWriteAccess(companyId);
     }
 
     public void EnsureLedgerWriterRole()

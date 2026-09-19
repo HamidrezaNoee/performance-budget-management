@@ -356,7 +356,7 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
         var right = versions.Single(x => x.Id == query.RightVersionId);
         if (left.BudgetPlanId != right.BudgetPlanId) throw new ArgumentException("Only versions of the same budget plan can be compared.");
         var plan = left.BudgetPlan!;
-        EnsureCompanyRead(plan.CompanyId);
+        user.EnsureCompanyReadAccess(plan.CompanyId);
 
         var measure = await db.Measures.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == query.MeasureId && x.BudgetModelId == plan.BudgetModelId, cancellationToken)
@@ -416,24 +416,12 @@ public sealed class BudgetOperationsService(PbmDbContext db, IUserContext user, 
             .SingleOrDefaultAsync(x => x.Id == versionId, ct)
             ?? throw new KeyNotFoundException("Budget version was not found.");
         var plan = version.BudgetPlan ?? throw new InvalidOperationException("Budget version has no plan.");
-        EnsureCompanyWrite(plan.CompanyId);
+        user.EnsureCompanyWriteAccess(plan.CompanyId);
         if (version.IsLocked || version.Status != BudgetStatus.Draft)
             throw new InvalidOperationException("Only an unlocked draft budget version can be changed.");
         if (plan.FiscalYear?.IsClosed == true)
             throw new InvalidOperationException("Fiscal year is closed and cannot be changed.");
         return version;
-    }
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private static void ValidateMember(DimensionMember member, Guid expectedDimensionId, Guid companyId)
