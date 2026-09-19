@@ -102,7 +102,7 @@ public sealed class PurchaseForecastService(
         CreatePurchaseCostTypeRequest request,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         var code = NormalizeCode(request.Code);
         var name = request.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
@@ -224,7 +224,7 @@ public sealed class PurchaseForecastService(
     {
         ValidatePlanningKind(request.ValueKind);
         var context = await ResolveContextAsync(request.VersionId, cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
         var dimensions = await ValidateBaseDimensionsAsync(context.ModelId, context.CompanyId, request.Dimensions, cancellationToken);
         var code = (request.MeasureCode ?? string.Empty).Trim().ToUpperInvariant();
         if (code is not (QuantityMeasureCode or AmountMeasureCode or CostAmountMeasureCode or CostRateMeasureCode))
@@ -500,17 +500,7 @@ public sealed class PurchaseForecastService(
             throw new ArgumentException("Purchase planning supports only Budget or Forecast value kinds.");
     }
 
-    private void EnsureCompany(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
-    }
+    private void EnsureCompany(Guid companyId) => user.EnsureCompanyReadAccess(companyId);
 
     private sealed record ForecastContext(
         Guid VersionId,

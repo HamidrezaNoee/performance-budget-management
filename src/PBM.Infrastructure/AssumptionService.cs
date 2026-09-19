@@ -71,7 +71,7 @@ public sealed class AssumptionService(
         Guid? scenarioId = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         await EnsureFiscalYearAsync(companyId, fiscalYearId, requireOpen: false, cancellationToken);
         var query = db.AssumptionValues.AsNoTracking()
             .Where(x => x.CompanyId == companyId && x.FiscalYearId == fiscalYearId && x.Definition!.TenantId == user.TenantId);
@@ -106,7 +106,7 @@ public sealed class AssumptionService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Budget version was not found.");
         if (context.TenantId != user.TenantId) throw new UnauthorizedAccessException("Budget version is outside the current tenant.");
-        EnsureCompanyRead(context.CompanyId);
+        user.EnsureCompanyReadAccess(context.CompanyId);
         if (!await db.FiscalPeriods.AnyAsync(x => x.Id == periodId && x.FiscalYearId == context.FiscalYearId, cancellationToken))
             throw new ArgumentException("Period does not belong to the budget version fiscal year.");
 
@@ -137,7 +137,7 @@ public sealed class AssumptionService(
         UpsertAssumptionValueRequest request,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         await EnsureFiscalYearAsync(request.CompanyId, request.FiscalYearId, requireOpen: true, cancellationToken);
         var definition = await db.AssumptionDefinitions.SingleOrDefaultAsync(
             x => x.Id == request.DefinitionId && x.TenantId == user.TenantId && x.IsActive,
@@ -218,7 +218,7 @@ public sealed class AssumptionService(
         var entity = await db.AssumptionValues.Include(x => x.Definition).SingleOrDefaultAsync(x => x.Id == valueId, cancellationToken)
             ?? throw new KeyNotFoundException("Assumption value was not found.");
         if (entity.Definition?.TenantId != user.TenantId) throw new UnauthorizedAccessException("Assumption value is outside the current tenant.");
-        EnsureCompanyWrite(entity.CompanyId);
+        user.EnsureCompanyWriteAccess(entity.CompanyId);
         await EnsureFiscalYearAsync(entity.CompanyId, entity.FiscalYearId, requireOpen: true, cancellationToken);
         var scope = new { entity.CompanyId, entity.FiscalYearId, entity.ScenarioId, entity.PeriodId, entity.ScopeKey, entity.DefinitionId, entity.Value };
         db.AssumptionValues.Remove(entity);
@@ -290,18 +290,6 @@ public sealed class AssumptionService(
     {
         if (!user.IsInRole("SUPERADMIN") && !user.IsInRole("ADMIN") && !user.IsInRole("CFO") && !user.IsInRole("BUDGET_MANAGER"))
             throw new UnauthorizedAccessException("Budget manager, CFO or administrator role is required to manage assumption definitions.");
-    }
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private void AddAudit(string entityType, Guid entityId, string action, object newValue, object? oldValue = null) =>

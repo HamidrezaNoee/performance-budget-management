@@ -11,7 +11,7 @@ public sealed class CapexFacadeService(
 {
     public async Task<IReadOnlyList<CapexOwnerUnitDto>> GetOwnerUnitsAsync(Guid companyId, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         return await db.OrganizationUnits.AsNoTracking()
             .Where(x => x.CompanyId == companyId && x.IsActive)
             .OrderBy(x => x.Name)
@@ -21,7 +21,7 @@ public sealed class CapexFacadeService(
 
     public async Task<CapexPortfolioSummaryDto> GetPortfolioAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         var fiscalYear = await db.FiscalYears.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == fiscalYearId && x.CompanyId == companyId, cancellationToken)
             ?? throw new ArgumentException("Fiscal year does not belong to the selected company.");
@@ -137,8 +137,7 @@ public sealed class CapexFacadeService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("CAPEX project was not found.");
 
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(state.CompanyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
+        user.EnsureCompanyWriteAccess(state.CompanyId);
         if (state.HasMilestones && request.CompletionPercent != state.CompletionPercent)
             throw new InvalidOperationException("CAPEX completion is milestone-driven and cannot be edited manually while milestones exist.");
 
@@ -153,8 +152,7 @@ public sealed class CapexFacadeService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("CAPEX project was not found.");
 
-        if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(current.CompanyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
+        user.EnsureCompanyWriteAccess(current.CompanyId);
 
         var requiresDecisionComment = request.Status == CapexProjectStatus.Cancelled
             || (current.Status == CapexProjectStatus.Submitted && request.Status == CapexProjectStatus.Proposed);
@@ -172,12 +170,6 @@ public sealed class CapexFacadeService(
 
     public Task<CapexFinancialSummaryDto> GetFinancialSummaryAsync(Guid projectId, Guid fiscalYearId, CancellationToken cancellationToken = default) =>
         inner.GetFinancialSummaryAsync(projectId, fiscalYearId, cancellationToken);
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
 
     private static FinancialValues Summarize(IEnumerable<BudgetFact> facts)
     {

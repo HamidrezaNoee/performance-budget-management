@@ -14,7 +14,7 @@ public sealed class CashPlanningService(
 
     public async Task<CashPlanSetupDto> GetSetupAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        user.EnsureCompanyReadAccess(companyId);
         await EnsureFiscalYearAsync(companyId, fiscalYearId, requireOpen: false, cancellationToken);
         var infrastructure = await GetInfrastructureAsync(cancellationToken);
         if (infrastructure is null)
@@ -28,7 +28,7 @@ public sealed class CashPlanningService(
 
     public async Task<CashPlanSetupDto> EnsurePlanAsync(EnsureCashPlanRequest request, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         await EnsureFiscalYearAsync(request.CompanyId, request.FiscalYearId, requireOpen: true, cancellationToken);
         var infrastructure = await EnsureInfrastructureAsync(cancellationToken);
 
@@ -72,7 +72,7 @@ public sealed class CashPlanningService(
     public async Task<CashPlanSummaryDto> GetSummaryAsync(Guid versionId, string? currencyCode = null, CancellationToken cancellationToken = default)
     {
         var context = await GetVersionContextAsync(versionId, cancellationToken);
-        EnsureCompanyRead(context.CompanyId);
+        user.EnsureCompanyReadAccess(context.CompanyId);
         var infrastructure = await RequireInfrastructureAsync(cancellationToken);
         if (context.ModelId != infrastructure.Model.Id)
             throw new ArgumentException("Selected budget version is not a cash planning version.");
@@ -111,7 +111,7 @@ public sealed class CashPlanningService(
         CancellationToken cancellationToken = default)
     {
         var context = await GetVersionContextAsync(versionId, cancellationToken);
-        EnsureCompanyRead(context.CompanyId);
+        user.EnsureCompanyReadAccess(context.CompanyId);
         var infrastructure = await RequireInfrastructureAsync(cancellationToken);
         if (context.ModelId != infrastructure.Model.Id)
             throw new ArgumentException("Selected budget version is not a cash planning version.");
@@ -154,7 +154,7 @@ public sealed class CashPlanningService(
     public async Task<Guid> UpsertEntryAsync(UpsertCashPlanEntryRequest request, CancellationToken cancellationToken = default)
     {
         var context = await GetVersionContextAsync(request.VersionId, cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        user.EnsureCompanyWriteAccess(context.CompanyId);
         var infrastructure = await RequireInfrastructureAsync(cancellationToken);
         if (context.ModelId != infrastructure.Model.Id)
             throw new ArgumentException("Selected budget version is not a cash planning version.");
@@ -435,7 +435,4 @@ public sealed class CashPlanningService(
             throw new ArgumentException("MINIMUM_CASH_BUFFER must use the LIQUIDITY_BUFFER cash-flow item.");
     }
 
-    private bool CanWriteCompany(Guid companyId) => user.IsInRole("SUPERADMIN") || user.CanWriteCompany(companyId);
-    private void EnsureCompanyRead(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
-    private void EnsureCompanyWrite(Guid companyId) { if (!CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
 }

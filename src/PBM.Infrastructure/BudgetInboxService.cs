@@ -8,7 +8,7 @@ public sealed class BudgetInboxService(PbmDbContext db, IUserContext user) : IBu
 {
     public async Task<IReadOnlyList<BudgetInboxItemDto>> GetInboxAsync(Guid? companyId = null, CancellationToken cancellationToken = default)
     {
-        if (companyId.HasValue) EnsureCompanyRead(companyId.Value);
+        if (companyId.HasValue) user.EnsureCompanyReadAccess(companyId.Value);
 
         var query = db.BudgetVersions.AsNoTracking()
             .Where(x => x.Status == BudgetStatus.Submitted || x.Status == BudgetStatus.UnderReview || x.Status == BudgetStatus.Returned)
@@ -62,7 +62,7 @@ public sealed class BudgetInboxService(PbmDbContext db, IUserContext user) : IBu
     private bool IsReviewManager => IsAdmin || user.IsInRole("BUDGET_MANAGER") || user.IsInRole("CFO");
     private bool IsSeniorReviewer => IsReviewManager || user.IsInRole("CEO");
     private bool IsApprover => IsAdmin || user.IsInRole("CFO") || user.IsInRole("CEO");
-    private bool CanWrite(Guid companyId) => user.IsInRole("SUPERADMIN") || user.CanWriteCompany(companyId);
+    private bool CanWrite(Guid companyId) => user.CanWriteCompanyScope(companyId);
 
     private bool CanStartReview(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.Submitted && IsReviewManager;
     private bool CanApprove(BudgetStatus status, Guid companyId) => CanWrite(companyId) && status == BudgetStatus.UnderReview && IsApprover;
@@ -74,9 +74,4 @@ public sealed class BudgetInboxService(PbmDbContext db, IUserContext user) : IBu
     });
     private bool CanReject(BudgetStatus status, Guid companyId) => CanReturn(status, companyId);
 
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
 }

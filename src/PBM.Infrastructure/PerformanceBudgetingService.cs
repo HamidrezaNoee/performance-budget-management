@@ -25,8 +25,7 @@ public sealed class PerformanceBudgetingService(
         var fiscalYear = plan.FiscalYear ?? throw new InvalidOperationException("Budget plan has no fiscal year.");
         if (company.TenantId != user.TenantId)
             throw new UnauthorizedAccessException("Budget version is outside the current tenant.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(company.Id))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(company.Id);
 
         var periods = await db.FiscalPeriods.AsNoTracking()
             .Where(x => x.FiscalYearId == fiscalYear.Id)

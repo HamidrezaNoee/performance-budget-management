@@ -18,7 +18,7 @@ public sealed class BudgetTransferService(
         int take = 100,
         CancellationToken cancellationToken = default)
     {
-        EnsureCompanyRead(companyId);
+        currentUser.EnsureCompanyReadAccess(companyId);
         take = Math.Clamp(take, 1, 500);
         var query = db.BudgetTransfers.AsNoTracking()
             .Where(x => x.TenantId == currentUser.TenantId && x.CompanyId == companyId);
@@ -38,7 +38,7 @@ public sealed class BudgetTransferService(
         CancellationToken cancellationToken = default)
     {
         var context = await ValidateRequestAsync(request, cancellationToken);
-        EnsureCompanyRead(context.CompanyId);
+        currentUser.EnsureCompanyReadAccess(context.CompanyId);
         return await GetAvailabilityInternalAsync(context, cancellationToken);
     }
 
@@ -51,7 +51,7 @@ public sealed class BudgetTransferService(
         var description = NormalizeRequired(request.Description, "Description", 1000);
         var externalReference = NormalizeOptional(request.ExternalReference, 200);
         var context = await ValidateRequestAsync(request, cancellationToken);
-        EnsureCompanyWrite(context.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(context.CompanyId);
 
         var availability = await GetAvailabilityInternalAsync(context, cancellationToken);
         if (request.Amount > availability.SourceAvailable)
@@ -111,7 +111,7 @@ public sealed class BudgetTransferService(
         EnsureDecisionRole();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var transfer = await LoadForMutationAsync(transferId, cancellationToken);
-        EnsureCompanyWrite(transfer.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(transfer.CompanyId);
         if (transfer.Status != BudgetTransferStatus.Requested)
             throw new InvalidOperationException("Only a requested budget transfer can be approved.");
 
@@ -154,7 +154,7 @@ public sealed class BudgetTransferService(
     {
         EnsureDecisionRole();
         var transfer = await LoadForMutationAsync(transferId, cancellationToken);
-        EnsureCompanyWrite(transfer.CompanyId);
+        currentUser.EnsureCompanyWriteAccess(transfer.CompanyId);
         if (transfer.Status != BudgetTransferStatus.Requested)
             throw new InvalidOperationException("Only a requested budget transfer can be rejected.");
 
@@ -321,7 +321,7 @@ public sealed class BudgetTransferService(
     {
         var item = await IncludeDetails(db.BudgetTransfers.AsNoTracking().Where(x => x.Id == transferId && x.TenantId == currentUser.TenantId))
             .SingleAsync(cancellationToken);
-        EnsureCompanyRead(item.CompanyId);
+        currentUser.EnsureCompanyReadAccess(item.CompanyId);
         return ToDto(item);
     }
 
@@ -364,18 +364,6 @@ public sealed class BudgetTransferService(
     {
         if (member.DimensionId != dimensionId || !member.IsActive || (member.CompanyId.HasValue && member.CompanyId.Value != companyId))
             throw new ArgumentException("A transfer dimension member is invalid for the selected company/model.");
-    }
-
-    private void EnsureCompanyRead(Guid companyId)
-    {
-        if (!currentUser.IsInRole("SUPERADMIN") && !currentUser.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
-    }
-
-    private void EnsureCompanyWrite(Guid companyId)
-    {
-        if (!currentUser.IsInRole("SUPERADMIN") && !currentUser.CanWriteCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have write access to this company.");
     }
 
     private void EnsureAuthenticated()

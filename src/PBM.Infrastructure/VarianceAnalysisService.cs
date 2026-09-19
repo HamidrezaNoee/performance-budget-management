@@ -105,8 +105,7 @@ public sealed class VarianceAnalysisService(PbmDbContext db, IUserContext user) 
     {
         var exists = await db.Companies.AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId && x.IsActive, ct);
         if (!exists) throw new UnauthorizedAccessException("Company is outside the current tenant or inactive.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId))
-            throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 
     private static decimal Aggregate(IEnumerable<BudgetFact> facts, MeasureAggregation aggregation)

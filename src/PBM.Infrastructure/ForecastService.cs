@@ -67,6 +67,6 @@ public sealed class ForecastService(PbmDbContext db, IUserContext user) : IForec
     private async Task EnsureCompanyAsync(Guid companyId, CancellationToken ct)
     {
         if (!await db.Companies.AnyAsync(x => x.Id == companyId && x.TenantId == user.TenantId, ct)) throw new UnauthorizedAccessException("Company is outside the current tenant.");
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
     }
 }

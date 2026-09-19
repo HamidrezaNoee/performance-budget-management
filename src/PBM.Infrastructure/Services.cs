@@ -50,7 +50,7 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculati
     }
     public async Task<BudgetPlanDto> CreatePlanAsync(CreateBudgetPlanRequest request, CancellationToken cancellationToken = default)
     {
-        EnsureCompanyWrite(request.CompanyId);
+        user.EnsureCompanyWriteAccess(request.CompanyId);
         var planName = request.Name?.Trim();
         if (string.IsNullOrWhiteSpace(planName)) throw new ArgumentException("Plan name is required.");
 
@@ -85,7 +85,7 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculati
     public async Task<Guid> UpsertFactAsync(UpsertBudgetFactRequest request, CancellationToken cancellationToken = default)
     {
         var version = await db.BudgetVersions.Include(x => x.BudgetPlan).SingleAsync(x => x.Id == request.VersionId, cancellationToken);
-        EnsureCompanyWrite(version.BudgetPlan!.CompanyId);
+        user.EnsureCompanyWriteAccess(version.BudgetPlan!.CompanyId);
         if (version.IsLocked || version.Status != BudgetStatus.Draft)
             throw new InvalidOperationException("Only an unlocked draft budget version can be changed.");
         var period = await db.FiscalPeriods.Include(x => x.FiscalYear).SingleOrDefaultAsync(x => x.Id == request.PeriodId && x.FiscalYearId == version.BudgetPlan.FiscalYearId, cancellationToken) ?? throw new ArgumentException("Period does not belong to the budget plan fiscal year.");
@@ -115,8 +115,7 @@ public sealed class BudgetService(PbmDbContext db, IUserContext user, ICalculati
         var facts = await factQuery.ToListAsync(cancellationToken); var values = facts.Select(x => new { Fact = x, RowMemberId = x.Dimensions.Where(d => d.DimensionId == query.RowDimensionId).Select(d => (Guid?)d.MemberId).SingleOrDefault() }).Where(x => x.RowMemberId.HasValue).ToDictionary(x => (x.RowMemberId!.Value, x.Fact.PeriodId));
         var rows = members.Select(member => new BudgetGridRowDto(member.Id, member.Code, member.Name, periods.Select(period => values.TryGetValue((member.Id, period.Id), out var item) ? new BudgetGridCellDto(period.Id, item.Fact.Id, item.Fact.Value) : new BudgetGridCellDto(period.Id, null, 0)).ToList())).ToList(); return new BudgetGridDto(periods, measure, rowDimension, rows);
     }
-    private void EnsureCompany(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company."); }
-    private void EnsureCompanyWrite(Guid companyId) { if (!user.IsInRole("SUPERADMIN") && !user.CanWriteCompany(companyId)) throw new UnauthorizedAccessException("You do not have write access to this company."); }
+    private void EnsureCompany(Guid companyId) => user.EnsureCompanyReadAccess(companyId);
     private async Task EnsureModelTenant(Guid modelId, CancellationToken ct) { var tenantId = await db.BudgetModels.Where(x => x.Id == modelId).Select(x => x.TenantId).SingleAsync(ct); if (tenantId != user.TenantId) throw new UnauthorizedAccessException("Budget model is outside the current tenant."); }
     private void AddAudit(string entityType, Guid entityId, string action, string? oldValue, string? newValue) => db.AuditLogs.Add(new AuditLog { TenantId = user.TenantId, UserId = user.UserId == Guid.Empty ? null : user.UserId, EntityType = entityType, EntityId = entityId.ToString(), Action = action, OldValueJson = oldValue, NewValueJson = newValue });
 }
@@ -125,7 +124,7 @@ public sealed class DashboardService(PbmDbContext db, IUserContext user) : IDash
 {
     public async Task<DashboardSummaryDto> GetSummaryAsync(Guid companyId, Guid fiscalYearId, CancellationToken cancellationToken = default)
     {
-        if (!user.IsInRole("SUPERADMIN") && !user.CanAccessCompany(companyId)) throw new UnauthorizedAccessException("You do not have access to this company.");
+        user.EnsureCompanyReadAccess(companyId);
         var query = db.BudgetFacts.AsNoTracking().Where(x => x.Version!.BudgetPlan!.CompanyId == companyId && x.Version.BudgetPlan.FiscalYearId == fiscalYearId); var totals = await query.GroupBy(_ => 1).Select(g => new { Budget = g.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value), Actual = g.Where(x => x.ValueKind == ValueKind.Actual).Sum(x => x.Value), Commitment = g.Where(x => x.ValueKind == ValueKind.Commitment).Sum(x => x.Value), Forecast = g.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value) }).SingleOrDefaultAsync(cancellationToken);
         var periods = await db.FiscalPeriods.AsNoTracking().Where(x => x.FiscalYearId == fiscalYearId).OrderBy(x => x.Sequence).ToListAsync(cancellationToken); var grouped = await query.GroupBy(x => x.PeriodId).Select(g => new { PeriodId = g.Key, Budget = g.Where(x => x.ValueKind == ValueKind.Budget).Sum(x => x.Value), Actual = g.Where(x => x.ValueKind == ValueKind.Actual).Sum(x => x.Value), Commitment = g.Where(x => x.ValueKind == ValueKind.Commitment).Sum(x => x.Value), Forecast = g.Where(x => x.ValueKind == ValueKind.Forecast).Sum(x => x.Value) }).ToDictionaryAsync(x => x.PeriodId, cancellationToken);
         var monthly = periods.Select(p => grouped.TryGetValue(p.Id, out var x) ? new MonthlySeriesPointDto(p.Id, p.Name, p.Sequence, x.Budget, x.Actual, x.Commitment, x.Forecast) : new MonthlySeriesPointDto(p.Id, p.Name, p.Sequence, 0, 0, 0, 0)).ToList(); var budget = totals?.Budget ?? 0; var actual = totals?.Actual ?? 0; var commitment = totals?.Commitment ?? 0; var forecast = totals?.Forecast ?? 0;

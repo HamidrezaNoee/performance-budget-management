@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   Alert, Box, Card, CardContent, CircularProgress, FormControl, InputLabel, MenuItem, Select,
   Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography
@@ -8,6 +8,9 @@ import { api } from './api'
 import PurchaseDashboardPanel from './PurchaseDashboardPanel'
 import SalesDashboardPanel from './SalesDashboardPanel'
 import ExpenseDashboardPanel from './ExpenseDashboardPanel'
+
+const PortfolioFinancialPanel = lazy(() => import('./PortfolioFinancialPanel'))
+const PortfolioDimensionPanel = lazy(() => import('./PortfolioDimensionPanel'))
 
 type MonthlyPoint = { periodId: string; periodName: string; sequence: number; budget: number; actual: number; commitment: number; forecast: number }
 type DashboardSummary = { budget: number; actual: number; commitment: number; forecast: number; remaining: number; variance: number; budgetUtilizationPercent: number; monthly: MonthlyPoint[] }
@@ -22,7 +25,7 @@ const percent = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 })
 function formatAmount(value: number) { const abs = Math.abs(value); if (abs >= 1_000_000_000_000) return `${number.format(value / 1_000_000_000_000)} همت`; if (abs >= 1_000_000_000) return `${number.format(value / 1_000_000_000)} میلیارد`; if (abs >= 1_000_000) return `${number.format(value / 1_000_000)} میلیون`; return number.format(value) }
 function errorMessage(error: any, fallback: string) { return error?.response?.data?.detail ?? fallback }
 
-export default function ExecutiveDashboard({ companyId, fiscalYearId }: { companyId: string; fiscalYearId: string }) {
+export default function ExecutiveDashboard({ companyId, fiscalYearId, roles }: { companyId: string; fiscalYearId: string; roles: string[] }) {
   const [metrics, setMetrics] = useState<MetricOption[]>([]); const [metricCode, setMetricCode] = useState(''); const [measureSummary, setMeasureSummary] = useState<MeasureSummary | null>(null)
   const [dimensions, setDimensions] = useState<DimensionOption[]>([]); const [dimensionId, setDimensionId] = useState(''); const [drilldown, setDrilldown] = useState<DrilldownResult | null>(null)
   const [loadingMetrics, setLoadingMetrics] = useState(false); const [loadingSummary, setLoadingSummary] = useState(false); const [loadingDrilldown, setLoadingDrilldown] = useState(false); const [error, setError] = useState('')
@@ -56,10 +59,18 @@ export default function ExecutiveDashboard({ companyId, fiscalYearId }: { compan
 
   const selectedMetric = useMemo(() => metrics.find(x => x.code === metricCode), [metrics, metricCode])
   const summary = measureSummary?.summary ?? null
+  const canViewPortfolio = useMemo(() => {
+    const roleSet = new Set(roles.map(role => role.toUpperCase()))
+    return ['SUPERADMIN', 'ADMIN', 'CFO', 'CEO'].some(role => roleSet.has(role))
+  }, [roles])
   const companyPanels = <>
     <PurchaseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
     <SalesDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
     <ExpenseDashboardPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+    {canViewPortfolio && <Suspense fallback={<Box display="flex" justifyContent="center" py={5}><CircularProgress size={28} /></Box>}>
+      <PortfolioFinancialPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+      <PortfolioDimensionPanel companyId={companyId} fiscalYearId={fiscalYearId} />
+    </Suspense>}
   </>
 
   if (loadingMetrics) return <Stack spacing={3}>{companyPanels}<Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box></Stack>
