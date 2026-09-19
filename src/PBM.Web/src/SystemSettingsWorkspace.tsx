@@ -1,5 +1,6 @@
 import { Alert } from '@mui/material'
 import ReferenceAdmin from './ReferenceAdmin'
+import { resolveSettingsPermissions } from './settingsPermissions'
 import SecurityAdmin from './SecurityAdmin'
 import LicenseAdmin from './LicenseAdmin'
 import IntegrationCredentialsAdmin from './IntegrationCredentialsAdmin'
@@ -9,11 +10,7 @@ import AuditAdmin from './AuditAdmin'
 import CatalogPlaceholder from './CatalogPlaceholder'
 
 export default function SystemSettingsWorkspace({ companyId, roles, section }: { companyId: string; roles: string[]; section: string }) {
-  const roleSet = new Set(roles.map(x => x.toUpperCase()))
-  const canManageSecurity = roleSet.has('SUPERADMIN') || roleSet.has('ADMIN')
-  const canViewIdempotency = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO')
-  const canViewOutbox = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
-  const canViewAudit = canManageSecurity || roleSet.has('AUDITOR') || roleSet.has('CFO') || roleSet.has('BUDGET_MANAGER')
+  const { canManageSecurity, canViewIdempotency, canViewOutbox, canViewAudit } = resolveSettingsPermissions(roles)
 
   if (!section) return <ReferenceAdmin companyId={companyId} roles={roles} />
 
