@@ -31,7 +31,7 @@ PBM does not store development passwords or JWT signing keys in tracked configur
 docker compose up --build
 ```
 
-The development compose profile explicitly enables demo seed data and `Database__AllowEnsureCreated=true`. This fallback exists only while the initial EF Core migration is being prepared. It also creates the bootstrap administrator using the credentials from `.env`.
+The development compose profile enables disposable demo seed data. The repository now includes committed EF Core migrations, which are used for schema management. Development-only `Database__AllowEnsureCreated=true` is a fallback for a migration-less checkout and must never be used for real data. The first administrator is provisioned using the credentials from `.env`.
 
 - Web: `http://localhost:3000`
 - API: `http://localhost:8080`
@@ -39,7 +39,7 @@ The development compose profile explicitly enables demo seed data and `Database_
 - Readiness: `http://localhost:8080/readyz`
 - SQL Server: `localhost:1433`
 
-To reset the local demo database completely:
+To reset **only the disposable development demo database** (never use this command with the Personal Production compose profile or its volume):
 
 ```bash
 docker compose down -v
@@ -113,6 +113,9 @@ The executive dashboard no longer aggregates every monetary measure into one mea
 
 ## Engineering status
 
-The repository contains a CI workflow and unit tests, but GitHub currently reports no workflow runs for the feature branch, so a green hosted build has not yet been confirmed. The application now has a production-safe migration policy, but the **initial EF Core migration itself still needs to be generated and committed with a .NET SDK/EF tooling environment** before a first production deployment.
+See `docs/refactor-audit.md` for the cleanup scope, preserved contracts, and required regression checks.
+
+
+The repository contains committed EF Core migrations (including `InitialCreate` and `OperationalMasterData`), unit/integration tests, and a CI workflow. A successful build of this refactor branch has **not yet been verified**; its current GitHub Actions runs failed before executing job steps. Run the build and regression tests before deploying refactor changes. For real-data deployments, use the Personal Production profile and the backup/restore procedure in `docs/personal-deployment.md`.
 
 Development work is performed on feature branches and proposed through pull requests.
